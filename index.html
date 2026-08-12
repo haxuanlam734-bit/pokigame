@@ -2,92 +2,76 @@
 <html>
 <head>
   <title>City Parkour: Zombie Escape</title>
-  <!-- Nhúng thư viện làm game Kaboom.js -->
   <script src="https://unpkg.com"></script>
 </head>
 <body style="margin:0; overflow:hidden;">
 <script>
-  // 1. Khởi tạo môi trường game với nền thành phố tối
   kaboom({
-    background:, // Màu nền tối đại diện cho thành phố đêm
+    background:,
   });
 
-  // 2. Thiết lập trọng lực (để nhân vật rơi xuống khi nhảy)
   setGravity(1600);
 
-  // 3. Tạo nhân vật Parkour (Khối vuông màu xanh lam)
   const player = add([
-    rect(40, 60), // Kích thước nhân vật
-    pos(100, 0),  // Vị trí xuất phát
+    rect(40, 60),
+    pos(100, 0),
     color(0, 120, 255),
-    area(),       // Tạo vùng va chạm
-    body(),       // Áp dụng vật lý/trọng lực
+    area(),
+    body(),
   ]);
 
-  // 4. Tạo mặt đất (Đường phố công cộng)
   const floor = add([
     rect(width(), 60),
     pos(0, height() - 60),
     outline(4),
     area(),
-    body({ isStatic: true }), // Đứng yên, không bị rơi
+    body({ isStatic: true }),
     color(100, 100, 100),
   ]);
 
-  // 5. Hệ thống tính điểm số (Score)
   let score = 0;
   const scoreLabel = add([
     text("Score: 0"),
     pos(24, 24),
   ]);
 
-  // 6. Xử lý nút điều khiển: Nhấn Space để nhảy lên né Zombie
   onKeyPress("space", () => {
-    if (player.isGrounded()) { // Chỉ được nhảy khi đang đứng trên đất
-      player.jump(650); // Lực nhảy parkour
+    if (player.isGrounded()) {
+      player.jump(650);
     }
   });
 
-  // 7. Hàm tự động sinh ra Zombie chạy ngẫu nhiên từ bên phải màn hình
   function spawnZombie() {
     add([
       rect(40, 50),
-      pos(width(), height() - 110), // Xuất hiện ở rìa phải mặt đất
-      color(255, 50, 50), // Zombie màu đỏ nguy hiểm
+      pos(width(), height() - 110),
+      color(255, 50, 50),
       area(),
-      "zombie", // Gắn nhãn để xử lý va chạm
-      move(LEFT, 350 + score * 10), // Tự động chạy sang trái, game càng lâu chạy càng nhanh
+      "zombie",
+      move(LEFT, 350 + score * 10),
     ]);
-
-    // Cứ sau 1.5 đến 3 giây ngẫu nhiên sẽ xuất hiện thêm 1 con Zombie tiếp theo
     wait(rand(1.5, 3), spawnZombie);
   }
 
-  // Kích hoạt sinh zombie
   spawnZombie();
 
-  // 8. Tăng điểm số theo thời gian sống sót
   onUpdate(() => {
     score++;
     scoreLabel.text = "Score: " + score;
   });
 
-  // 9. Xử lý va chạm: Nếu Zombie chạm vào người chơi -> GAME OVER
   player.onCollide("zombie", () => {
-    shake(); // Hiệu ứng rung màn hình khi chết
+    shake();
     add([
-      text("ZOMBIE CAUGHT YOU!\nPress Space to Restart"),
+      text("GAME OVER\nPress Space to Restart"),
       pos(width() / 2, height() / 2),
       anchor("center"),
     ]);
-    destroy(player); // Xóa nhân vật khỏi màn hình
-    
-    // Bấm Space để chơi lại từ đầu
+    destroy(player);
     onKeyPress("space", () => {
       location.reload();
     });
   });
-
 </script>
 </body>
 </html>
