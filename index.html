@@ -6,13 +6,11 @@
 </head>
 <body style="margin:0; overflow:hidden;">
 <script>
-  // Khởi tạo Kaboom mặc định nền đen độc lập không lỗi dấu phẩy
   kaboom();
   setBackground(0, 0, 0);
 
   setGravity(1600);
 
-  // Tạo người chơi màu xanh
   const player = add([
     rect(40, 60),
     pos(100, 0),
@@ -21,7 +19,6 @@
     body(),
   ]);
 
-  // Tạo mặt đất
   const floor = add([
     rect(width(), 60),
     pos(0, height() - 60),
@@ -37,14 +34,12 @@
     pos(24, 24),
   ]);
 
-  // Nhảy khi bấm phím Space
   onKeyPress("space", () => {
     if (player.isGrounded()) {
       player.jump(650);
     }
   });
 
-  // Sinh Zombie màu đỏ lao tới
   function spawnZombie() {
     add([
       rect(40, 50),
@@ -59,13 +54,11 @@
 
   spawnZombie();
 
-  // Tăng điểm
   onUpdate(() => {
     score++;
     scoreLabel.text = "Score: " + score;
   });
 
-  // Xử lý va chạm thua cuộc
   player.onCollide("zombie", () => {
     shake();
     add([
