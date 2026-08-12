@@ -4,27 +4,24 @@
   <title>City Parkour: Zombie Escape</title>
   <script src="https://unpkg.com"></script>
 </head>
-<body style="margin:0; overflow:hidden; background-color:black;">
+<body style="margin:0; overflow:hidden;">
 <script>
-  // 1. Khởi tạo môi trường game Kaboom
+  // Khởi tạo Kaboom mặc định nền đen độc lập không lỗi dấu phẩy
   kaboom();
-
-  // 2. Cài đặt màu nền đen độc lập
   setBackground(0, 0, 0);
 
-  // 3. Thiết lập trọng lực vật lý
   setGravity(1600);
 
-  // 4. Tạo nhân vật người chơi màu xanh lam
+  // Tạo người chơi màu xanh
   const player = add([
     rect(40, 60),
-    pos(100, 100),
+    pos(100, 0),
     color(0, 120, 255),
     area(),
     body(),
   ]);
 
-  // 5. Tạo mặt đất cố định màu xám
+  // Tạo mặt đất
   const floor = add([
     rect(width(), 60),
     pos(0, height() - 60),
@@ -34,21 +31,20 @@
     color(100, 100, 100),
   ]);
 
-  // 6. Hệ thống hiển thị điểm số
   let score = 0;
   const scoreLabel = add([
     text("Score: 0"),
     pos(24, 24),
   ]);
 
-  // 7. Nhấn Spacebar để nhảy né vật cản
+  // Nhảy khi bấm phím Space
   onKeyPress("space", () => {
     if (player.isGrounded()) {
-      player.jump(700);
+      player.jump(650);
     }
   });
 
-  // 8. Hàm sinh Zombie (Khối hộp đỏ) chạy từ bên phải qua
+  // Sinh Zombie màu đỏ lao tới
   function spawnZombie() {
     add([
       rect(40, 50),
@@ -61,16 +57,15 @@
     wait(rand(1.5, 3), spawnZombie);
   }
 
-  // Bắt đầu sinh zombie liên tục
   spawnZombie();
 
-  // 9. Tăng điểm số theo thời gian sống sót
+  // Tăng điểm
   onUpdate(() => {
     score++;
     scoreLabel.text = "Score: " + score;
   });
 
-  // 10. Xử lý va chạm khi thua cuộc
+  // Xử lý va chạm thua cuộc
   player.onCollide("zombie", () => {
     shake();
     add([
