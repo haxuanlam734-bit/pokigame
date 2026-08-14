@@ -391,7 +391,7 @@ const GameState = {
     },
     
     /**
-     * Sinh zombie 3D
+     * Sinh zombie 3D từ 4 rìa ngoài bản đồ ngẫu nhiên
      * @param {number} deltaTime - Thời gian delta
      */
     spawnZombies: function(deltaTime) {
@@ -400,13 +400,35 @@ const GameState = {
         
         if (now - this.lastZombieSpawnTime >= spawnInterval) {
             const wave = CONFIG.ZOMBIE_WAVES[Math.min(this.currentWave - 1, CONFIG.ZOMBIE_WAVES.length - 1)];
-            const zombie = new Zombie3D(
-                CONFIG.ZOMBIE_SPAWN_X + Utils.randomInt(-50, 50),
-                CONFIG.FORTRESS_Y + Utils.randomInt(-50, 50),
-                wave.speed,
-                wave.count > 10 ? 25 : 20
-            );
-            
+
+            const edge = Math.floor(Math.random() * 4);
+            const margin = 10;
+            const mapSize = 500;
+            let x, z;
+
+            switch (edge) {
+                case 0:
+                    x = 10 + Math.random() * 480;
+                    z = 0 + margin + Math.random() * 5;
+                    break;
+                case 1:
+                    x = 10 + Math.random() * 480;
+                    z = mapSize - margin - Math.random() * 5;
+                    break;
+                case 2:
+                    x = 0 + margin + Math.random() * 5;
+                    z = 10 + Math.random() * 480;
+                    break;
+                case 3:
+                default:
+                    x = mapSize - margin - Math.random() * 5;
+                    z = 10 + Math.random() * 480;
+                    break;
+            }
+
+            const hp = wave.count > 10 ? 25 : 20;
+            const zombie = new Zombie3D(x, z, wave.speed, hp);
+
             this.zombies.push(zombie);
             this.lastZombieSpawnTime = now;
         }

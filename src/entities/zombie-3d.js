@@ -116,7 +116,7 @@ class Zombie3D {
     reachedFortress() {
         const fortressPos = { x: CONFIG.FORTRESS_X, z: CONFIG.FORTRESS_Y };
         const dist = Math.hypot(this.x - fortressPos.x, this.z - fortressPos.z);
-        return dist < 60;
+        return dist < 8;
     }
 
     /**

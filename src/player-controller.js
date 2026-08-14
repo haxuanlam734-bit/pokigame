@@ -9,14 +9,14 @@
 
 const PlayerController = {
     position: {
-        x: 300,
+        x: 250,
         y: 0,
-        z: 300
+        z: 250
     },
 
     velocity: { x: 0, z: 0 },
     targetVelocity: { x: 0, z: 0 },
-    speed: 150,
+    speed: 6,
 
     movementSmoothness: 8.0,
     playerRotationSmoothness: 10.0,
@@ -33,7 +33,7 @@ const PlayerController = {
     init: function() {
         console.log('🚶 Khởi tạo Player Controller...');
 
-        this.position = { x: 300, y: 0, z: 300 };
+        this.position = { x: 250, y: 0, z: 250 };
         this.velocity = { x: 0, z: 0 };
         this.targetVelocity = { x: 0, z: 0 };
         this.currentMoveAngle = 0;
