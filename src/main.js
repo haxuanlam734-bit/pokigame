@@ -103,7 +103,12 @@ const Game = {
                     console.log('❌ Công trình chưa mở khóa hoặc không đủ tiền:', type);
                     return;
                 }
-                this.startBuildMode(type);
+                if (GameState.phase !== CONFIG.PHASE_DAY) {
+                    console.log('❌ Chỉ có thể xây dựng vào NGÀY');
+                    return;
+                }
+                // Bật chế độ build 3D (raycasting sẽ được xử lý bởi setupBuildModeInput)
+                GameState.startBuildMode(type);
             });
         });
 
@@ -116,50 +121,55 @@ const Game = {
     },
     
     /**
-     * Bắt đầu chế độ xây dựng
-     * @param {string} type - Loại: 'wall', 'tower', 'minter'
+     * Setup build mode input (3D)
+     * Lắng nghe click chuột trên canvas 3D, raycast xuống mặt đất (ground)
+     * để xác định vị trí (x, z) và đặt công trình tương ứng khi
+     * GameState.buildingMode đang bật.
+     * Được gọi 1 lần trong Game.init() -> KHÔNG bind lại nhiều listener.
      */
-    startBuildMode: function(type) {
-        if (GameState.phase !== CONFIG.PHASE_DAY) {
-            console.log('❌ Chỉ có thể xây dựng vào NGÀY');
+    setupBuildModeInput: function() {
+        console.log('🏗️ Setup Build Mode Input (3D)...');
+
+        const canvas = Renderer3D.canvas;
+        if (!canvas) {
+            console.warn('⚠️ Không tìm thấy canvas 3D, bỏ qua setupBuildModeInput');
             return;
         }
 
-        const def = GameState.getBuildingDef(type);
-        if (!def || !GameState.canBuildBuilding(type)) {
-            console.log('❌ Công trình chưa mở khóa hoặc không đủ tiền:', type);
-            return;
-        }
+        canvas.addEventListener('click', (event) => {
+            // Chỉ xử lý khi đang ở chế độ xây dựng
+            if (!GameState.buildingMode || !GameState.buildingType) return;
 
-        console.log('🔨 Bắt đầu chế độ xây dựng: ' + type);
+            const type = GameState.buildingType;
 
-        const canvas = Renderer.canvas;
-        const clickHandler = (event) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
+            // Raycast từ vị trí click chuột xuống mặt đất 3D
+            const raycaster = Renderer3D.getRaycaster(event.clientX, event.clientY);
+            const point = Renderer3D.getGroundIntersection(raycaster);
 
-            const zone = type === 'minter' ? CONFIG.MINTER_PLACEMENT_ZONE || CONFIG.WALL_PLACEMENT_ZONE : CONFIG.WALL_PLACEMENT_ZONE;
-
-            if (x >= zone.x1 && x <= zone.x2 && y >= zone.y1 && y <= zone.y2) {
-                if (type === 'wall') {
-                    GameState.buildWall(x, y);
-                } else if (type === 'tower') {
-                    GameState.buildTower(x, y);
-                } else if (type === 'minter') {
-                    GameState.buildMinter(x, y);
-                }
-                GameState.saveGame();
-            } else {
-                console.log('❌ Vị trí xây dựng không hợp lệ');
+            if (!point) {
+                console.log('❌ Không xác định được vị trí đặt công trình trên mặt đất');
+                return;
             }
 
-            canvas.removeEventListener('click', clickHandler);
-            console.log('✅ Chế độ xây dựng kết thúc');
-        };
+            const placed = GameState.placeBuilding(point.x, point.z, type);
+            if (placed) {
+                GameState.saveGame();
+                console.log('✅ Đã đặt ' + type + ' tại (' + point.x.toFixed(0) + ', ' + point.z.toFixed(0) + ')');
+            }
 
-        canvas.addEventListener('click', clickHandler);
-        console.log('💡 Nhấp chuột trên canvas để đặt ' + type);
+            // Thoát chế độ xây dựng sau khi đặt (hoặc thử đặt) xong
+            GameState.endBuildMode();
+        });
+
+        // Nhấn ESC để hủy chế độ xây dựng
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && GameState.buildingMode) {
+                GameState.endBuildMode();
+                console.log('✅ Đã hủy chế độ xây dựng');
+            }
+        });
+
+        console.log('✅ Build Mode Input đã sẵn sàng');
     },
     
     /**

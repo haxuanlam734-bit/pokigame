@@ -1,120 +1,120 @@
 /**
  * PLAYER-CONTROLLER.JS - Quản lý nhân vật và camera trong 3D
- * Xử lý di chuyển WASD, mouse look, và va chạm
+ * Xử lý di chuyển WASD theo hướng camera, orbit camera, va chạm
  */
 
 const PlayerController = {
-    // Vị trí nhân vật
     position: {
         x: 300,
         y: 0,
         z: 300
     },
 
-    // Chuyển động
     velocity: { x: 0, z: 0 },
-    speed: 150, // Pixel/giây
+    targetVelocity: { x: 0, z: 0 },
+    speed: 150,
 
-    // Camera
-    cameraYaw: 0, // Góc xoay camera xung quanh nhân vật (radian)
-    cameraPitch: 0.3, // Góc nhìn lên/xuống
+    movementSmoothness: 8.0,
+    playerRotationSmoothness: 10.0,
 
-    // Raycasting cho building placement
+    currentMoveAngle: 0,
+    targetMoveAngle: 0,
+    hasMovementInput: false,
+
     mouseX: 0,
     mouseY: 0,
 
-    /**
-     * Khởi tạo player controller
-     */
     init: function() {
         console.log('🚶 Khởi tạo Player Controller...');
 
         this.position = { x: 300, y: 0, z: 300 };
         this.velocity = { x: 0, z: 0 };
-        this.cameraYaw = 0;
-        this.cameraPitch = 0.3;
-
-        // Lắng nghe sự kiện chuột (camera rotation)
-        document.addEventListener('mousemove', this.onMouseMove.bind(this));
+        this.targetVelocity = { x: 0, z: 0 };
+        this.currentMoveAngle = 0;
+        this.targetMoveAngle = 0;
+        this.hasMovementInput = false;
 
         console.log('✅ Player Controller khởi tạo xong');
     },
 
-    /**
-     * Xử lý di chuyển chuột (camera rotation)
-     * @param {MouseEvent} event
-     */
-    onMouseMove: function(event) {
-        // Nếu đang build, không xoay camera
-        if (GameState.buildingMode) return;
-
-        const deltaX = event.movementX || 0;
-        const deltaY = event.movementY || 0;
-
-        // Xoay camera theo chuột
-        this.cameraYaw -= deltaX * 0.005;
-        this.cameraPitch -= deltaY * 0.005;
-
-        // Giới hạn pitch (-PI/2 đến PI/2)
-        this.cameraPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.cameraPitch));
-    },
-
-    /**
-     * Cập nhật trạng thái nhân vật
-     * @param {number} deltaTime - Thời gian delta (ms)
-     */
     update: function(deltaTime) {
         const deltaSec = deltaTime / 1000;
 
-        // Lấy input từ InputManager
         const moveInput = InputManager.getMovementVector();
 
-        // Tính vector di chuyển theo camera yaw
-        const forwardX = Math.cos(this.cameraYaw);
-        const forwardZ = Math.sin(this.cameraYaw);
-        const rightX = Math.cos(this.cameraYaw + Math.PI / 2);
-        const rightZ = Math.sin(this.cameraYaw + Math.PI / 2);
+        const yaw = InputManager.cameraYaw;
+        const forwardX = -Math.sin(yaw);
+        const forwardZ = -Math.cos(yaw);
+        const rightX = Math.cos(yaw);
+        const rightZ = -Math.sin(yaw);
 
-        // Kết hợp input để tạo velocity
-        this.velocity.x = (forwardX * moveInput.y + rightX * moveInput.x) * this.speed;
-        this.velocity.z = (forwardZ * moveInput.y + rightZ * moveInput.x) * this.speed;
+        const rawMoveX = forwardX * (-moveInput.y) + rightX * moveInput.x;
+        const rawMoveZ = forwardZ * (-moveInput.y) + rightZ * moveInput.x;
 
-        // Cập nhật vị trí
+        const inputMag = Math.sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
+        this.hasMovementInput = inputMag > 0.01;
+
+        if (this.hasMovementInput) {
+            const moveMag = Math.sqrt(rawMoveX * rawMoveX + rawMoveZ * rawMoveZ);
+            if (moveMag > 0.0001) {
+                const normX = rawMoveX / moveMag;
+                const normZ = rawMoveZ / moveMag;
+                this.targetVelocity.x = normX * this.speed;
+                this.targetVelocity.z = normZ * this.speed;
+
+                this.targetMoveAngle = Math.atan2(normX, normZ);
+            }
+        } else {
+            this.targetVelocity.x = 0;
+            this.targetVelocity.z = 0;
+        }
+
+        const smoothFactor = 1 - Math.exp(-this.movementSmoothness * deltaSec);
+        this.velocity.x += (this.targetVelocity.x - this.velocity.x) * smoothFactor;
+        this.velocity.z += (this.targetVelocity.z - this.velocity.z) * smoothFactor;
+
         this.position.x += this.velocity.x * deltaSec;
         this.position.z += this.velocity.z * deltaSec;
 
-        // Giới hạn vị trí trong bản đồ
         const mapSize = 500;
         this.position.x = Math.max(0, Math.min(mapSize, this.position.x));
         this.position.z = Math.max(0, Math.min(mapSize, this.position.z));
 
-        // Cập nhật camera
-        Renderer3D.updateCameraToPlayer(this.position.x, this.position.z);
+        if (this.hasMovementInput) {
+            let angleDiff = this.targetMoveAngle - this.currentMoveAngle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            const rotSmooth = 1 - Math.exp(-this.playerRotationSmoothness * deltaSec);
+            this.currentMoveAngle += angleDiff * rotSmooth;
+        }
+
+        Renderer3D.updateCameraToPlayer(
+            this.position.x,
+            this.position.z,
+            InputManager.cameraYaw,
+            InputManager.cameraPitch
+        );
+
+        Renderer3D.updatePlayerMesh(
+            this.position.x,
+            this.position.z,
+            this.currentMoveAngle,
+            this.hasMovementInput
+        );
     },
 
-    /**
-     * Lấy vector hướng nhìn của camera
-     * @returns {{x: number, z: number}}
-     */
     getForwardDirection: function() {
+        const yaw = InputManager.cameraYaw;
         return {
-            x: Math.cos(this.cameraYaw),
-            z: Math.sin(this.cameraYaw)
+            x: -Math.sin(yaw),
+            z: -Math.cos(yaw)
         };
     },
 
-    /**
-     * Lấy raycaster từ vị trí chuột hiện tại
-     * @returns {THREE.Raycaster}
-     */
     getRaycaster: function() {
-        return Renderer3D.getRaycaster(this.mouseX, this.mouseY);
+        return Renderer3D.getRaycaster(InputManager.mouseX, InputManager.mouseY);
     },
 
-    /**
-     * Lấy vị trí build (ground intersection)
-     * @returns {THREE.Vector3|null}
-     */
     getBuildPosition: function() {
         const raycaster = this.getRaycaster();
         return Renderer3D.getGroundIntersection(raycaster);

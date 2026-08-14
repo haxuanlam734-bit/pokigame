@@ -4,10 +4,8 @@
  */
 
 const InputManager = {
-    // Trạng thái phím
     keys: {},
     
-    // Trạng thái joystick
     joystick: {
         x: 0,
         y: 0,
@@ -16,31 +14,31 @@ const InputManager = {
         startY: 0
     },
     
-    // Mouse position (cho raycasting 3D)
     mouseX: 0,
     mouseY: 0,
     cameraYaw: 0,
+    cameraPitch: 0.3,
 
-    /**
-     * Khởi tạo input manager
-     */
+    isRightMouseDown: false,
+    lastMouseX: 0,
+    lastMouseY: 0,
+
     init: function() {
         console.log('⌨️ Khởi tạo Input Manager...');
         
-        // Lắng nghe sự kiện bàn phím
         document.addEventListener('keydown', this.onKeyDown.bind(this));
         document.addEventListener('keyup', this.onKeyUp.bind(this));
         
-        // Lắng nghe sự kiện chuột / cảm ứng
-        document.addEventListener('mousedown', this.onPointerDown.bind(this));
-        document.addEventListener('mousemove', this.onPointerMove.bind(this));
-        document.addEventListener('mouseup', this.onPointerUp.bind(this));
+        document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+        
+        document.addEventListener('mousedown', this.onMouseDown.bind(this));
+        document.addEventListener('mousemove', this.onMouseMove.bind(this));
+        document.addEventListener('mouseup', this.onMouseUp.bind(this));
         
         document.addEventListener('touchstart', this.onPointerDown.bind(this));
         document.addEventListener('touchmove', this.onPointerMove.bind(this));
         document.addEventListener('touchend', this.onPointerUp.bind(this));
         
-        // Hiển thị joystick nếu là mobile
         if (Utils.isMobile()) {
             const joystickContainer = document.getElementById('joystick-container');
             if (joystickContainer) {
@@ -60,19 +58,55 @@ const InputManager = {
         this.keys[key] = true;
     },
     
-    /**
-     * Xử lý keyup
-     * @param {KeyboardEvent} event - Sự kiện bàn phím
-     */
     onKeyUp: function(event) {
         const key = event.key.toLowerCase();
         this.keys[key] = false;
     },
+
+    onMouseDown: function(event) {
+        if (event.button === 2) {
+            this.isRightMouseDown = true;
+            this.lastMouseX = event.clientX;
+            this.lastMouseY = event.clientY;
+            event.preventDefault();
+            return;
+        }
+        this.onPointerDown(event);
+    },
+
+    onMouseMove: function(event) {
+        this.mouseX = event.clientX;
+        this.mouseY = event.clientY;
+
+        if (this.isRightMouseDown) {
+            const deltaX = event.clientX - this.lastMouseX;
+            const deltaY = event.clientY - this.lastMouseY;
+            this.lastMouseX = event.clientX;
+            this.lastMouseY = event.clientY;
+
+            const sensitivity = 0.005;
+            this.cameraYaw -= deltaX * sensitivity;
+            this.cameraPitch -= deltaY * sensitivity;
+
+            const minPitch = -10 * Math.PI / 180;
+            const maxPitch = 75 * Math.PI / 180;
+            this.cameraPitch = Math.max(minPitch, Math.min(maxPitch, this.cameraPitch));
+            return;
+        }
+
+        if (this.joystick.active) {
+            this.onPointerMove(event);
+        }
+    },
+
+    onMouseUp: function(event) {
+        if (event.button === 2) {
+            this.isRightMouseDown = false;
+            return;
+        }
+        this.onPointerUp(event);
+    },
     
-    /**
-     * Xử lý pointer down (chuột hoặc cảm ứng)
-     * @param {Event} event - Sự kiện
-     */
     onPointerDown: function(event) {
         const joystickContainer = document.getElementById('joystick-container');
         if (!joystickContainer) return;
@@ -84,7 +118,6 @@ const InputManager = {
         const x = clientX - rect.left;
         const y = clientY - rect.top;
         
-        // Kiểm tra nếu click vào joystick
         const dist = Math.sqrt(x * x + y * y);
         if (dist < 70) {
             this.joystick.active = true;
@@ -94,12 +127,7 @@ const InputManager = {
         }
     },
     
-    /**
-     * Xử lý pointer move
-     * @param {Event} event - Sự kiện
-     */
     onPointerMove: function(event) {
-        // Cập nhật vị trí chuột cho raycasting 3D
         this.mouseX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
         this.mouseY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
 
@@ -115,14 +143,12 @@ const InputManager = {
         const x = clientX - rect.left;
         const y = clientY - rect.top;
         
-        // Tính độ lệch từ tâm
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
         
         let dx = x - centerX;
         let dy = y - centerY;
         
-        // Giới hạn trong bán kính
         const dist = Math.sqrt(dx * dx + dy * dy);
         const maxDist = 50;
         
@@ -131,11 +157,9 @@ const InputManager = {
             dy = (dy / dist) * maxDist;
         }
         
-        // Cập nhật vị trí joystick
         this.joystick.x = dx;
         this.joystick.y = dy;
         
-        // Cập nhật vị trí thumb
         const thumb = document.getElementById('joystick-thumb');
         if (thumb) {
             thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
@@ -144,10 +168,6 @@ const InputManager = {
         event.preventDefault?.();
     },
     
-    /**
-     * Xử lý pointer up
-     * @param {Event} event - Sự kiện
-     */
     onPointerUp: function(event) {
         this.joystick.active = false;
         this.joystick.x = 0;

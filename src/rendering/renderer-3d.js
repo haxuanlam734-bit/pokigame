@@ -9,13 +9,25 @@ let Renderer3D = {
     renderer: null,
     canvas: null,
 
-    // 3D Objects
     fortress: null,
     walls: [],
     towers: [],
     zombies: [],
     minters: [],
     ground: null,
+    player: null,
+
+    cameraDistance: 120,
+    cameraHeightOffset: 20,
+    cameraLookAtHeight: 20,
+
+    cameraSmoothness: 10.0,
+    _smoothedCameraX: 0,
+    _smoothedCameraY: 0,
+    _smoothedCameraZ: 0,
+    _smoothedLookAtX: 0,
+    _smoothedLookAtY: 0,
+    _smoothedLookAtZ: 0,
 
     /**
      * Khởi tạo Three.js renderer
@@ -56,10 +68,17 @@ let Renderer3D = {
         // Tạo ground (mặt đất)
         this.createGround();
 
-        // Tạo pháo đài
         this.createFortress();
 
-        // Xử lý resize window
+        this.createPlayer3D();
+
+        this._smoothedCameraX = this.camera.position.x;
+        this._smoothedCameraY = this.camera.position.y;
+        this._smoothedCameraZ = this.camera.position.z;
+        this._smoothedLookAtX = 150;
+        this._smoothedLookAtY = 20;
+        this._smoothedLookAtZ = 150;
+
         window.addEventListener('resize', this.onWindowResize.bind(this));
 
         console.log('✅ Renderer 3D khởi tạo xong');
@@ -141,6 +160,60 @@ let Renderer3D = {
         this.scene.add(flagObj);
 
         console.log('🏰 Pháo đài được tạo');
+    },
+
+    createPlayer3D: function() {
+        const playerHeight = 50;
+        const playerWidth = 30;
+
+        const bodyGeometry = new THREE.BoxGeometry(playerWidth, playerHeight, playerWidth);
+        const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x0088ff });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.y = playerHeight / 2;
+        body.castShadow = true;
+        body.receiveShadow = true;
+
+        const headGeometry = new THREE.BoxGeometry(playerWidth * 0.75, playerWidth * 0.75, playerWidth * 0.75);
+        const headMaterial = new THREE.MeshPhongMaterial({ color: 0xffcc99 });
+        const head = new THREE.Mesh(headGeometry, headMaterial);
+        head.position.set(0, playerHeight + playerWidth * 0.4, 0);
+        head.castShadow = true;
+
+        const indicatorGeometry = new THREE.ConeGeometry(playerWidth * 0.3, playerWidth * 0.5, 4);
+        const indicatorMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+        const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+        indicator.position.set(0, playerHeight / 2, -playerWidth * 0.6);
+        indicator.rotation.x = Math.PI / 2;
+        indicator.castShadow = true;
+
+        const group = new THREE.Group();
+        group.add(body);
+        group.add(head);
+        group.add(indicator);
+        group.position.set(300, 0, 300);
+        group.body = body;
+        group.head = head;
+        group.indicator = indicator;
+        this.scene.add(group);
+
+        this.player = group;
+        console.log('🧍 Nhân vật player được tạo');
+    },
+
+    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving) {
+        if (!this.player) return;
+        this.player.position.x = playerX;
+        this.player.position.z = playerZ;
+        this.player.rotation.y = rotationY;
+
+        if (isMoving) {
+            const time = Date.now() * 0.01;
+            this.player.position.y = Math.abs(Math.sin(time)) * 4;
+            this.player.body.rotation.x = Math.sin(time) * 0.1;
+        } else {
+            this.player.position.y = 0;
+            this.player.body.rotation.x = 0;
+        }
     },
 
     /**
@@ -320,21 +393,51 @@ let Renderer3D = {
         return null;
     },
 
-    /**
-     * Cập nhật vị trí camera theo nhân vật
-     * @param {number} playerX
-     * @param {number} playerZ
-     */
-    updateCameraToPlayer: function(playerX, playerZ) {
-        const distance = 120;
-        const height = 80;
-        const offsetX = distance * Math.cos(InputManager.cameraYaw);
-        const offsetZ = distance * Math.sin(InputManager.cameraYaw);
+    updateCameraToPlayer: function(playerX, playerZ, yaw, pitch) {
+        const cosPitch = Math.cos(pitch);
+        const sinPitch = Math.sin(pitch);
+        const cosYaw = Math.cos(yaw);
+        const sinYaw = Math.sin(yaw);
 
-        this.camera.position.x = playerX + offsetX;
-        this.camera.position.y = height;
-        this.camera.position.z = playerZ + offsetZ;
-        this.camera.lookAt(playerX, 20, playerZ);
+        const horizontalDist = this.cameraDistance * cosPitch;
+        const verticalOffset = this.cameraDistance * sinPitch + this.cameraHeightOffset;
+
+        const offsetX = horizontalDist * sinYaw;
+        const offsetZ = horizontalDist * cosYaw;
+
+        const targetCamX = playerX - offsetX;
+        const targetCamY = verticalOffset;
+        const targetCamZ = playerZ - offsetZ;
+
+        const targetLookX = playerX;
+        const targetLookY = this.cameraLookAtHeight;
+        const targetLookZ = playerZ;
+
+        const now = performance.now();
+        if (!this._lastCameraTime) this._lastCameraTime = now;
+        const dt = Math.min((now - this._lastCameraTime) / 1000, 0.05);
+        this._lastCameraTime = now;
+
+        const smooth = 1 - Math.exp(-this.cameraSmoothness * dt);
+
+        this._smoothedCameraX += (targetCamX - this._smoothedCameraX) * smooth;
+        this._smoothedCameraY += (targetCamY - this._smoothedCameraY) * smooth;
+        this._smoothedCameraZ += (targetCamZ - this._smoothedCameraZ) * smooth;
+
+        this._smoothedLookAtX += (targetLookX - this._smoothedLookAtX) * smooth;
+        this._smoothedLookAtY += (targetLookY - this._smoothedLookAtY) * smooth;
+        this._smoothedLookAtZ += (targetLookZ - this._smoothedLookAtZ) * smooth;
+
+        this.camera.position.set(
+            this._smoothedCameraX,
+            this._smoothedCameraY,
+            this._smoothedCameraZ
+        );
+        this.camera.lookAt(
+            this._smoothedLookAtX,
+            this._smoothedLookAtY,
+            this._smoothedLookAtZ
+        );
     }
 };
 
