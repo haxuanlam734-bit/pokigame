@@ -245,6 +245,12 @@ const PlayerController = {
         Renderer3D.firstPersonThreshold = this.firstPersonThreshold;
         Renderer3D.eyeHeight = this.eyeHeight;
 
+        // Kiểm tra phím F để toggle FPS mode
+        if (InputManager.getFPSToggle()) {
+            Renderer3D.manualFirstPersonMode = !Renderer3D.manualFirstPersonMode;
+            console.log(Renderer3D.manualFirstPersonMode ? '🎮 FPS Mode BẬT' : '🎮 FPS Mode TẮT');
+        }
+
         // Tự động khóa/mở khóa con trỏ chuột theo ngưỡng zoom (FPS Mode)
         this._syncPointerLockWithZoom();
 

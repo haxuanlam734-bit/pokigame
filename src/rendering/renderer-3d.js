@@ -27,6 +27,9 @@ let Renderer3D = {
     isFirstPerson: false,      // trạng thái hiện tại (dùng để biết khi nào cần ẩn/hiện mesh)
     _fpTransitionRange: 2.0,   // vùng đệm (m) để offset chiều cao rig TPS mờ dần về 0 khi tới gần ngưỡng FPS, tránh camera "giật"
 
+    // --- Manual FPS Toggle (phím F) ---
+    manualFirstPersonMode: false, // true = FPS mode được bật thủ công bằng phím F
+
     trees: [],
     rocks: [],
 
@@ -665,7 +668,8 @@ let Renderer3D = {
         const forwardY = -sinPitch;
         const forwardZ = cosYaw * cosPitch;
 
-        const isFirstPerson = this.cameraDistance <= this.firstPersonThreshold;
+        // Kiểm tra FPS mode: AUTO (zoom <= threshold) HOẶC MANUAL (phím F)
+        const isFirstPerson = this.manualFirstPersonMode || (this.cameraDistance <= this.firstPersonThreshold);
         this.isFirstPerson = isFirstPerson;
 
         let targetCamX, targetCamY, targetCamZ;

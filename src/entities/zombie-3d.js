@@ -69,10 +69,42 @@ class Zombie3D {
         const dz = CONFIG.FORTRESS_Y - this.z;
         const dist = Math.hypot(dx, dz);
 
+        let moveX = 0, moveZ = 0;
+
         if (dist > 1) {
-            this.vx = (dx / dist) * this.speed;
-            this.vz = (dz / dist) * this.speed;
+            moveX = (dx / dist) * this.speed;
+            moveZ = (dz / dist) * this.speed;
         }
+
+        // --- Steering behavior: tránh tường ---
+        let avoidanceX = 0, avoidanceZ = 0;
+        
+        if (GameState && GameState.walls && GameState.walls.length > 0) {
+            const avoidanceRadius = 3.5; // Khoảng cách phát hiện tường
+            
+            for (let wall of GameState.walls) {
+                if (wall.isDestroyed()) continue;
+                
+                const wallDx = wall.x - this.x;
+                const wallDz = wall.z - this.z;
+                const wallDist = Math.hypot(wallDx, wallDz);
+                
+                if (wallDist < avoidanceRadius && wallDist > 0.1) {
+                    // Tương tác tránh: đẩy zombie ra xa khỏi tường
+                    const pushForce = 1.0 - (wallDist / avoidanceRadius); // 0-1
+                    const pushX = -(wallDx / wallDist) * pushForce;
+                    const pushZ = -(wallDz / wallDist) * pushForce;
+                    
+                    avoidanceX += pushX;
+                    avoidanceZ += pushZ;
+                }
+            }
+        }
+
+        // Kết hợp chuyển động mục tiêu với tránh tường
+        const blendFactor = 0.7; // Ưu tiên di chuyển tới pháo đài (70%) hơn tránh tường (30%)
+        this.vx = moveX * blendFactor + avoidanceX * (1 - blendFactor);
+        this.vz = moveZ * blendFactor + avoidanceZ * (1 - blendFactor);
 
         // Di chuyển
         this.x += this.vx * deltaSec;

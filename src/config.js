@@ -44,7 +44,7 @@ const CONFIG = {
             name: 'Tường Rào',
             cost: 50,
             emoji: '🧱',
-            maxCount: 12,
+            maxCount: 999,
             required: [],
             unlocks: ['tower'],
             description: 'Chặn đường zombie và giữ thành.'

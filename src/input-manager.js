@@ -17,6 +17,9 @@ const InputManager = {
     mouseX: 0,
     mouseY: 0,
 
+    // --- FPS Toggle (phím F) ---
+    fpsTogglePressed: false,
+
     // --- Camera xoay kiểu Roblox: Pointer Lock + Spherical Orbit ---
     // targetYaw/targetPitch = giá trị "thô" cộng dồn trực tiếp từ movementX/movementY.
     // cameraYaw/cameraPitch = giá trị đã làm mượt (lerp) mỗi frame, đây mới là giá trị
@@ -83,6 +86,11 @@ const InputManager = {
             this.keys['space'] = true;
             event.preventDefault(); // Chặn cuộn trang khi nhấn Space
         }
+
+        // Phím F để toggle First-Person View
+        if (key === 'f') {
+            this.fpsTogglePressed = true;
+        }
     },
     
     onKeyUp: function(event) {
@@ -129,7 +137,8 @@ const InputManager = {
             this.targetYaw -= deltaX * sensitivity;
 
             // Pitch: Clamp trong [minPitch, maxPitch] để tránh lật camera ngược đầu
-            this.targetPitch -= deltaY * sensitivity;
+            // Đảo ngược: chuột lên = nhìn lên, chuột xuống = nhìn xuống
+            this.targetPitch += deltaY * sensitivity;
             this.targetPitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.targetPitch));
             return;
         }
@@ -154,6 +163,16 @@ const InputManager = {
     update: function() {
         this.cameraYaw = this._lerp(this.cameraYaw, this.targetYaw, this.cameraRotateLerp);
         this.cameraPitch = this._lerp(this.cameraPitch, this.targetPitch, this.cameraRotateLerp);
+    },
+
+    /**
+     * Kiểm tra xem phím F (toggle FPS) có được nhấn không
+     * @returns {boolean}
+     */
+    getFPSToggle: function() {
+        const result = this.fpsTogglePressed;
+        this.fpsTogglePressed = false; // Reset sau khi đọc
+        return result;
     },
 
     onMouseUp: function(event) {
