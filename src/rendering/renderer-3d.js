@@ -59,8 +59,9 @@ let Renderer3D = {
 
         // Tạo scene
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x2b4222); // Xanh rừng tối (phù hợp sương mù)
-        this.scene.fog = new THREE.FogExp2('#2b4222', 0.012);
+        // Màu nền trùng màu sương mù để hòa trộn mượt mà ở khoảng cách xa
+        this.scene.background = new THREE.Color('#1c2a1c');
+        this.scene.fog = new THREE.FogExp2('#1c2a1c', 0.012);
 
         // Tạo camera (Perspective Camera)
         const width = window.innerWidth;
@@ -73,7 +74,7 @@ let Renderer3D = {
         this.renderer = new THREE.WebGLRenderer({ antialias: true, canvas: this.canvas });
         this.renderer.setSize(width, height);
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFShadowShadowMap;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Bóng mềm, tự nhiên hơn cho cỏ/cây/tháp pháo
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 
         // Thêm lighting
@@ -82,11 +83,17 @@ let Renderer3D = {
         // Tạo ground (mặt đất)
         this.createGround();
 
+        // Dãy núi low-poly bao quanh viền map - chặn ra ngoài & che chân trời
+        this.createBoundaryMountains();
+
+        // Dòng sông uốn lượn cắt ngang bản đồ (xa khu căn cứ chính)
+        this.createRiver();
+
         this.createFortress();
 
         this.createPlayer3D();
 
-        // Tạo cây cối và đá trang trí xung quanh
+        // Tạo cây cối và đá trang trí xung quanh (rừng rậm, đa dạng thực vật)
         this.createForestEnvironment();
 
         {
@@ -121,17 +128,24 @@ let Renderer3D = {
         const ambientLight = new THREE.AmbientLight(0x4a5d45, 0.85);
         this.scene.add(ambientLight);
 
-        // Directional light (ánh sáng vàng nắng ấm)
-        const directionalLight = new THREE.DirectionalLight(0xffe4b5, 0.9);
-        directionalLight.position.set(80, 160, 60);
+        // Directional light (ánh sáng vàng nắng ấm) - góc chiếu nghiêng nhẹ
+        // để đổ bóng dài, tự nhiên lên nền cỏ, cây cối và tháp pháo.
+        const directionalLight = new THREE.DirectionalLight(0xffe4b5, 0.95);
+        directionalLight.position.set(
+            this.worldCenterX + 140,
+            110,
+            this.worldCenterZ + 50
+        );
+        directionalLight.target.position.set(this.worldCenterX, 0, this.worldCenterZ);
+        this.scene.add(directionalLight.target);
         directionalLight.castShadow = true;
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.far = 600;
-        directionalLight.shadow.camera.left = -300;
-        directionalLight.shadow.camera.right = 300;
-        directionalLight.shadow.camera.top = 300;
-        directionalLight.shadow.camera.bottom = -300;
+        directionalLight.shadow.camera.far = 700;
+        directionalLight.shadow.camera.left = -320;
+        directionalLight.shadow.camera.right = 320;
+        directionalLight.shadow.camera.top = 320;
+        directionalLight.shadow.camera.bottom = -320;
         directionalLight.shadow.bias = -0.0005;
         this.scene.add(directionalLight);
 
@@ -159,6 +173,148 @@ let Renderer3D = {
         const gridHelper = new THREE.GridHelper(this.groundSize, 60, 0x2a6b30, 0x1b5720);
         gridHelper.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(gridHelper);
+    },
+
+    /**
+     * Tạo dãy Núi Low-Poly bao quanh 4 cạnh viền map.
+     * - Mỗi ngọn núi = 2 ConeGeometry (thân đá trầm + đỉnh xám sáng/tuyết).
+     * - Xếp sát nhau dọc theo hình vuông bao quanh vùng chơi để chặn người
+     *   chơi đi ra ngoài map và che bớt khoảng không trống phía xa.
+     */
+    createBoundaryMountains: function() {
+        this.mountains = [];
+
+        const rockColor = 0x3a3f47;  // Xám đá trầm
+        const snowColor = 0x8a929e;  // Xám sáng / tuyết nhẹ
+
+        const cx = this.worldCenterX;
+        const cz = this.worldCenterZ;
+
+        // Vành đai núi đặt ngay ngoài vùng chơi (playFieldSize=500 → bán kính ~250
+        // tính từ tâm), xếp sát nhau (spacing nhỏ hơn đường kính chân núi trung bình).
+        const boundaryHalf = 280;
+        const spacing = 20;
+        const jitter = 5;
+
+        const addMountain = (x, z) => {
+            const radius = 14 + Math.random() * 10;
+            const height = 30 + Math.random() * 26;
+            const sides = 5 + Math.floor(Math.random() * 2); // 5-6 cạnh (low-poly)
+
+            const group = new THREE.Group();
+
+            // Thân núi - đá trầm
+            const bodyGeo = new THREE.ConeGeometry(radius, height, sides);
+            const bodyMat = new THREE.MeshPhongMaterial({ color: rockColor, flatShading: true });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = height / 2;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            group.add(body);
+
+            // Đỉnh núi - mảng xám sáng/tuyết nhẹ
+            const snowHeight = height * (0.22 + Math.random() * 0.12);
+            const snowGeo = new THREE.ConeGeometry(radius * 0.55, snowHeight, sides);
+            const snowMat = new THREE.MeshPhongMaterial({ color: snowColor, flatShading: true });
+            const snow = new THREE.Mesh(snowGeo, snowMat);
+            snow.position.y = height - snowHeight * 0.45;
+            snow.castShadow = true;
+            group.add(snow);
+
+            group.position.set(
+                x + (Math.random() - 0.5) * jitter,
+                0,
+                z + (Math.random() - 0.5) * jitter
+            );
+            group.rotation.y = Math.random() * Math.PI * 2;
+            group.scale.setScalar(0.9 + Math.random() * 0.45);
+
+            this.scene.add(group);
+            this.mountains.push(group);
+        };
+
+        const min = -boundaryHalf;
+        const max = boundaryHalf;
+        for (let pos = min; pos <= max; pos += spacing) {
+            addMountain(cx + pos, cz + min); // cạnh Z-
+            addMountain(cx + pos, cz + max); // cạnh Z+
+            addMountain(cx + min, cz + pos); // cạnh X-
+            addMountain(cx + max, cz + pos); // cạnh X+
+        }
+
+        console.log('⛰️ Dãy núi biên map được tạo:', this.mountains.length, 'ngọn núi');
+    },
+
+    /**
+     * Tạo dòng sông chảy uốn lượn cắt ngang một phần bản đồ,
+     * nằm xa khu vực căn cứ chính (center 250,250).
+     * Được dựng thủ công dưới dạng dải ribbon (BufferGeometry) bám theo
+     * một đường cong sin/cos để có hiệu ứng uốn nhẹ tự nhiên.
+     */
+    createRiver: function() {
+        const cx = this.worldCenterX;
+        const cz = this.worldCenterZ;
+
+        const riverWidth = 16;
+        const segments = 24;
+        const startX = cx - 220;
+        const endX = cx + 220;
+        const baseZ = cz + 190; // lệch hẳn về một phía, xa căn cứ chính ở tâm map
+
+        const points = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const x = startX + (endX - startX) * t;
+            const z = baseZ + Math.sin(t * Math.PI * 2.2) * 32 + Math.cos(t * Math.PI * 1.3) * 14;
+            points.push(new THREE.Vector3(x, 0.05, z));
+        }
+
+        const positions = [];
+        const uvs = [];
+        for (let i = 0; i <= segments; i++) {
+            const p = points[i];
+            const prev = points[Math.max(0, i - 1)];
+            const next = points[Math.min(segments, i + 1)];
+            const dir = new THREE.Vector3().subVectors(next, prev).normalize();
+            const normal = new THREE.Vector3(-dir.z, 0, dir.x); // Pháp tuyến trên mặt phẳng XZ
+
+            const left = new THREE.Vector3().copy(p).addScaledVector(normal, riverWidth / 2);
+            const right = new THREE.Vector3().copy(p).addScaledVector(normal, -riverWidth / 2);
+
+            positions.push(left.x, left.y, left.z);
+            positions.push(right.x, right.y, right.z);
+
+            uvs.push(0, i / segments);
+            uvs.push(1, i / segments);
+        }
+
+        const indices = [];
+        for (let i = 0; i < segments; i++) {
+            const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+            indices.push(a, b, c);
+            indices.push(b, d, c);
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x2b7a78,
+            transparent: true,
+            opacity: 0.8,
+            shininess: 110,
+            specular: 0xbfffff,
+            side: THREE.DoubleSide
+        });
+
+        this.river = new THREE.Mesh(geometry, material);
+        this.river.receiveShadow = true;
+        this.scene.add(this.river);
+
+        console.log('🌊 Dòng sông được tạo');
     },
 
     /**
@@ -498,10 +654,175 @@ let Renderer3D = {
     },
 
     /**
+     * Cây Thông (Pine Tree) - Tán nón nhọn, nhiều lớp, xanh lá sẫm.
+     * (Dựa trên form cây low-poly gốc, đổi bảng màu tán sang tông sẫm hơn.)
+     * @param {number} x
+     * @param {number} z
+     * @returns {THREE.Group}
+     */
+    createPineTree: function(x, z) {
+        const scale = 0.7 + Math.random() * 0.8;
+        const trunkHeight = (1.5 + Math.random() * 1.2) * scale;
+        const trunkRadius = 0.15 * scale;
+        const trunkGeometry = new THREE.CylinderGeometry(
+            trunkRadius * 0.7,
+            trunkRadius,
+            trunkHeight,
+            6
+        );
+        const trunkMaterial = new THREE.MeshPhongMaterial({
+            color: 0x5a3a1b,
+            flatShading: true
+        });
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+        trunk.position.y = trunkHeight / 2;
+        trunk.castShadow = true;
+        trunk.receiveShadow = true;
+
+        const tree = new THREE.Group();
+        tree.add(trunk);
+
+        // Tán nón nhọn màu xanh lá sẫm
+        const foliageColors = [0x1e3d2f, 0x234a37, 0x17301f];
+        const leafLayers = 3 + Math.floor(Math.random() * 2); // 3-4 lớp cho dáng thông nhọn
+        let currentY = trunkHeight;
+        let baseRadius = (0.85 + Math.random() * 0.55) * scale;
+
+        for (let i = 0; i < leafLayers; i++) {
+            const leafHeight = (1.1 + Math.random() * 0.6) * scale;
+            const leafRadius = baseRadius * (1 - i * 0.24);
+            const coneGeo = new THREE.ConeGeometry(leafRadius, leafHeight, 7);
+            const coneMat = new THREE.MeshPhongMaterial({
+                color: foliageColors[Math.floor(Math.random() * foliageColors.length)],
+                flatShading: true
+            });
+            const cone = new THREE.Mesh(coneGeo, coneMat);
+            cone.position.y = currentY + leafHeight * 0.3;
+            cone.castShadow = true;
+            cone.receiveShadow = true;
+            tree.add(cone);
+            currentY += leafHeight * 0.48;
+        }
+
+        tree.position.set(x, 0, z);
+        tree.rotation.y = Math.random() * Math.PI * 2;
+        tree.scale.setScalar(0.8 + Math.random() * 0.5); // 0.8 - 1.3
+        return tree;
+    },
+
+    /**
+     * Cây Lá Tròn (Oak Tree) - Tán dạng khối đa diện (Dodecahedron) xanh tươi.
+     * @param {number} x
+     * @param {number} z
+     * @returns {THREE.Group}
+     */
+    createOakTree: function(x, z) {
+        const scale = 0.8 + Math.random() * 0.5;
+        const trunkHeight = (1.6 + Math.random() * 1.0) * scale;
+        const trunkRadius = 0.18 * scale;
+
+        const trunkGeo = new THREE.CylinderGeometry(trunkRadius * 0.75, trunkRadius, trunkHeight, 6);
+        const trunkMat = new THREE.MeshPhongMaterial({ color: 0x5c4033, flatShading: true });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.y = trunkHeight / 2;
+        trunk.castShadow = true;
+        trunk.receiveShadow = true;
+
+        const tree = new THREE.Group();
+        tree.add(trunk);
+
+        const canopyRadius = (1.1 + Math.random() * 0.6) * scale;
+        const canopyMat = new THREE.MeshPhongMaterial({ color: 0x2d5a27, flatShading: true });
+        const canopyGeo = new THREE.DodecahedronGeometry(canopyRadius, 0);
+        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+        canopy.position.y = trunkHeight + canopyRadius * 0.6;
+        canopy.scale.y = 0.8 + Math.random() * 0.3;
+        canopy.castShadow = true;
+        canopy.receiveShadow = true;
+        tree.add(canopy);
+
+        // 1-2 khối tán phụ để vòm lá trông rậm rạp, không đều tăm tắp
+        const extraCount = Math.random() < 0.6 ? 1 : 2;
+        for (let i = 0; i < extraCount; i++) {
+            const r = canopyRadius * (0.5 + Math.random() * 0.3);
+            const extra = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), canopyMat);
+            const angle = Math.random() * Math.PI * 2;
+            extra.position.set(
+                Math.cos(angle) * canopyRadius * 0.6,
+                trunkHeight + canopyRadius * 0.5 + (Math.random() - 0.5) * canopyRadius * 0.4,
+                Math.sin(angle) * canopyRadius * 0.6
+            );
+            extra.castShadow = true;
+            tree.add(extra);
+        }
+
+        tree.position.set(x, 0, z);
+        tree.rotation.y = Math.random() * Math.PI * 2;
+        tree.scale.setScalar(0.8 + Math.random() * 0.5); // 0.8 - 1.3
+        return tree;
+    },
+
+    /**
+     * Bụi cây - khối cầu dẹp rải sát đất.
+     * @param {number} x
+     * @param {number} z
+     * @returns {THREE.Group}
+     */
+    createBush: function(x, z) {
+        const radius = 0.5 + Math.random() * 0.4;
+        const bushColors = [0x2d5a27, 0x1e3d2f, 0x3a6b30];
+        const color = bushColors[Math.floor(Math.random() * bushColors.length)];
+
+        const geo = new THREE.SphereGeometry(radius, 7, 5);
+        const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
+        const bush = new THREE.Mesh(geo, mat);
+        bush.position.y = radius * 0.5;
+        bush.scale.y = 0.55; // dẹp xuống sát đất
+        bush.castShadow = true;
+        bush.receiveShadow = true;
+        bush.rotation.y = Math.random() * Math.PI * 2;
+
+        const group = new THREE.Group();
+        group.add(bush);
+        group.position.set(x, 0, z);
+        group.rotation.y = Math.random() * Math.PI * 2;
+        group.scale.setScalar(0.8 + Math.random() * 0.5); // 0.8 - 1.3
+        return group;
+    },
+
+    /**
+     * Gỗ mục - khúc gỗ hình trụ nằm ngang màu nâu.
+     * @param {number} x
+     * @param {number} z
+     * @returns {THREE.Group}
+     */
+    createFallenLog: function(x, z) {
+        const length = 1.8 + Math.random() * 1.4;
+        const radius = 0.2 + Math.random() * 0.15;
+
+        const geo = new THREE.CylinderGeometry(radius, radius * 0.9, length, 7);
+        const mat = new THREE.MeshPhongMaterial({ color: 0x5c4033, flatShading: true });
+        const log = new THREE.Mesh(geo, mat);
+        log.rotation.z = Math.PI / 2;
+        log.position.y = radius;
+        log.castShadow = true;
+        log.receiveShadow = true;
+
+        const group = new THREE.Group();
+        group.add(log);
+        group.position.set(x, 0, z);
+        group.rotation.y = Math.random() * Math.PI * 2;
+        group.scale.setScalar(0.8 + Math.random() * 0.5); // 0.8 - 1.3
+        return group;
+    },
+
+    /**
      * Rải cây cối và đá xung quanh rìa bản đồ
      * - Trung tâm 30m x 30m (từ 235-265, 235-265) giữ sạch sẻ để xây căn cứ
      * - Cây/đá rải xung quanh vùng ngoài ranh giới trung tâm
-     * - Tổng 40-60 cây + đá
+     * - Mật độ tăng gấp 2-3 lần so với trước, kết hợp 3 nhóm thực vật:
+     *   Cây Thông, Cây Lá Tròn, Bụi cây & Gỗ mục — mỗi cây random góc xoay
+     *   (rotation.y) và kích thước (scale 0.8-1.3) để rừng nhìn tự nhiên.
      */
     createForestEnvironment: function() {
         const centerX = this.worldCenterX;
@@ -524,15 +845,16 @@ let Renderer3D = {
         const spanX = maxX - minX;
         const spanZ = maxZ - minZ;
 
-        const treeCount = 38;
-        const rockCount = 17;
+        // Mật độ tăng gấp ~2.8x so với bản cũ (38 cây → 110 cây/bụi/gỗ)
+        const treeCount = 110;
+        const rockCount = 40;
 
         let placed = 0;
         let attempts = 0;
-        const maxAttempts = treeCount * 50;
+        const maxAttempts = treeCount * 60;
 
         const positions = [];
-        const minSpacing = 3.5;
+        const minSpacing = 2.6; // Giảm so với bản cũ để chứa được mật độ dày hơn
 
         function isValidPosition(x, z) {
             const dx = x - centerX;
@@ -571,13 +893,24 @@ let Renderer3D = {
             }
         }
 
+        // Chọn ngẫu nhiên loại thực vật theo tỉ lệ: 35% Thông, 30% Lá tròn,
+        // 20% Bụi cây, 15% Gỗ mục — tạo hệ thực vật rậm rạp, đa dạng.
+        const pickFloraCreator = () => {
+            const r = Math.random();
+            if (r < 0.35) return this.createPineTree;
+            if (r < 0.65) return this.createOakTree;
+            if (r < 0.85) return this.createBush;
+            return this.createFallenLog;
+        };
+
         while (placed < treeCount && attempts < maxAttempts) {
             attempts++;
             const pos = randomPerimeterPosition();
             if (isValidPosition(pos.x, pos.z)) {
-                const tree = this.createLowPolyTree(pos.x, pos.z);
-                this.scene.add(tree);
-                this.trees.push(tree);
+                const creator = pickFloraCreator();
+                const flora = creator.call(this, pos.x, pos.z);
+                this.scene.add(flora);
+                this.trees.push(flora);
                 positions.push({ x: pos.x, z: pos.z });
                 placed++;
             }
@@ -597,7 +930,7 @@ let Renderer3D = {
             }
         }
 
-        console.log('🌲 Môi trường rừng được tạo:', this.trees.length, 'cây,', this.rocks.length, 'đá');
+        console.log('🌲 Môi trường rừng rậm rạp được tạo:', this.trees.length, 'cây/bụi/gỗ,', this.rocks.length, 'đá');
     },
 
     /**
