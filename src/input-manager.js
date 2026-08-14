@@ -86,10 +86,10 @@ const InputManager = {
 
             const sensitivity = 0.005;
             this.cameraYaw -= deltaX * sensitivity;
-            this.cameraPitch -= deltaY * sensitivity;
+            this.cameraPitch += deltaY * sensitivity;
 
             const minPitch = -10 * Math.PI / 180;
-            const maxPitch = 75 * Math.PI / 180;
+            const maxPitch = 80 * Math.PI / 180;
             this.cameraPitch = Math.max(minPitch, Math.min(maxPitch, this.cameraPitch));
             return;
         }
