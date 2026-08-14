@@ -323,18 +323,28 @@
 
     <!-- Poki SDK -->
     <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
-    
-    <!-- Game Scripts -->
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- Game Scripts - Core -->
     <script src="src/config.js"></script>
     <script src="src/utils.js"></script>
     <script src="src/poki-manager.js"></script>
     <script src="src/input-manager.js"></script>
+
+    <!-- Game Scripts - 3D Rendering -->
+    <script src="src/rendering/renderer-3d.js"></script>
+    <script src="src/player-controller.js"></script>
+
+    <!-- Game Scripts - 3D Entities -->
+    <script src="src/entities/tower-3d.js"></script>
+    <script src="src/entities/wall-3d.js"></script>
+    <script src="src/entities/zombie-3d.js"></script>
+    <script src="src/entities/minter-3d.js"></script>
+
+    <!-- Game Scripts - Core Game Logic -->
     <script src="src/game-state.js"></script>
-    <script src="src/entities/tower.js"></script>
-    <script src="src/entities/wall.js"></script>
-    <script src="src/entities/zombie.js"></script>
-    <script src="src/entities/minter.js"></script>
-    <script src="src/rendering/renderer.js"></script>
     <script src="src/game-loop.js"></script>
     <script src="src/main.js"></script>
 </body>

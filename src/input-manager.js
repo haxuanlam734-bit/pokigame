@@ -16,6 +16,11 @@ const InputManager = {
         startY: 0
     },
     
+    // Mouse position (cho raycasting 3D)
+    mouseX: 0,
+    mouseY: 0,
+    cameraYaw: 0,
+
     /**
      * Khởi tạo input manager
      */
@@ -94,6 +99,10 @@ const InputManager = {
      * @param {Event} event - Sự kiện
      */
     onPointerMove: function(event) {
+        // Cập nhật vị trí chuột cho raycasting 3D
+        this.mouseX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+        this.mouseY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+
         if (!this.joystick.active) return;
         
         const joystickContainer = document.getElementById('joystick-container');

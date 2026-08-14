@@ -55,6 +55,72 @@ const GameState = {
     lastZombieSpawnTime: 0,
     
     /**
+     * Bắt đầu chế độ xây dựng 3D
+     * @param {string} type
+     */
+    startBuildMode: function(type) {
+        if (!this.canBuildBuilding(type)) {
+            console.log('❌ Không thể xây', type);
+            return;
+        }
+        
+        this.buildingMode = true;
+        this.buildingType = type;
+        console.log('🔨 Chế độ build 3D bắt đầu:', type);
+    },
+
+    /**
+     * Kết thúc chế độ build
+     */
+    endBuildMode: function() {
+        this.buildingMode = false;
+        this.buildingType = null;
+    },
+
+    /**
+     * Đặt building tại vị trí 3D
+     * @param {number} x
+     * @param {number} z
+     * @param {string} type
+     */
+    placeBuilding: function(x, z, type) {
+        if (!this.canBuildBuilding(type)) {
+            console.log('❌ Không thể build:', type);
+            return false;
+        }
+
+        const def = this.getBuildingDef(type);
+        if (!this.spendMoney(def.cost)) {
+            console.log('❌ Không đủ tiền');
+            return false;
+        }
+
+        let building = null;
+        
+        if (type === 'wall') {
+            building = new Wall3D(x, z);
+            this.walls.push(building);
+        } else if (type === 'tower') {
+            building = new Tower3D(x, z);
+            this.towers.push(building);
+        } else if (type === 'minter') {
+            building = new Minter3D(x, z);
+            this.minters.push(building);
+        }
+
+        if (building) {
+            this.builtBuildings[type]++;
+            this.buildingsBuilt++;
+            this.totalScore += 50;
+            this.saveGame();
+            console.log('✅ Đặt', type, 'tại', x.toFixed(0), z.toFixed(0));
+            return true;
+        }
+
+        return false;
+    },
+
+    /**
      * Khởi tạo trạng thái game
      */
     init: function() {
@@ -264,9 +330,11 @@ const GameState = {
             zombie.update(deltaTime);
             
             // Nếu zombie chạm tới pháo đài
-            if (zombie.x <= CONFIG.FORTRESS_X + CONFIG.FORTRESS_WIDTH) {
+            if (zombie.reachedFortress && zombie.reachedFortress()) {
                 this.damagesFortress(zombie.damage);
-                this.removeZombie(i);
+                zombie.dispose();
+                this.zombies.splice(i, 1);
+                continue;
             }
             
             // Nếu zombie chết
@@ -274,7 +342,8 @@ const GameState = {
                 this.addMoney(CONFIG.MONEY_FROM_KILLED_ZOMBIE);
                 this.zombiesKilled++;
                 this.totalScore += 100;
-                this.removeZombie(i);
+                zombie.dispose();
+                this.zombies.splice(i, 1);
             }
         }
     },
@@ -322,7 +391,7 @@ const GameState = {
     },
     
     /**
-     * Sinh zombie
+     * Sinh zombie 3D
      * @param {number} deltaTime - Thời gian delta
      */
     spawnZombies: function(deltaTime) {
@@ -331,9 +400,9 @@ const GameState = {
         
         if (now - this.lastZombieSpawnTime >= spawnInterval) {
             const wave = CONFIG.ZOMBIE_WAVES[Math.min(this.currentWave - 1, CONFIG.ZOMBIE_WAVES.length - 1)];
-            const zombie = new Zombie(
+            const zombie = new Zombie3D(
                 CONFIG.ZOMBIE_SPAWN_X + Utils.randomInt(-50, 50),
-                CONFIG.FORTRESS_Y,
+                CONFIG.FORTRESS_Y + Utils.randomInt(-50, 50),
                 wave.speed,
                 wave.count > 10 ? 25 : 20
             );

@@ -17,29 +17,35 @@ const Game = {
             // 2. Khởi tạo Input Manager
             InputManager.init();
             
-            // 3. Khởi tạo Renderer
-            Renderer.init();
+            // 3. Khởi tạo 3D Renderer (Three.js)
+            Renderer3D.init();
             
-            // 4. Khởi tạo GameState
+            // 4. Khởi tạo Player Controller
+            PlayerController.init();
+            
+            // 5. Khởi tạo GameState
             GameState.init();
             
-            // 5. Setup các nút bấm UI
+            // 6. Setup các nút bấm UI
             this.setupButtons();
             
-            // 6. Setup game over screen
+            // 7. Setup game over screen
             this.setupGameOverScreen();
             
-            // 7. Báo cho Poki rằng game tải xong
+            // 8. Setup build mode input
+            this.setupBuildModeInput();
+            
+            // 9. Báo cho Poki rằng game tải xong
             await this.waitForAssets();
             PokiManager.gameLoadingFinished();
             
-            // 8. Ẩn màn hình loading
+            // 10. Ẩn màn hình loading
             this.hideLoadingScreen();
             
-            // 9. Báo cho Poki rằng gameplay bắt đầu
+            // 11. Báo cho Poki rằng gameplay bắt đầu
             PokiManager.gameplayStart();
             
-            // 10. Khởi động game loop
+            // 12. Khởi động game loop
             GameLoop.start();
             
             console.log('%c✅ Game khởi tạo thành công!', 'color: #00ff00; font-size: 14px;');
