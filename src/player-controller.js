@@ -25,6 +25,17 @@ const PlayerController = {
     targetMoveAngle: 0,
     hasMovementInput: false,
 
+    // --- Camera Zoom (lăn chuột) ---
+    minZoomDistance: 5,
+    maxZoomDistance: 40,
+    currentZoomDistance: 15,
+
+    // --- Nhảy & Trọng lực ---
+    velocityY: 0,
+    gravity: 25,
+    jumpForce: 10,
+    isGrounded: true,
+
     _forwardVec: null,
     _rightVec: null,
     _moveVec: null,
@@ -40,12 +51,46 @@ const PlayerController = {
         this.targetMoveAngle = 0;
         this.hasMovementInput = false;
 
+        this.velocityY = 0;
+        this.isGrounded = true;
+        this.position.y = 0;
+
         this._forwardVec = new THREE.Vector3();
         this._rightVec = new THREE.Vector3();
         this._moveVec = new THREE.Vector3();
         this._camDir = new THREE.Vector3();
 
+        // Khởi tạo zoom camera + lắng nghe sự kiện lăn chuột
+        this.currentZoomDistance = (Renderer3D && Renderer3D.cameraDistance) || 15;
+        this.handleMouseWheel = this.handleMouseWheel.bind(this);
+        window.addEventListener('wheel', this.handleMouseWheel, { passive: true });
+
         console.log('✅ Player Controller khởi tạo xong');
+    },
+
+    /**
+     * Xử lý sự kiện lăn chuột để zoom camera vào/ra khỏi nhân vật
+     */
+    handleMouseWheel: function(event) {
+        this.currentZoomDistance += event.deltaY * 0.02;
+
+        // Clamp trong khoảng [minZoomDistance, maxZoomDistance]
+        this.currentZoomDistance = Math.max(
+            this.minZoomDistance,
+            Math.min(this.maxZoomDistance, this.currentZoomDistance)
+        );
+    },
+
+    /**
+     * Tỷ lệ zoom hiện tại, chuẩn hóa về [0.0, 1.0]
+     * 0.0 = đang zoom gần nhất (minZoomDistance)
+     * 1.0 = đang zoom xa nhất (maxZoomDistance)
+     */
+    getZoomRatio: function() {
+        const range = this.maxZoomDistance - this.minZoomDistance;
+        if (range <= 0) return 1;
+        const t = (this.currentZoomDistance - this.minZoomDistance) / range;
+        return Math.max(0, Math.min(1, t));
     },
 
     update: function(deltaTime) {
@@ -89,6 +134,24 @@ const PlayerController = {
         this.position.x = Math.max(0, Math.min(mapSize, this.position.x));
         this.position.z = Math.max(0, Math.min(mapSize, this.position.z));
 
+        // --- Nhảy (Jump) ---
+        if (InputManager.isKeyPressed('space') && this.isGrounded) {
+            this.velocityY = this.jumpForce;
+            this.isGrounded = false;
+        }
+
+        // --- Trọng lực (Gravity) ---
+        if (!this.isGrounded) {
+            this.velocityY -= this.gravity * deltaSec;
+            this.position.y += this.velocityY * deltaSec;
+
+            if (this.position.y <= 0) {
+                this.position.y = 0;
+                this.velocityY = 0;
+                this.isGrounded = true;
+            }
+        }
+
         if (this.hasMovementInput) {
             let angleDiff = this.targetMoveAngle - this.currentMoveAngle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -96,6 +159,13 @@ const PlayerController = {
             const rotSmooth = 1 - Math.exp(-this.playerRotationSmoothness * deltaSec);
             this.currentMoveAngle += angleDiff * rotSmooth;
         }
+
+        // Áp dụng khoảng cách zoom hiện tại cho camera trước khi cập nhật vị trí
+        Renderer3D.cameraDistance = this.currentZoomDistance;
+
+        // Re-clamp pitch theo zoom MỖI FRAME (không chỉ khi kéo chuột),
+        // để lăn chuột zoom cũng tự siết/nới góc pitch ngay lập tức
+        InputManager.clampPitchToZoom();
 
         Renderer3D.updateCameraToPlayer(
             this.position.x,
@@ -108,7 +178,8 @@ const PlayerController = {
             this.position.x,
             this.position.z,
             this.currentMoveAngle,
-            this.hasMovementInput
+            this.hasMovementInput,
+            this.position.y
         );
     },
 

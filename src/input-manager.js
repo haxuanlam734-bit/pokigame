@@ -23,6 +23,13 @@ const InputManager = {
     lastMouseX: 0,
     lastMouseY: 0,
 
+    // --- Giới hạn Pitch động theo khoảng cách Zoom (chuẩn Roblox) ---
+    // Zoom xa (zoomRatio -> 1): pitch tự do trong [pitchFarMin, pitchFarMax]
+    // Zoom gần (zoomRatio -> 0): pitch bị khóa dần về góc cố định pitchCloseFixed
+    pitchFarMin: -10 * Math.PI / 180,
+    pitchFarMax: 75 * Math.PI / 180,
+    pitchCloseFixed: 18 * Math.PI / 180,
+
     init: function() {
         console.log('⌨️ Khởi tạo Input Manager...');
         
@@ -56,11 +63,22 @@ const InputManager = {
     onKeyDown: function(event) {
         const key = event.key.toLowerCase();
         this.keys[key] = true;
+
+        // Bắt phím Space (Dấu cách) để nhảy - dùng event.code cho chính xác
+        // và tránh xung đột với ký tự ' ' khi key bị trùng do layout bàn phím
+        if (event.code === 'Space') {
+            this.keys['space'] = true;
+            event.preventDefault(); // Chặn cuộn trang khi nhấn Space
+        }
     },
     
     onKeyUp: function(event) {
         const key = event.key.toLowerCase();
         this.keys[key] = false;
+
+        if (event.code === 'Space') {
+            this.keys['space'] = false;
+        }
     },
 
     onMouseDown: function(event) {
@@ -85,18 +103,44 @@ const InputManager = {
             this.lastMouseY = event.clientY;
 
             const sensitivity = 0.005;
-            this.cameraYaw -= deltaX * sensitivity;
-            this.cameraPitch += deltaY * sensitivity;
 
-            const minPitch = -10 * Math.PI / 180;
-            const maxPitch = 80 * Math.PI / 180;
-            this.cameraPitch = Math.max(minPitch, Math.min(maxPitch, this.cameraPitch));
+            // Yaw: xoay ngang 360 độ tự do, KHÔNG clamp
+            this.cameraYaw -= deltaX * sensitivity;
+
+            // Pitch: cộng dồn rồi clamp theo giới hạn động (phụ thuộc zoom)
+            this.cameraPitch += deltaY * sensitivity;
+            this.clampPitchToZoom();
             return;
         }
 
         if (this.joystick.active) {
             this.onPointerMove(event);
         }
+    },
+
+    /**
+     * Nội suy tuyến tính (lerp) đơn giản
+     */
+    _lerp: function(a, b, t) {
+        return a + (b - a) * t;
+    },
+
+    /**
+     * Clamp cameraPitch theo giới hạn động, phụ thuộc zoomRatio hiện tại của PlayerController.
+     * zoomRatio = 0 (zoom gần)  -> pitch khóa cố định quanh pitchCloseFixed
+     * zoomRatio = 1 (zoom xa)   -> pitch tự do trong [pitchFarMin, pitchFarMax]
+     * Được gọi cả khi kéo chuột (đổi pitch) VÀ mỗi frame trong PlayerController.update
+     * (để zoom bằng lăn chuột cũng tự khóa/lới lỏng pitch ngay cả khi không kéo chuột).
+     */
+    clampPitchToZoom: function() {
+        const zoomRatio = (typeof PlayerController !== 'undefined' && PlayerController && PlayerController.getZoomRatio)
+            ? PlayerController.getZoomRatio()
+            : 1;
+
+        const effectiveMinPitch = this._lerp(this.pitchCloseFixed, this.pitchFarMin, zoomRatio);
+        const effectiveMaxPitch = this._lerp(this.pitchCloseFixed, this.pitchFarMax, zoomRatio);
+
+        this.cameraPitch = Math.max(effectiveMinPitch, Math.min(effectiveMaxPitch, this.cameraPitch));
     },
 
     onMouseUp: function(event) {

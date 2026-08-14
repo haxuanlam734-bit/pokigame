@@ -19,7 +19,7 @@ let Renderer3D = {
 
     cameraDistance: 20,
     cameraHeightOffset: 8,
-    cameraLookAtHeight: 1.0,
+    cameraLookAtHeight: 1.2, // Tầm mắt nhân vật ~1.2m
 
     trees: [],
     rocks: [],
@@ -236,18 +236,20 @@ let Renderer3D = {
         console.log('🧍 Nhân vật player được tạo (Roblox scale 0.8x1.6)');
     },
 
-    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving) {
+    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving, jumpY) {
         if (!this.player) return;
         this.player.position.x = playerX;
         this.player.position.z = playerZ;
         this.player.rotation.y = rotationY;
 
+        const jumpOffset = jumpY || 0;
+
         if (isMoving) {
             const time = Date.now() * 0.01;
-            this.player.position.y = Math.abs(Math.sin(time)) * 0.08;
+            this.player.position.y = Math.abs(Math.sin(time)) * 0.08 + jumpOffset;
             this.player.body.rotation.x = Math.sin(time) * 0.1;
         } else {
-            this.player.position.y = 0;
+            this.player.position.y = jumpOffset;
             this.player.body.rotation.x = 0;
         }
     },
@@ -638,6 +640,13 @@ let Renderer3D = {
         return null;
     },
 
+    /**
+     * Tính vị trí camera theo tọa độ cầu (yaw, pitch, cameraDistance) quanh nhân vật,
+     * rồi làm mượt bằng nội suy dạng lerp có hệ số phụ thuộc thời gian
+     * (1 - e^(-k*dt)) thay vì lerp hệ số cố định — tránh camera bị "khựng"
+     * khi framerate dao động, đồng thời vẫn tương đương lerp(desired, k~0.1-0.2)
+     * ở framerate ổn định 60fps.
+     */
     updateCameraToPlayer: function(playerX, playerZ, yaw, pitch) {
         const cosPitch = Math.cos(pitch);
         const sinPitch = Math.sin(pitch);
