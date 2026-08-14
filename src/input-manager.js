@@ -136,9 +136,8 @@ const InputManager = {
             // Yaw: xoay ngang 360 độ tự do, KHÔNG clamp
             this.targetYaw -= deltaX * sensitivity;
 
-            // Pitch: Clamp trong [minPitch, maxPitch] để tránh lật camera ngược đầu
-            // Chuột lên = nhìn lên, chuột xuống = nhìn xuống (tiêu chuẩn)
-            this.targetPitch -= deltaY * sensitivity;
+            // Pitch: Chuột lên/xuống điều khiển nhìn lên/xuống (chuẩn game 3D)
+            this.targetPitch += deltaY * sensitivity;
             this.targetPitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.targetPitch));
             return;
         }
