@@ -137,8 +137,8 @@ const InputManager = {
             this.targetYaw -= deltaX * sensitivity;
 
             // Pitch: Clamp trong [minPitch, maxPitch] để tránh lật camera ngược đầu
-            // Đảo ngược: chuột lên = nhìn lên, chuột xuống = nhìn xuống
-            this.targetPitch += deltaY * sensitivity;
+            // Chuột lên = nhìn lên, chuột xuống = nhìn xuống (tiêu chuẩn)
+            this.targetPitch -= deltaY * sensitivity;
             this.targetPitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.targetPitch));
             return;
         }
