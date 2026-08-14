@@ -21,6 +21,12 @@ let Renderer3D = {
     cameraHeightOffset: 8,
     cameraLookAtHeight: 1.2, // Tầm mắt nhân vật ~1.2m
 
+    // --- Tự động chuyển Góc Nhìn Thứ 1 (First-Person) khi zoom sát nhân vật ---
+    firstPersonThreshold: 0.8, // mét - dưới ngưỡng này camera chuyển sang FPS
+    eyeHeight: 1.5,            // độ cao mắt nhân vật so với mặt đất (m)
+    isFirstPerson: false,      // trạng thái hiện tại (dùng để biết khi nào cần ẩn/hiện mesh)
+    _fpTransitionRange: 2.0,   // vùng đệm (m) để offset chiều cao rig TPS mờ dần về 0 khi tới gần ngưỡng FPS, tránh camera "giật"
+
     trees: [],
     rocks: [],
 
@@ -647,25 +653,63 @@ let Renderer3D = {
      * khi framerate dao động, đồng thời vẫn tương đương lerp(desired, k~0.1-0.2)
      * ở framerate ổn định 60fps.
      */
-    updateCameraToPlayer: function(playerX, playerZ, yaw, pitch) {
+    updateCameraToPlayer: function(playerX, playerZ, yaw, pitch, playerY) {
+        const py = playerY || 0;
         const cosPitch = Math.cos(pitch);
         const sinPitch = Math.sin(pitch);
         const cosYaw = Math.cos(yaw);
         const sinYaw = Math.sin(yaw);
 
-        const horizontalDist = this.cameraDistance * cosPitch;
-        const verticalOffset = this.cameraDistance * sinPitch + this.cameraHeightOffset;
+        // Hướng nhìn (forward) tính từ yaw/pitch, dùng chung cho cả 2 chế độ.
+        const forwardX = sinYaw * cosPitch;
+        const forwardY = -sinPitch;
+        const forwardZ = cosYaw * cosPitch;
 
-        const offsetX = horizontalDist * sinYaw;
-        const offsetZ = horizontalDist * cosYaw;
+        const isFirstPerson = this.cameraDistance <= this.firstPersonThreshold;
+        this.isFirstPerson = isFirstPerson;
 
-        const targetCamX = playerX - offsetX;
-        const targetCamY = verticalOffset;
-        const targetCamZ = playerZ - offsetZ;
+        let targetCamX, targetCamY, targetCamZ;
+        let targetLookX, targetLookY, targetLookZ;
 
-        const targetLookX = playerX;
-        const targetLookY = this.cameraLookAtHeight;
-        const targetLookZ = playerZ;
+        if (isFirstPerson) {
+            // --- Góc Nhìn Thứ 1: camera đặt trùng vị trí mắt nhân vật ---
+            // Ẩn mesh nhân vật để không bị khối đầu/thân che camera.
+            if (this.player) this.player.visible = false;
+
+            targetCamX = playerX;
+            targetCamY = py + this.eyeHeight;
+            targetCamZ = playerZ;
+
+            // Nhìn theo hướng yaw/pitch trực tiếp từ vị trí mắt (không lookAt tâm nhân vật).
+            targetLookX = targetCamX + forwardX;
+            targetLookY = targetCamY + forwardY;
+            targetLookZ = targetCamZ + forwardZ;
+        } else {
+            // --- Góc Nhìn Thứ 3: quỹ đạo camera quanh nhân vật theo tọa độ cầu ---
+            if (this.player) this.player.visible = true;
+
+            // Làm mờ dần offset chiều cao "rig" (cameraHeightOffset) về 0 khi
+            // cameraDistance tiến gần firstPersonThreshold, để lúc chuyển đổi
+            // giữa 2 chế độ vị trí camera không bị nhảy đột ngột (out-of-bounds).
+            const fadeT = Math.max(0, Math.min(1,
+                (this.cameraDistance - this.firstPersonThreshold) / this._fpTransitionRange
+            ));
+            const effectiveHeightOffset = this.cameraHeightOffset * fadeT;
+
+            const horizontalDist = this.cameraDistance * cosPitch;
+            const verticalOffset = this.cameraDistance * sinPitch + effectiveHeightOffset;
+
+            const offsetX = horizontalDist * sinYaw;
+            const offsetZ = horizontalDist * cosYaw;
+
+            targetCamX = playerX - offsetX;
+            targetCamY = verticalOffset;
+            targetCamZ = playerZ - offsetZ;
+
+            targetLookX = playerX;
+            targetLookY = this.cameraLookAtHeight;
+            targetLookZ = playerZ;
+        }
 
         const now = performance.now();
         if (!this._lastCameraTime) this._lastCameraTime = now;

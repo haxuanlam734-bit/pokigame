@@ -26,9 +26,20 @@ const PlayerController = {
     hasMovementInput: false,
 
     // --- Camera Zoom (lăn chuột) ---
-    minZoomDistance: 5,
+    minZoomDistance: 0.1,
     maxZoomDistance: 40,
     currentZoomDistance: 15,
+
+    // --- Tự động chuyển Góc Nhìn Thứ 1 (First-Person) khi zoom sát nhân vật ---
+    // Khi currentZoomDistance <= firstPersonThreshold, camera "nhảy" vào bên trong
+    // đầu nhân vật (tầm mắt) thay vì tiếp tục quỹ đạo camera thứ 3.
+    firstPersonThreshold: 0.8, // mét
+    eyeHeight: 1.5,            // độ cao mắt nhân vật so với mặt đất (m)
+
+    // --- Auto Pointer Lock theo ngưỡng zoom (FPS Mode) ---
+    isFirstPersonMode: false,        // true khi currentZoomDistance <= firstPersonThreshold
+    _pointerWasLocked: false,        // trạng thái isPointerLocked của frame trước (để dò cạnh)
+    _pointerLockReleasedByUser: false, // true khi người chơi tự thoát khóa (Esc) trong lúc vẫn cần khóa
 
     // --- Nhảy & Trọng lực ---
     velocityY: 0,
@@ -65,7 +76,70 @@ const PlayerController = {
         this.handleMouseWheel = this.handleMouseWheel.bind(this);
         window.addEventListener('wheel', this.handleMouseWheel, { passive: true });
 
+        this.isFirstPersonMode = this.currentZoomDistance <= this.firstPersonThreshold;
+        this._pointerWasLocked = false;
+        this._pointerLockReleasedByUser = false;
+
+        // Click lại vào màn hình để khóa chuột lại nếu đang ở FPS Mode nhưng
+        // con trỏ đã bị nhả ra (ví dụ người chơi nhấn Esc)
+        this._onScreenClick = this._onScreenClick.bind(this);
+        document.addEventListener('click', this._onScreenClick);
+
         console.log('✅ Player Controller khởi tạo xong');
+    },
+
+    /**
+     * Click bất kỳ đâu trên màn hình: nếu đang ở FPS Mode mà con trỏ chưa
+     * (hoặc không còn) bị khóa, chủ động khóa lại (đáp ứng yêu cầu re-lock
+     * sau khi người chơi nhấn Esc thoát Pointer Lock).
+     */
+    _onScreenClick: function() {
+        if (this.isFirstPersonMode && !InputManager.isPointerLocked) {
+            this._pointerLockReleasedByUser = false;
+            if (document.body.requestPointerLock) {
+                document.body.requestPointerLock();
+            }
+        }
+    },
+
+    /**
+     * Đồng bộ Pointer Lock theo ngưỡng zoom mỗi frame:
+     *  - FPS Mode (currentZoomDistance <= firstPersonThreshold) -> luôn cần khóa chuột,
+     *    kể cả khi KHÔNG giữ chuột phải, để movementX/Y xoay camera trực tiếp.
+     *  - Third-Person -> chỉ cần khóa khi đang giữ chuột phải (orbit); nếu không,
+     *    tự động mở khóa để hiện lại con trỏ.
+     *  - Nếu người chơi tự thoát khóa bằng Esc trong lúc vẫn cần khóa, KHÔNG tự
+     *    động lock lại ngay (tránh trình duyệt chặn do gọi liên tục mỗi frame) —
+     *    việc lock lại chờ một cú click từ người chơi (_onScreenClick).
+     */
+    _syncPointerLockWithZoom: function() {
+        const isFPSMode = this.currentZoomDistance <= this.firstPersonThreshold;
+        const wantLock = isFPSMode || InputManager.isRightMouseDown;
+        const isLocked = InputManager.isPointerLocked;
+
+        // Phát hiện cạnh: đang khóa -> mất khóa trong khi vẫn cần khóa => người
+        // chơi vừa nhấn Esc, đánh dấu để không spam requestPointerLock() nữa.
+        if (this._pointerWasLocked && !isLocked && wantLock) {
+            this._pointerLockReleasedByUser = true;
+        }
+
+        if (wantLock && !isLocked && !this._pointerLockReleasedByUser) {
+            if (document.body.requestPointerLock) {
+                document.body.requestPointerLock();
+            }
+        } else if (!wantLock && isLocked) {
+            if (document.exitPointerLock) {
+                document.exitPointerLock();
+            }
+        }
+
+        // Rời hẳn FPS Mode -> reset cờ để lần zoom sát tiếp theo tự khóa lại bình thường
+        if (!isFPSMode) {
+            this._pointerLockReleasedByUser = false;
+        }
+
+        this._pointerWasLocked = isLocked;
+        this.isFirstPersonMode = isFPSMode;
     },
 
     /**
@@ -95,6 +169,9 @@ const PlayerController = {
 
     update: function(deltaTime) {
         const deltaSec = deltaTime / 1000;
+
+        // Làm mượt (lerp) góc xoay camera trước khi dùng — quán tính Roblox-style
+        InputManager.update();
 
         const moveInput = InputManager.getMovementVector();
         const inputW = moveInput.y < -0.01;
@@ -160,18 +237,23 @@ const PlayerController = {
             this.currentMoveAngle += angleDiff * rotSmooth;
         }
 
-        // Áp dụng khoảng cách zoom hiện tại cho camera trước khi cập nhật vị trí
+        // Áp dụng khoảng cách zoom hiện tại cho camera trước khi cập nhật vị trí.
+        // Zoom (currentZoomDistance) CHỈ thay đổi khoảng cách camera-nhân vật,
+        // hoàn toàn độc lập với pitch/yaw — không còn bất kỳ logic nào ở đây
+        // khóa hay bóp góc xoay theo mức zoom nữa.
         Renderer3D.cameraDistance = this.currentZoomDistance;
+        Renderer3D.firstPersonThreshold = this.firstPersonThreshold;
+        Renderer3D.eyeHeight = this.eyeHeight;
 
-        // Re-clamp pitch theo zoom MỖI FRAME (không chỉ khi kéo chuột),
-        // để lăn chuột zoom cũng tự siết/nới góc pitch ngay lập tức
-        InputManager.clampPitchToZoom();
+        // Tự động khóa/mở khóa con trỏ chuột theo ngưỡng zoom (FPS Mode)
+        this._syncPointerLockWithZoom();
 
         Renderer3D.updateCameraToPlayer(
             this.position.x,
             this.position.z,
             InputManager.cameraYaw,
-            InputManager.cameraPitch
+            InputManager.cameraPitch,
+            this.position.y
         );
 
         Renderer3D.updatePlayerMesh(
