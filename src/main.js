@@ -75,32 +75,32 @@ const Game = {
      */
     setupButtons: function() {
         console.log('🔘 Setup buttons...');
-        
-        // Nút Tường
-        const btnWall = document.getElementById('btn-wall');
-        if (btnWall) {
-            btnWall.addEventListener('click', () => {
-                this.startBuildMode('wall');
+
+        const buttonMap = {
+            'wall': document.getElementById('btn-wall'),
+            'tower': document.getElementById('btn-turret'),
+            'minter': document.getElementById('btn-minter')
+        };
+
+        Object.entries(buttonMap).forEach(([type, button]) => {
+            if (!button) return;
+
+            const def = GameState.getBuildingDef(type);
+            if (def) {
+                const label = `${def.emoji} ${def.name} - ${Utils.formatMoney(def.cost)}`;
+                button.setAttribute('data-build-type', type);
+                button.textContent = label;
+            }
+
+            button.addEventListener('click', () => {
+                if (!GameState.canBuildBuilding(type)) {
+                    console.log('❌ Công trình chưa mở khóa hoặc không đủ tiền:', type);
+                    return;
+                }
+                this.startBuildMode(type);
             });
-        }
-        
-        // Nút Tháp
-        const btnTurret = document.getElementById('btn-turret');
-        if (btnTurret) {
-            btnTurret.addEventListener('click', () => {
-                this.startBuildMode('tower');
-            });
-        }
-        
-        // Nút Máy in tiền
-        const btnMinter = document.getElementById('btn-minter');
-        if (btnMinter) {
-            btnMinter.addEventListener('click', () => {
-                this.startBuildMode('minter');
-            });
-        }
-        
-        // Nút Xem quảng cáo
+        });
+
         const btnAds = document.getElementById('btn-ads');
         if (btnAds) {
             btnAds.addEventListener('click', () => {
@@ -118,21 +118,24 @@ const Game = {
             console.log('❌ Chỉ có thể xây dựng vào NGÀY');
             return;
         }
-        
+
+        const def = GameState.getBuildingDef(type);
+        if (!def || !GameState.canBuildBuilding(type)) {
+            console.log('❌ Công trình chưa mở khóa hoặc không đủ tiền:', type);
+            return;
+        }
+
         console.log('🔨 Bắt đầu chế độ xây dựng: ' + type);
-        
-        // Lắng nghe click chuột để đặt building
+
         const canvas = Renderer.canvas;
         const clickHandler = (event) => {
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
-            // Kiểm tra nếu trong khu vực xây dựng
+
             const zone = type === 'minter' ? CONFIG.MINTER_PLACEMENT_ZONE || CONFIG.WALL_PLACEMENT_ZONE : CONFIG.WALL_PLACEMENT_ZONE;
-            
+
             if (x >= zone.x1 && x <= zone.x2 && y >= zone.y1 && y <= zone.y2) {
-                // Xây dựng
                 if (type === 'wall') {
                     GameState.buildWall(x, y);
                 } else if (type === 'tower') {
@@ -140,15 +143,15 @@ const Game = {
                 } else if (type === 'minter') {
                     GameState.buildMinter(x, y);
                 }
+                GameState.saveGame();
             } else {
                 console.log('❌ Vị trí xây dựng không hợp lệ');
             }
-            
-            // Bỏ lắng nghe
+
             canvas.removeEventListener('click', clickHandler);
             console.log('✅ Chế độ xây dựng kết thúc');
         };
-        
+
         canvas.addEventListener('click', clickHandler);
         console.log('💡 Nhấp chuột trên canvas để đặt ' + type);
     },

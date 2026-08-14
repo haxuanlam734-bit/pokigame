@@ -203,32 +203,32 @@ const Renderer = {
         if (phaseDisplay) {
             phaseDisplay.textContent = GameState.phase === CONFIG.PHASE_DAY ? '☀️ NGÀY' : '🌙 ĐÊM';
         }
-        
+
         // Cập nhật sóng
         const waveDisplay = document.getElementById('wave-display');
         if (waveDisplay) {
             waveDisplay.textContent = GameState.currentWave;
         }
-        
+
         // Cập nhật thời gian
         const timeDisplay = document.getElementById('time-display');
         if (timeDisplay) {
             const timeLeft = Math.ceil(GameState.phaseTimeRemaining);
             timeDisplay.textContent = timeLeft + 's';
         }
-        
+
         // Cập nhật tiền
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
-            moneyDisplay.textContent = Math.floor(GameState.money);
+            moneyDisplay.textContent = Utils.formatMoney(GameState.money);
         }
-        
+
         // Cập nhật HP pháo đài
         const hpDisplay = document.getElementById('hp-display');
         if (hpDisplay) {
             hpDisplay.textContent = Math.ceil(GameState.fortressHP);
         }
-        
+
         // Cập nhật trạng thái nút
         this.updateButtonStates();
     },
@@ -238,22 +238,34 @@ const Renderer = {
      */
     updateButtonStates: function() {
         const buttons = {
-            'btn-wall': CONFIG.COST_WALL,
-            'btn-turret': CONFIG.COST_TOWER,
-            'btn-minter': CONFIG.COST_MINTER
+            'btn-wall': 'wall',
+            'btn-turret': 'tower',
+            'btn-minter': 'minter'
         };
-        
-        for (const [btnId, cost] of Object.entries(buttons)) {
+
+        for (const [btnId, type] of Object.entries(buttons)) {
             const btn = document.getElementById(btnId);
-            if (btn) {
-                btn.disabled = GameState.money < cost || GameState.phase !== CONFIG.PHASE_DAY;
-            }
+            if (!btn) continue;
+
+            const def = GameState.getBuildingDef(type);
+            const unlocked = GameState.hasUnlockedBuilding(type);
+            const affordable = GameState.money >= def.cost;
+            const canUse = unlocked && affordable && GameState.phase === CONFIG.PHASE_DAY;
+
+            btn.disabled = !canUse;
+            btn.style.background = canUse ? '#1a4d1a' : '#3a1a1a';
+            btn.style.borderColor = canUse ? '#00ff00' : '#ff4d4d';
+            btn.style.color = canUse ? '#00ff00' : '#ffaaaa';
+
+            const label = def ? `${def.emoji} ${def.name} - ${Utils.formatMoney(def.cost)}` : btn.textContent;
+            btn.textContent = label;
         }
-        
+
         // Nút xem quảng cáo luôn bật
         const adsBtn = document.getElementById('btn-ads');
         if (adsBtn) {
             adsBtn.disabled = false;
+            adsBtn.style.background = '#1a4d1a';
         }
     }
 };

@@ -13,13 +13,23 @@ const GameState = {
     currentWave: 1,
     phaseTime: CONFIG.DAY_DURATION,
     phaseTimeRemaining: CONFIG.DAY_DURATION,
-    
+
     // =====================
-    // RESOURCES
+    // RESOURCE & TYCOON PROGRESSION
     // =====================
     money: CONFIG.STARTING_MONEY,
     fortressHP: CONFIG.FORTRESS_MAX_HP,
-    
+    unlockedBuildings: {
+        wall: true,
+        tower: false,
+        minter: false
+    },
+    builtBuildings: {
+        wall: 0,
+        tower: 0,
+        minter: 0
+    },
+
     // =====================
     // ENTITIES
     // =====================
@@ -28,7 +38,7 @@ const GameState = {
     zombies: [],     // Danh sách zombie
     minters: [],     // Danh sách máy in tiền
     bullets: [],     // Danh sách đạn
-    
+
     // =====================
     // SCORE & STATS
     // =====================
@@ -36,7 +46,7 @@ const GameState = {
     zombiesKilled: 0,
     moneyEarned: 0,
     buildingsBuilt: 0,
-    
+
     // =====================
     // TIMING
     // =====================
@@ -49,7 +59,10 @@ const GameState = {
      */
     init: function() {
         console.log('🎮 Khởi tạo GameState...');
-        
+
+        // Load save data nếu có, nhưng vẫn reset trạng thái cơ bản trước
+        const saved = this.loadGame();
+
         // Reset trạng thái
         this.isRunning = true;
         this.isGameOver = false;
@@ -57,29 +70,49 @@ const GameState = {
         this.currentWave = 1;
         this.phaseTime = CONFIG.DAY_DURATION;
         this.phaseTimeRemaining = CONFIG.DAY_DURATION;
-        
+
         // Reset tài nguyên
-        this.money = CONFIG.STARTING_MONEY;
-        this.fortressHP = CONFIG.FORTRESS_MAX_HP;
-        
+        this.money = saved && typeof saved.money === 'number' ? saved.money : CONFIG.STARTING_MONEY;
+        this.fortressHP = saved && typeof saved.fortressHP === 'number' ? saved.fortressHP : CONFIG.FORTRESS_MAX_HP;
+
+        this.unlockedBuildings = {
+            wall: true,
+            tower: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.tower),
+            minter: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.minter)
+        };
+        this.builtBuildings = {
+            wall: 0,
+            tower: 0,
+            minter: 0
+        };
+
         // Reset entities
         this.towers = [];
         this.walls = [];
         this.zombies = [];
         this.minters = [];
         this.bullets = [];
-        
+
         // Reset stats
-        this.totalScore = 0;
-        this.zombiesKilled = 0;
-        this.moneyEarned = 0;
-        this.buildingsBuilt = 0;
-        
+        this.totalScore = saved && typeof saved.totalScore === 'number' ? saved.totalScore : 0;
+        this.zombiesKilled = saved && typeof saved.zombiesKilled === 'number' ? saved.zombiesKilled : 0;
+        this.moneyEarned = saved && typeof saved.moneyEarned === 'number' ? saved.moneyEarned : 0;
+        this.buildingsBuilt = saved && typeof saved.buildingsBuilt === 'number' ? saved.buildingsBuilt : 0;
+
         // Reset timing
         this.gameStartTime = Date.now();
         this.lastMoneyRegenTime = Date.now();
         this.lastZombieSpawnTime = Date.now();
-        
+
+        // Nếu có dữ liệu lưu nhưng không khôi phục chi tiết xây dựng, giữ an toàn
+        if (saved && Array.isArray(saved.buildings)) {
+            saved.buildings.forEach(item => {
+                if (item.type === 'wall') this.builtBuildings.wall = item.count || 0;
+                if (item.type === 'tower') this.builtBuildings.tower = item.count || 0;
+                if (item.type === 'minter') this.builtBuildings.minter = item.count || 0;
+            });
+        }
+
         console.log('✅ GameState khởi tạo xong');
     },
     
@@ -123,6 +156,40 @@ const GameState = {
     },
     
     /**
+     * Lấy thông tin công trình theo loại
+     * @param {string} type
+     * @returns {Object|null}
+     */
+    getBuildingDef: function(type) {
+        return CONFIG.BUILDING_DEFS[type] || null;
+    },
+
+    /**
+     * Kiểm tra công trình đã mở khóa chưa
+     * @param {string} type
+     * @returns {boolean}
+     */
+    hasUnlockedBuilding: function(type) {
+        const def = this.getBuildingDef(type);
+        if (!def) return false;
+        return def.required.every(req => this.unlockedBuildings[req] || this.builtBuildings[req] > 0);
+    },
+
+    /**
+     * Kiểm tra có thể mua/build công trình hay không
+     * @param {string} type
+     * @returns {boolean}
+     */
+    canBuildBuilding: function(type) {
+        const def = this.getBuildingDef(type);
+        if (!def) return false;
+        if (!this.hasUnlockedBuilding(type)) return false;
+        if (this.builtBuildings[type] >= def.maxCount) return false;
+        if (this.phase !== CONFIG.PHASE_DAY) return false;
+        return this.money >= def.cost;
+    },
+
+    /**
      * Chuyển sang pha tiếp theo
      */
     switchPhase: function() {
@@ -138,7 +205,7 @@ const GameState = {
             this.phaseTime = CONFIG.DAY_DURATION;
             this.phaseTimeRemaining = CONFIG.DAY_DURATION;
             this.currentWave++;
-            
+
             // Lưu game
             this.saveGame();
         }
@@ -306,16 +373,26 @@ const GameState = {
      * @returns {boolean} Thành công?
      */
     buildTower: function(x, y) {
-        if (!this.spendMoney(CONFIG.COST_TOWER)) {
+        const def = this.getBuildingDef('tower');
+        if (!this.canBuildBuilding('tower')) {
+            console.log('❌ Không thể xây tháp pháo. Kiểm tra unlock hoặc đủ tiền.');
+            return false;
+        }
+
+        if (!this.spendMoney(def.cost)) {
             console.log('❌ Không đủ tiền để xây tháp');
             return false;
         }
-        
+
         const tower = new Tower(x, y);
         this.towers.push(tower);
+        this.builtBuildings.tower += 1;
         this.buildingsBuilt++;
         this.totalScore += 50;
-        
+
+        if (!this.unlockedBuildings.tower) this.unlockedBuildings.tower = true;
+        this.unlockedBuildings.minter = this.hasUnlockedBuilding('minter') || this.unlockedBuildings.minter;
+
         console.log('🔫 Xây tháp pháo tại (' + x + ', ' + y + ')');
         return true;
     },
@@ -327,16 +404,26 @@ const GameState = {
      * @returns {boolean} Thành công?
      */
     buildWall: function(x, y) {
-        if (!this.spendMoney(CONFIG.COST_WALL)) {
+        const def = this.getBuildingDef('wall');
+        if (!this.canBuildBuilding('wall')) {
+            console.log('❌ Không thể xây tường rào.');
+            return false;
+        }
+
+        if (!this.spendMoney(def.cost)) {
             console.log('❌ Không đủ tiền để xây tường');
             return false;
         }
-        
+
         const wall = new Wall(x, y);
         this.walls.push(wall);
+        this.builtBuildings.wall += 1;
         this.buildingsBuilt++;
         this.totalScore += 25;
-        
+
+        this.unlockedBuildings.wall = true;
+        this.unlockedBuildings.tower = this.hasUnlockedBuilding('tower') || this.unlockedBuildings.tower;
+
         console.log('🧱 Xây tường rào tại (' + x + ', ' + y + ')');
         return true;
     },
@@ -348,16 +435,24 @@ const GameState = {
      * @returns {boolean} Thành công?
      */
     buildMinter: function(x, y) {
-        if (!this.spendMoney(CONFIG.COST_MINTER)) {
+        const def = this.getBuildingDef('minter');
+        if (!this.canBuildBuilding('minter')) {
+            console.log('❌ Không thể xây máy in tiền. Mở khóa theo dependency tree.');
+            return false;
+        }
+
+        if (!this.spendMoney(def.cost)) {
             console.log('❌ Không đủ tiền để xây máy in');
             return false;
         }
-        
+
         const minter = new Minter(x, y);
         this.minters.push(minter);
+        this.builtBuildings.minter += 1;
         this.buildingsBuilt++;
         this.totalScore += 40;
-        
+
+        this.unlockedBuildings.minter = true;
         console.log('💵 Xây máy in tiền tại (' + x + ', ' + y + ')');
         return true;
     },
@@ -431,9 +526,16 @@ const GameState = {
             zombiesKilled: this.zombiesKilled,
             buildingsBuilt: this.buildingsBuilt,
             totalScore: this.totalScore,
+            moneyEarned: this.moneyEarned,
+            unlockedBuildings: this.unlockedBuildings,
+            buildings: [
+                { type: 'wall', count: this.builtBuildings.wall },
+                { type: 'tower', count: this.builtBuildings.tower },
+                { type: 'minter', count: this.builtBuildings.minter }
+            ],
             timestamp: Date.now()
         };
-        
+
         Utils.saveToStorage('fortress-defense-save', saveData);
         console.log('💾 Game được lưu');
     },
@@ -443,13 +545,26 @@ const GameState = {
      */
     loadGame: function() {
         const saveData = Utils.loadFromStorage('fortress-defense-save', null);
-        
+
         if (saveData) {
             console.log('📂 Tải game được lưu');
-            // Có thể dùng để restore partial state nếu cần
+            if (saveData.unlockedBuildings) {
+                this.unlockedBuildings = {
+                    wall: true,
+                    tower: !!saveData.unlockedBuildings.tower,
+                    minter: !!saveData.unlockedBuildings.minter
+                };
+            }
+            if (saveData.buildings) {
+                saveData.buildings.forEach(item => {
+                    if (item.type === 'wall') this.builtBuildings.wall = item.count || 0;
+                    if (item.type === 'tower') this.builtBuildings.tower = item.count || 0;
+                    if (item.type === 'minter') this.builtBuildings.minter = item.count || 0;
+                });
+            }
             return saveData;
         }
-        
+
         return null;
     }
 };

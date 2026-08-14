@@ -136,7 +136,20 @@ const Utils = {
      * @returns {string} Chuỗi định dạng
      */
     formatMoney: function(amount) {
-        return Math.floor(amount).toString();
+        const value = Number(amount) || 0;
+        const abs = Math.abs(value);
+
+        if (abs >= 1000000) {
+            const formatted = (value / 1000000).toFixed(abs >= 10000000 ? 0 : 1).replace(/\.0$/, '');
+            return '$' + formatted + 'M';
+        }
+
+        if (abs >= 1000) {
+            const formatted = (value / 1000).toFixed(abs >= 10000 ? 0 : 1).replace(/\.0$/, '');
+            return '$' + formatted + 'K';
+        }
+
+        return '$' + Math.floor(value);
     },
 
     /**
