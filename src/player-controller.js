@@ -17,6 +17,10 @@ const PlayerController = {
     velocity: { x: 0, z: 0 },
     targetVelocity: { x: 0, z: 0 },
     speed: 6,
+    normalSpeed: 6,
+    sprintMultiplier: 1.65,
+    sprintDrainPerSecond: 22,
+    isSprinting: false,
 
     // Kích thước collision của nhân vật trên mặt phẳng XZ.
     playerRadius: 0.42,
@@ -192,6 +196,15 @@ const PlayerController = {
         if (inputA) this._moveVec.sub(this._rightVec);
 
         this.hasMovementInput = this._moveVec.lengthSq() > 0.0001;
+
+        const wantsSprint = this.hasMovementInput && InputManager.isKeyPressed('shift');
+        const canSprint = typeof GameState !== 'undefined' && GameState.stamina > 0;
+        this.isSprinting = wantsSprint && canSprint;
+        this.speed = this.isSprinting ? this.normalSpeed * this.sprintMultiplier : this.normalSpeed;
+        if (this.isSprinting && typeof GameState !== 'undefined') {
+            GameState.stamina = Math.max(0, GameState.stamina - this.sprintDrainPerSecond * deltaSec);
+            if (GameState.stamina <= 0) this.isSprinting = false;
+        }
 
         if (this.hasMovementInput) {
             this._moveVec.normalize();

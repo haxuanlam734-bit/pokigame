@@ -48,6 +48,34 @@ const GameState = {
     buildingsBuilt: 0,
 
     // =====================
+    // PLAYER / MILITARY SERVICES
+    // =====================
+    playerHP: 100,
+    playerMaxHP: 100,
+    playerBaseMaxHP: 100,
+    stamina: 100,
+    maxStamina: 100,
+    bandages: 3,
+    medkits: 1,
+    playerBiteCooldownUntil: 0,
+    ammo: 120,
+    maxAmmo: 120,
+    weaponTier: 1,
+    weaponDamage: 10,
+    weaponXP: 0,
+    weaponLevel: 1,
+    guards: 0,
+    baseLevel: 1,
+    maxMinterSlots: 6,
+    moneyMultiplier: 1,
+    productionMultiplier: 1,
+    vehicleLevel: 1,
+    vehicleActive: false,
+    radarLevel: 1,
+    commsReady: true,
+    lastServiceAction: {},
+
+    // =====================
     // TIMING
     // =====================
     gameStartTime: 0,
@@ -165,6 +193,33 @@ const GameState = {
         this.moneyEarned = saved && typeof saved.moneyEarned === 'number' ? saved.moneyEarned : 0;
         this.buildingsBuilt = saved && typeof saved.buildingsBuilt === 'number' ? saved.buildingsBuilt : 0;
 
+        this.playerHP = saved && typeof saved.playerHP === 'number' ? saved.playerHP : 100;
+        this.playerBaseMaxHP = 100;
+        this.playerMaxHP = saved && typeof saved.playerMaxHP === 'number' ? saved.playerMaxHP : this.playerBaseMaxHP;
+        this.playerMaxHP = Math.max(0, Math.min(this.playerBaseMaxHP, this.playerMaxHP));
+        this.playerHP = Math.max(0, Math.min(this.playerMaxHP, this.playerHP));
+        this.stamina = saved && typeof saved.stamina === 'number' ? saved.stamina : 100;
+        this.maxStamina = saved && typeof saved.maxStamina === 'number' ? saved.maxStamina : 100;
+        this.bandages = saved && typeof saved.bandages === 'number' ? saved.bandages : 3;
+        this.medkits = saved && typeof saved.medkits === 'number' ? saved.medkits : 1;
+        this.playerBiteCooldownUntil = 0;
+        this.ammo = saved && typeof saved.ammo === 'number' ? saved.ammo : 120;
+        this.maxAmmo = saved && typeof saved.maxAmmo === 'number' ? saved.maxAmmo : 120;
+        this.weaponTier = saved && typeof saved.weaponTier === 'number' ? saved.weaponTier : 1;
+        this.weaponDamage = saved && typeof saved.weaponDamage === 'number' ? saved.weaponDamage : 10;
+        this.weaponXP = saved && typeof saved.weaponXP === 'number' ? saved.weaponXP : 0;
+        this.weaponLevel = saved && typeof saved.weaponLevel === 'number' ? saved.weaponLevel : 1;
+        this.guards = saved && typeof saved.guards === 'number' ? saved.guards : 0;
+        this.baseLevel = saved && typeof saved.baseLevel === 'number' ? saved.baseLevel : 1;
+        this.maxMinterSlots = saved && typeof saved.maxMinterSlots === 'number' ? saved.maxMinterSlots : 6;
+        this.moneyMultiplier = saved && typeof saved.moneyMultiplier === 'number' ? saved.moneyMultiplier : 1;
+        this.productionMultiplier = saved && typeof saved.productionMultiplier === 'number' ? saved.productionMultiplier : 1;
+        this.vehicleLevel = saved && typeof saved.vehicleLevel === 'number' ? saved.vehicleLevel : 1;
+        this.vehicleActive = false;
+        this.radarLevel = saved && typeof saved.radarLevel === 'number' ? saved.radarLevel : 1;
+        this.commsReady = true;
+        this.lastServiceAction = {};
+
         // Reset timing
         this.gameStartTime = Date.now();
         this.lastMoneyRegenTime = Date.now();
@@ -191,6 +246,11 @@ const GameState = {
         
         // Cập nhật thời gian pha
         this.phaseTimeRemaining -= deltaTime / 1000;
+
+        // Stamina tự hồi chỉ khi không sprint; HP tuyệt đối KHÔNG tự hồi.
+        if (typeof PlayerController !== 'undefined' && !PlayerController.isSprinting) {
+            this.stamina = Math.min(this.maxStamina, this.stamina + 12 * (deltaTime / 1000));
+        }
         
         // Chuyển pha nếu hết thời gian
         if (this.phaseTimeRemaining <= 0) {
@@ -250,6 +310,7 @@ const GameState = {
         const def = this.getBuildingDef(type);
         if (!def) return false;
         if (!this.hasUnlockedBuilding(type)) return false;
+        if (type === 'minter' && this.builtBuildings[type] >= this.maxMinterSlots) return false;
         if (this.builtBuildings[type] >= def.maxCount) return false;
         if (this.phase !== CONFIG.PHASE_DAY) return false;
         return this.money >= def.cost;
@@ -284,10 +345,10 @@ const GameState = {
         const now = Date.now();
         if (now - this.lastMoneyRegenTime >= CONFIG.MONEY_REGEN_INTERVAL) {
             // Tiền từ sinh ra
-            let moneyPerSec = CONFIG.MONEY_REGEN;
+            let moneyPerSec = CONFIG.MONEY_REGEN * this.moneyMultiplier;
             
             // Tiền từ máy in
-            moneyPerSec += this.minters.length * 8.33; // (25 / 3 giây)
+            moneyPerSec += this.minters.length * 8.33 * this.productionMultiplier; // (25 / 3 giây)
             
             this.addMoney(moneyPerSec);
             this.lastMoneyRegenTime = now;
@@ -304,7 +365,7 @@ const GameState = {
             
             // Nếu hoàn thành chu kỳ, cộng tiền
             if (minter.cycleProgress >= 1) {
-                this.addMoney(CONFIG.MINTER_MONEY_PER_CYCLE);
+                this.addMoney(CONFIG.MINTER_MONEY_PER_CYCLE * this.productionMultiplier * this.moneyMultiplier);
                 minter.cycleProgress = 0;
             }
         });
@@ -328,6 +389,20 @@ const GameState = {
         for (let i = this.zombies.length - 1; i >= 0; i--) {
             const zombie = this.zombies[i];
             zombie.update(deltaTime);
+
+            // Zombie có thể cắn player khi ở đủ gần. Mỗi lần cắn làm mất 1 segment HP
+            // (10 HP) và đồng thời giảm trần HP vĩnh viễn cho tới khi dùng vật tư y tế.
+            if (typeof PlayerController !== 'undefined' && this.playerHP > 0) {
+                const dx = zombie.x - PlayerController.position.x;
+                const dz = zombie.z - PlayerController.position.z;
+                const biteRange = 1.35;
+                const distSq = dx * dx + dz * dz;
+                if (distSq <= biteRange * biteRange) {
+                    if (Date.now() >= this.playerBiteCooldownUntil) {
+                        this.damagePlayerFromZombie(10);
+                    }
+                }
+            }
             
             // Nếu zombie chạm tới pháo đài
             if (zombie.reachedFortress && zombie.reachedFortress()) {
@@ -560,6 +635,46 @@ const GameState = {
             this.endGame();
         }
     },
+
+    /**
+     * Player nhận sát thương từ zombie: mất HP hiện tại và mất luôn cùng lượng HP
+     * ở trần hồi phục. Không có natural regen cho HP.
+     */
+    damagePlayerFromZombie: function(damage = 10) {
+        if (this.playerHP <= 0) return;
+        const amount = Math.max(1, Math.min(10, Math.round(damage)));
+        this.playerHP = Math.max(0, this.playerHP - amount);
+        this.playerMaxHP = Math.max(0, this.playerMaxHP - amount);
+        this.playerHP = Math.min(this.playerHP, this.playerMaxHP);
+        this.playerBiteCooldownUntil = Date.now() + 1000;
+
+        if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
+            Game.showMilitaryToast({ title: '🧟 ZOMBIE BITE', message: `-1 thanh HP • ${this.playerMaxHP} HP còn hồi được`, success: false });
+        }
+
+        if (this.playerHP <= 0 || this.playerMaxHP <= 0) {
+            this.endGame();
+        }
+    },
+
+    useBandage: function() {
+        if (this.bandages <= 0) return { success: false, message: 'Hết bandage.' };
+        if (this.playerMaxHP >= this.playerBaseMaxHP && this.playerHP >= this.playerMaxHP) {
+            return { success: false, message: 'HP đã đầy.' };
+        }
+        this.bandages -= 1;
+        this.playerMaxHP = Math.min(this.playerBaseMaxHP, this.playerMaxHP + 10);
+        this.playerHP = Math.min(this.playerMaxHP, this.playerHP + 10);
+        return { success: true, message: `Bandage: +10 HP capacity. Còn ${this.bandages}.` };
+    },
+
+    useMedkit: function() {
+        if (this.medkits <= 0) return { success: false, message: 'Hết hộp cấp cứu.' };
+        this.medkits -= 1;
+        this.playerMaxHP = this.playerBaseMaxHP;
+        this.playerHP = this.playerBaseMaxHP;
+        return { success: true, message: 'Hộp cấp cứu đã khôi phục HP về 100%.', full: true };
+    },
     
     /**
      * Xóa zombie
@@ -606,6 +721,135 @@ const GameState = {
         console.log('💰 Tiền được nhân đôi! Tổng: ' + Math.floor(this.money));
     },
     
+    _serviceCooldownReady: function(id, cooldownMs) {
+        const now = Date.now();
+        const last = this.lastServiceAction[id] || 0;
+        return now - last >= cooldownMs;
+    },
+
+    interactWithMilitaryBuilding: function(id) {
+        const results = {
+            success: false,
+            title: '',
+            message: '',
+            reward: 0
+        };
+        const fail = (title, message) => ({ success: false, title, message, reward: 0 });
+
+        switch (id) {
+            case 'hq': {
+                const cost = Math.floor(500 * Math.pow(1.85, this.baseLevel - 1));
+                if (this.baseLevel >= 8) return fail('COMMAND HQ', 'Căn cứ đã đạt cấp tối đa.');
+                if (!this.spendMoney(cost)) return fail('COMMAND HQ', `Cần ${cost}💰 để nâng cấp HQ.`);
+                this.baseLevel += 1;
+                this.maxMinterSlots = Math.min(8, 5 + this.baseLevel);
+                this.moneyMultiplier = 1 + (this.baseLevel - 1) * 0.08;
+                this.fortressHP = Math.min(CONFIG.FORTRESS_MAX_HP + (this.baseLevel - 1) * 15, this.fortressHP + 15);
+                return { success: true, title: 'COMMAND HQ', message: `HQ lên cấp ${this.baseLevel}. Mở thêm công suất máy in và +${Math.round((this.moneyMultiplier - 1) * 100)}% thu nhập.`, reward: 0 };
+            }
+            case 'barracks': {
+                const cost = 350 + this.guards * 180;
+                if (!this.spendMoney(cost)) return fail('BARRACKS', `Cần ${cost}💰 để tuyển một lính gác.`);
+                this.guards += 1;
+                this.totalScore += 100;
+                return { success: true, title: 'BARRACKS', message: `Đã tuyển lính gác #${this.guards}. Phòng thủ căn cứ +${this.guards * 2}%.`, reward: 0 };
+            }
+            case 'mess': {
+                if (!this._serviceCooldownReady('mess', 12000)) return fail('MESS HALL', 'Bếp đang chuẩn bị suất tiếp theo.');
+                this.lastServiceAction.mess = Date.now();
+                this.stamina = this.maxStamina;
+                return { success: true, title: 'MESS HALL', message: 'Đã dùng suất ăn. Stamina đầy. HP không tự hồi.', reward: 0 };
+            }
+            case 'medical': {
+                if (!this._serviceCooldownReady('medical', 15000)) return fail('MEDICAL', 'Medical bay đang tái tạo thiết bị.');
+                this.lastServiceAction.medical = Date.now();
+                const med = this.useMedkit();
+                if (!med.success) return fail('MEDICAL', med.message);
+                this.fortressHP = Math.min(CONFIG.FORTRESS_MAX_HP + (this.baseLevel - 1) * 15, this.fortressHP + 25);
+                return { success: true, title: 'MEDICAL', message: 'Đã hồi đầy HP cá nhân và sửa chữa +25 Fortress HP.', reward: 0 };
+            }
+            case 'supply': {
+                const cost = 150 + (this.weaponTier - 1) * 250;
+                if (!this.spendMoney(cost)) return fail('SUPPLY DEPOT', `Cần ${cost}💰 để nâng cấp vũ khí.`);
+                if (this.weaponTier >= 6) {
+                    this.ammo = this.maxAmmo;
+                    return { success: true, title: 'SUPPLY DEPOT', message: 'Kho đạt cấp tối đa. Ammo đã được nạp đầy.', reward: 0 };
+                }
+                this.weaponTier += 1;
+                this.weaponDamage += 7;
+                this.maxAmmo += 25;
+                this.ammo = this.maxAmmo;
+                this.bandages = Math.min(9, this.bandages + 1);
+                if (this.weaponTier >= 4) this.medkits = Math.min(3, this.medkits + 1);
+                return { success: true, title: 'SUPPLY DEPOT', message: `Weapon Tier ${this.weaponTier}: damage ${this.weaponDamage}, ammo ${this.maxAmmo}.`, reward: 0 };
+            }
+            case 'fuel': {
+                if (!this._serviceCooldownReady('fuel', 8000)) return fail('FUEL FARM', 'Bơm nhiên liệu đang hồi.');
+                this.lastServiceAction.fuel = Date.now();
+                const reward = 120 + this.vehicleLevel * 60;
+                this.addMoney(reward);
+                this.productionMultiplier = Math.min(2.5, this.productionMultiplier + 0.03);
+                return { success: true, title: 'FUEL FARM', message: `Bán nhiên liệu nhận ${reward}💰 và +3% hiệu suất production tạm thời.`, reward };
+            }
+            case 'motorPool': {
+                this.vehicleActive = true;
+                this.vehicleLevel = Math.min(5, this.vehicleLevel + 1);
+                if (typeof PlayerController !== 'undefined') {
+                    PlayerController.normalSpeed = 6 + this.vehicleLevel * 0.7;
+                    PlayerController.speed = PlayerController.normalSpeed;
+                }
+                return { success: true, title: 'MOTOR POOL', message: `Xe đã sẵn sàng. Vehicle Level ${this.vehicleLevel}; tốc độ di chuyển tăng.`, reward: 0 };
+            }
+            case 'lab': {
+                const cost = 300 + this.weaponLevel * 220;
+                if (!this.spendMoney(cost)) return fail('RESEARCH LAB', `Cần ${cost}💰 để hoàn thành nghiên cứu.`);
+                this.weaponLevel += 1;
+                this.weaponDamage += 4;
+                this.productionMultiplier = Math.min(3, this.productionMultiplier + 0.1);
+                return { success: true, title: 'RESEARCH LAB', message: `Nghiên cứu hoàn tất. Weapon Lv.${this.weaponLevel}, +4 damage, +10% production.`, reward: 0 };
+            }
+            case 'workshop': {
+                const cost = 250 + this.vehicleLevel * 180;
+                if (!this.spendMoney(cost)) return fail('VEHICLE WORKSHOP', `Cần ${cost}💰 để nâng cấp phương tiện.`);
+                this.vehicleLevel = Math.min(8, this.vehicleLevel + 1);
+                this.maxStamina = Math.min(180, this.maxStamina + 10);
+                this.stamina = this.maxStamina;
+                return { success: true, title: 'VEHICLE WORKSHOP', message: `Workshop cấp ${this.vehicleLevel}. Xe mạnh hơn và stamina tối đa +10.`, reward: 0 };
+            }
+            case 'training': {
+                this.weaponXP += 25;
+                if (this.weaponXP >= this.weaponLevel * 100) {
+                    this.weaponXP = 0;
+                    this.weaponLevel += 1;
+                    this.weaponDamage += 3;
+                }
+                this.stamina = Math.min(this.maxStamina, this.stamina + 30);
+                return { success: true, title: 'TRAINING GROUND', message: `+25 Weapon XP. Tổng XP ${this.weaponXP}/${this.weaponLevel * 100}.`, reward: 0 };
+            }
+            case 'range': {
+                this.ammo = this.maxAmmo;
+                this.weaponDamage += 2;
+                this.lastServiceAction.range = Date.now();
+                return { success: true, title: 'SHOOTING RANGE', message: 'Ammo đầy và nhận +2 damage từ luyện bắn.', reward: 0 };
+            }
+            case 'radar': {
+                const detected = this.zombies.length;
+                this.radarLevel = Math.min(5, this.radarLevel + 1);
+                return { success: true, title: 'RADAR STATION', message: `Radar Level ${this.radarLevel}. Phát hiện ${detected} zombie trên bản đồ.`, reward: 0 };
+            }
+            case 'comms': {
+                if (!this.commsReady) return fail('COMMS TOWER', 'Hợp đồng tiếp tế chưa sẵn sàng.');
+                this.commsReady = false;
+                const reward = 250 + this.currentWave * 40;
+                this.addMoney(reward);
+                setTimeout(() => { this.commsReady = true; }, 20000);
+                return { success: true, title: 'COMMS TOWER', message: `Hợp đồng tiếp tế hoàn tất. +${reward}💰.`, reward };
+            }
+            default:
+                return fail('MILITARY BASE', 'Tòa nhà này chưa có chức năng.');
+        }
+    },
+
     /**
      * Lưu game vào LocalStorage
      */
@@ -618,6 +862,25 @@ const GameState = {
             buildingsBuilt: this.buildingsBuilt,
             totalScore: this.totalScore,
             moneyEarned: this.moneyEarned,
+            playerHP: this.playerHP,
+            playerMaxHP: this.playerMaxHP,
+            stamina: this.stamina,
+            maxStamina: this.maxStamina,
+            bandages: this.bandages,
+            medkits: this.medkits,
+            ammo: this.ammo,
+            maxAmmo: this.maxAmmo,
+            weaponTier: this.weaponTier,
+            weaponDamage: this.weaponDamage,
+            weaponXP: this.weaponXP,
+            weaponLevel: this.weaponLevel,
+            guards: this.guards,
+            baseLevel: this.baseLevel,
+            maxMinterSlots: this.maxMinterSlots,
+            moneyMultiplier: this.moneyMultiplier,
+            productionMultiplier: this.productionMultiplier,
+            vehicleLevel: this.vehicleLevel,
+            radarLevel: this.radarLevel,
             unlockedBuildings: this.unlockedBuildings,
             buildings: [
                 { type: 'wall', count: this.builtBuildings.wall },

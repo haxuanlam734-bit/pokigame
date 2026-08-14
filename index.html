@@ -160,6 +160,53 @@
             transition: width 0.3s ease;
         }
 
+
+        /* ===== PLAYER HEALTH / STAMINA HUD ===== */
+        .resource-health { align-items: flex-start !important; margin-top: 10px !important; }
+        .resource-main { flex: 1; min-width: 0; }
+        .resource-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .resource-head .amount { font-size: 16px !important; }
+        .amount.stamina { color:#5ee7ff !important; }
+        .loss-text { font-size: 10px; font-family:'Orbitron',monospace; color:#ff8585; white-space:nowrap; opacity:.85; }
+        .sprint-hint { font-size: 9px; font-family:'Orbitron',monospace; color:rgba(94,231,255,.65); letter-spacing:.6px; white-space:nowrap; }
+        .health-track {
+            position:relative; width:100%; height:9px; margin-top:5px; border-radius:5px; overflow:hidden;
+            background:rgba(255,255,255,.07);
+            box-shadow: inset 0 1px 2px rgba(0,0,0,.55);
+        }
+        .health-track::after {
+            content:""; position:absolute; inset:0; pointer-events:none; opacity:.28;
+            background:repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 1px, transparent 1px 10%);
+        }
+        #hp-lost-bar { position:absolute; right:0; top:0; height:100%; width:0%; background:linear-gradient(90deg,#6d2a33,#2b1117); transition:width .18s ease; }
+        #hp-bar { position:absolute; left:0; top:0; height:100%; width:100%; background:linear-gradient(90deg,#ff3f52,#ff8b5c); border-radius:5px; transition:width .18s ease; }
+        .stamina-track { background:rgba(94,231,255,.07); }
+        #stamina-bar { position:absolute; left:0; top:0; height:100%; width:100%; background:linear-gradient(90deg,#28b8ff,#74f6ff); border-radius:5px; transition:width .12s linear; }
+
+        /* ===== MEDICAL QUICK SLOTS ===== */
+        .medical-kit-panel {
+            position:absolute; right:24px; bottom:122px; display:flex; gap:8px; pointer-events:auto;
+            padding:8px; border:1px solid rgba(255,255,255,.09); border-radius:15px;
+            background:rgba(8,11,18,.72); backdrop-filter:blur(14px); box-shadow:0 12px 32px rgba(0,0,0,.4);
+        }
+        .med-item {
+            min-width:150px; display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:11px;
+            background:rgba(255,255,255,.045); color:#fff; border:1px solid rgba(255,255,255,.08); cursor:pointer; pointer-events:auto;
+            font-family:'Rajdhani',sans-serif; transition:.18s ease;
+        }
+        .med-item:hover { transform:translateY(-2px); background:rgba(255,255,255,.085); border-color:rgba(82,245,184,.35); }
+        .med-item.disabled { opacity:.35; filter:grayscale(.65); cursor:not-allowed; transform:none; }
+        .med-icon { font-size:22px; }
+        .med-meta { display:flex; flex-direction:column; align-items:flex-start; line-height:1; flex:1; }
+        .med-meta b { font-family:'Orbitron',monospace; font-size:10px; letter-spacing:.8px; }
+        .med-meta small { margin-top:4px; color:rgba(255,255,255,.46); font-size:9px; letter-spacing:.5px; }
+        .med-count { min-width:26px; height:26px; display:grid; place-items:center; border-radius:8px; background:rgba(0,255,180,.1); border:1px solid rgba(0,255,180,.2); color:#69ffcc; font-family:'Orbitron',monospace; font-size:11px; }
+        @media (max-width: 800px) {
+            .medical-kit-panel { right:12px; bottom:150px; flex-direction:column; }
+            .med-item { min-width:138px; }
+            #right-panel { right:12px; top:12px; min-width:190px; }
+        }
+
         /* ===== BOTTOM PANEL (Build Buttons) ===== */
         #bottom-panel {
             bottom: 24px;
@@ -404,6 +451,44 @@
             opacity: 0.7;
         }
 
+
+        /* ===== MILITARY INTERACTION ===== */
+        #military-interaction {
+            position: absolute;
+            left: 50%;
+            bottom: 120px;
+            transform: translateX(-50%) translateY(14px);
+            min-width: 300px;
+            max-width: 420px;
+            padding: 14px 16px;
+            border: 1px solid rgba(115, 231, 255, 0.28);
+            border-radius: 16px;
+            background: rgba(12, 18, 22, 0.92);
+            box-shadow: 0 18px 50px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.02);
+            backdrop-filter: blur(10px);
+            pointer-events: none;
+            opacity: 0;
+            transition: .18s ease;
+            z-index: 30;
+        }
+        #military-interaction.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #military-interaction-title { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 800; color: #73e7ff; letter-spacing: 1px; }
+        #military-interaction-desc { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 13px; line-height: 1.35; }
+        #military-interaction-action {
+            margin-top: 10px; border: 0; border-radius: 10px; padding: 9px 12px; width: 100%;
+            background: linear-gradient(135deg, #1c9bd1, #0f6d95); color: #fff; font-weight: 800;
+            cursor: pointer; pointer-events: auto; font-family: 'Rajdhani', sans-serif;
+        }
+        #military-toast {
+            position: absolute; left: 50%; top: 84px; transform: translateX(-50%) translateY(-10px);
+            min-width: 310px; max-width: 480px; padding: 13px 16px; border-radius: 14px;
+            background: rgba(10, 15, 18, 0.95); border: 1px solid rgba(0,255,180,0.22);
+            box-shadow: 0 14px 45px rgba(0,0,0,.35); z-index: 50; opacity: 0; transition: .2s ease; pointer-events: none;
+        }
+        #military-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #military-toast .toast-title { font-family: 'Orbitron', monospace; font-size: 14px; color: #00ffb4; font-weight: 800; }
+        #military-toast .toast-message { margin-top: 4px; font-size: 13px; color: rgba(255,255,255,0.78); }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .panel { padding: 12px 14px; border-radius: 12px; }
@@ -497,13 +582,52 @@
                     <span class="icon">💰</span>
                     <span class="amount money" id="money-display">500</span>
                 </div>
-                <div class="resource">
+                <div class="resource resource-health">
                     <span class="icon">❤️</span>
-                    <span class="amount hp" id="hp-display">100</span>
+                    <div class="resource-main">
+                        <div class="resource-head">
+                            <span class="amount hp" id="hp-display">100/100</span>
+                            <span class="loss-text" id="hp-loss-display"></span>
+                        </div>
+                        <div class="health-track" id="health-track">
+                            <div class="health-lost" id="hp-lost-bar"></div>
+                            <div class="health-current" id="hp-bar"></div>
+                        </div>
+                    </div>
                 </div>
-                <div id="hp-bar-container">
-                    <div id="hp-bar" style="width:100%"></div>
+                <div class="resource resource-health">
+                    <span class="icon">⚡</span>
+                    <div class="resource-main">
+                        <div class="resource-head">
+                            <span class="amount stamina" id="stamina-display">100</span>
+                            <span class="sprint-hint">SHIFT · SPRINT</span>
+                        </div>
+                        <div class="health-track stamina-track">
+                            <div class="stamina-current" id="stamina-bar"></div>
+                        </div>
+                    </div>
                 </div>
+                <div class="resource">
+                    <span class="icon">🔫</span>
+                    <span class="amount" id="ammo-display">120/120</span>
+                </div>
+                <div class="resource">
+                    <span class="icon">🎯</span>
+                    <span class="amount" id="weapon-display">T1 • 10 DMG</span>
+                </div>
+            </div>
+
+            <div id="medical-kit-panel" class="medical-kit-panel">
+                <button class="med-item" id="btn-bandage" title="Dùng Bandage - +10 HP capacity">
+                    <span class="med-icon">🩹</span>
+                    <span class="med-meta"><b>BANDAGE</b><small>+10 HP CAP</small></span>
+                    <span class="med-count" id="bandage-count">3</span>
+                </button>
+                <button class="med-item" id="btn-medkit" title="Dùng hộp cấp cứu - khôi phục 100% HP">
+                    <span class="med-icon">⛑️</span>
+                    <span class="med-meta"><b>MEDKIT</b><small>FULL HEAL</small></span>
+                    <span class="med-count" id="medkit-count">1</span>
+                </button>
             </div>
 
             <!-- BOTTOM BUTTONS -->
@@ -524,6 +648,17 @@
                     <span class="icon">📺</span> Xem QC
                     <span class="cost">x2 Tiền</span>
                 </button>
+            </div>
+
+            <div id="military-interaction">
+                <div id="military-interaction-title">COMMAND HQ</div>
+                <div id="military-interaction-desc">Tiến lại gần tòa nhà và nhấn E để sử dụng.</div>
+                <button id="military-interaction-action">E · VÀO KHU</button>
+            </div>
+
+            <div id="military-toast">
+                <div class="toast-title">MILITARY BASE</div>
+                <div class="toast-message"></div>
             </div>
 
             <!-- JOYSTICK -->

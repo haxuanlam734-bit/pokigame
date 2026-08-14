@@ -118,6 +118,27 @@ const Game = {
                 this.showRewardedAd();
             });
         }
+
+        const useMedical = (type) => {
+            const result = type === 'bandage' ? GameState.useBandage() : GameState.useMedkit();
+            this.showMilitaryToast({
+                title: type === 'bandage' ? 'BANDAGE' : 'MEDICAL KIT',
+                message: result.message,
+                success: result.success
+            });
+            if (result.success) GameState.saveGame();
+        };
+
+        const bandageBtn = document.getElementById('btn-bandage');
+        const medkitBtn = document.getElementById('btn-medkit');
+        if (bandageBtn) bandageBtn.addEventListener('click', () => useMedical('bandage'));
+        if (medkitBtn) medkitBtn.addEventListener('click', () => useMedical('medkit'));
+
+        document.addEventListener('keydown', (event) => {
+            if (event.repeat) return;
+            if (event.key === '1') useMedical('bandage');
+            if (event.key === '2') useMedical('medkit');
+        });
     },
     
     /**
@@ -172,6 +193,43 @@ const Game = {
         console.log('✅ Build Mode Input đã sẵn sàng');
     },
     
+    updateMilitaryInteraction: function() {
+        const prompt = document.getElementById('military-interaction');
+        const title = document.getElementById('military-interaction-title');
+        const desc = document.getElementById('military-interaction-desc');
+        const action = document.getElementById('military-interaction-action');
+        if (!prompt || typeof Renderer3D === 'undefined' || !Renderer3D.getNearbyMilitaryInteraction) return;
+
+        const near = Renderer3D.getNearbyMilitaryInteraction(PlayerController.position.x, PlayerController.position.z);
+        this.nearMilitaryInteraction = near;
+        if (!near || GameState.isGameOver) {
+            prompt.classList.remove('visible');
+            return;
+        }
+
+        title.textContent = near.name;
+        desc.textContent = near.description;
+        action.textContent = 'E  ·  VÀO KHU';
+        prompt.classList.add('visible');
+    },
+
+    interactWithNearbyMilitaryBuilding: function() {
+        const near = this.nearMilitaryInteraction;
+        if (!near) return;
+        const result = GameState.interactWithMilitaryBuilding(near.id);
+        this.showMilitaryToast(result);
+    },
+
+    showMilitaryToast: function(result) {
+        const toast = document.getElementById('military-toast');
+        if (!toast) return;
+        toast.querySelector('.toast-title').textContent = result.title || 'MILITARY BASE';
+        toast.querySelector('.toast-message').textContent = result.message || '';
+        toast.classList.add('visible');
+        clearTimeout(this._militaryToastTimer);
+        this._militaryToastTimer = setTimeout(() => toast.classList.remove('visible'), 2600);
+    },
+
     /**
      * Hiển thị quảng cáo có phần thưởng
      */
@@ -211,6 +269,17 @@ const Game = {
      * Setup game over screen
      */
     setupGameOverScreen: function() {
+        document.addEventListener('keydown', (event) => {
+            if ((event.key === 'e' || event.key === 'E') && !event.repeat) {
+                this.interactWithNearbyMilitaryBuilding();
+            }
+        });
+
+        const interactButton = document.getElementById('military-interaction-action');
+        if (interactButton) {
+            interactButton.addEventListener('click', () => this.interactWithNearbyMilitaryBuilding());
+        }
+
         const restartBtn = document.getElementById('restart-button');
         if (restartBtn) {
             restartBtn.addEventListener('click', () => {

@@ -311,8 +311,43 @@ let Renderer3D = {
 
         // 10. Cảnh quan quân sự nhỏ: sandbag, xe quân sự, pallet, container
         this._createBaseProps(cx, cz);
+        this._registerMilitaryInteractions(cx, cz);
 
         console.log('✅ Military Complex hoàn tất!');
+    },
+
+    _registerMilitaryInteractions: function(cx, cz) {
+        this._militaryInteractions = [
+            { id: 'hq', name: 'COMMAND HQ', description: 'Nâng cấp căn cứ và mở thêm công suất kiếm tiền.', x: cx, z: cz - 18, radius: 11 },
+            { id: 'barracks', name: 'BARRACKS', description: 'Tuyển lính gác và tăng khả năng phòng thủ căn cứ.', x: cx - 51 + 6, z: cz - 20 + 6, radius: 10 },
+            { id: 'mess', name: 'MESS HALL', description: 'Ăn uống, hồi stamina và nhận buff di chuyển.', x: cx - 54, z: cz + 25, radius: 9 },
+            { id: 'medical', name: 'MEDICAL', description: 'Hồi đầy HP và nhận lá chắn y tế tạm thời.', x: cx - 25, z: cz + 27, radius: 9 },
+            { id: 'supply', name: 'SUPPLY DEPOT', description: 'Mua ammo và nâng cấp vũ khí hiện tại.', x: cx + 50, z: cz - 18, radius: 10 },
+            { id: 'fuel', name: 'FUEL FARM', description: 'Đổi nhiên liệu thành tiền và tăng thu nhập thụ động.', x: cx + 51, z: cz + 28, radius: 9 },
+            { id: 'motorPool', name: 'MOTOR POOL', description: 'Triệu hồi xe và nâng tốc độ di chuyển.', x: cx + 50, z: cz + 55, radius: 10 },
+            { id: 'lab', name: 'RESEARCH LAB', description: 'Nghiên cứu nâng damage và hiệu suất máy in.', x: cx + 3, z: cz - 59, radius: 11 },
+            { id: 'workshop', name: 'VEHICLE WORKSHOP', description: 'Sửa xe và tăng tốc độ/giảm cooldown phương tiện.', x: cx - 42, z: cz - 58, radius: 10 },
+            { id: 'training', name: 'TRAINING GROUND', description: 'Luyện tập để tăng weapon XP và damage.', x: cx - 42, z: cz + 58, radius: 13 },
+            { id: 'range', name: 'SHOOTING RANGE', description: 'Test súng, hồi ammo và nhận buff accuracy.', x: cx + 8, z: cz + 59, radius: 13 },
+            { id: 'radar', name: 'RADAR STATION', description: 'Quét sóng zombie và phát hiện boss sớm.', x: cx + 72, z: cz - 70, radius: 9 },
+            { id: 'comms', name: 'COMMS TOWER', description: 'Nhận hợp đồng tiếp tế và phần thưởng tiền.', x: cx - 72, z: cz - 70, radius: 9 }
+        ];
+    },
+
+    getNearbyMilitaryInteraction: function(x, z) {
+        if (!Array.isArray(this._militaryInteractions)) return null;
+        let best = null;
+        let bestDist = Infinity;
+        this._militaryInteractions.forEach(item => {
+            const dx = x - item.x;
+            const dz = z - item.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist <= item.radius && dist < bestDist) {
+                best = { ...item, distance: dist };
+                bestDist = dist;
+            }
+        });
+        return best;
     },
 
     // --- Helper để thêm mesh vào danh sách collision ---
@@ -388,112 +423,222 @@ let Renderer3D = {
     _createCommandCenter: function(cx, cz) {
         const group = new THREE.Group();
 
-        // Tầng 1
-        const mat1 = new THREE.MeshPhongMaterial({ color: 0x3a3f47 });
-        const floor1 = new THREE.Mesh(new THREE.BoxGeometry(16, 4, 12), mat1);
-        floor1.position.set(0, 2, 0);
-        floor1.castShadow = true;
-        floor1.receiveShadow = true;
-        group.add(floor1);
-        this._addCollisionMesh(floor1);
+        // Tòa trung tâm lớn hơn hẳn các khu còn lại: 3 tầng, sân trong rộng,
+        // tầng 1 để build minter/conveyor, tầng 2 là command floor, tầng 3 là
+        // operations / VIP floor. Các tầng trên mang tính trình diễn nhưng
+        // vẫn có cầu thang để sau này mở rộng gameplay.
+        const W = 30;
+        const D = 22;
+        const floorH = 3.8;
+        const wallT = 0.65;
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x343a40 });
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x4b555c });
+        const trimMat = new THREE.MeshPhongMaterial({ color: 0x7a8a92 });
+        const darkMat = new THREE.MeshPhongMaterial({ color: 0x20262a });
+        const glassMat = new THREE.MeshPhongMaterial({
+            color: 0x7fe8ff,
+            emissive: 0x2f93a8,
+            emissiveIntensity: 0.3,
+            transparent: true,
+            opacity: 0.72
+        });
 
-        // Tầng 2
-        const mat2 = new THREE.MeshPhongMaterial({ color: 0x4a5059 });
-        const floor2 = new THREE.Mesh(new THREE.BoxGeometry(12, 3.5, 9), mat2);
-        floor2.position.set(0, 5.75, 0);
-        floor2.castShadow = true;
-        floor2.receiveShadow = true;
-        group.add(floor2);
-        this._addCollisionMesh(floor2);
+        const addBox = (geo, mat, x, y, z, collision = true) => {
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+            if (collision) this._addCollisionMesh(mesh);
+            return mesh;
+        };
 
-        // Tầng 3
-        const mat3 = new THREE.MeshPhongMaterial({ color: 0x5a6069 });
-        const floor3 = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 6), mat3);
-        floor3.position.set(0, 9, 0);
-        floor3.castShadow = true;
-        floor3.receiveShadow = true;
-        group.add(floor3);
-        this._addCollisionMesh(floor3);
+        // Sàn 3 tầng (tầng 1 chừa hẳn không gian build).
+        [0.16, floorH + 0.12, floorH * 2 + 0.12].forEach(y => {
+            addBox(new THREE.BoxGeometry(W, 0.28, D), floorMat, 0, y, 0, false);
+        });
 
-        const accentMat = new THREE.MeshPhongMaterial({ color: 0x2e8b57 });
-        const accent = new THREE.Mesh(new THREE.BoxGeometry(16, 0.2, 12), accentMat);
-        accent.position.set(0, 4.1, 0);
-        accent.castShadow = true;
-        accent.receiveShadow = true;
-        group.add(accent);
+        // Tường tầng 1: mặt trước có cửa lớn 7m, phần còn lại tạo cảm giác
+        // đại sảnh mở để đặt máy in tiền/conveyor.
+        const frontSide = (yBase, h) => {
+            const gap = 7.0;
+            const sideW = (W - gap) / 2;
+            addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, -(gap + sideW) / 2, yBase + h / 2, D / 2, true);
+            addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, (gap + sideW) / 2, yBase + h / 2, D / 2, true);
+            // header phía trên cửa
+            addBox(new THREE.BoxGeometry(gap, 0.9, wallT), wallMat, 0, yBase + h - 0.45, D / 2, true);
+        };
+        const fullWall = (x, yBase, z, w, h, d, mat = wallMat) => {
+            addBox(new THREE.BoxGeometry(w, h, d), mat, x, yBase + h / 2, z, true);
+        };
 
-        // Cửa chính
-        const doorMat = new THREE.MeshPhongMaterial({ color: 0x1e272e });
-        const door = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 0.15), doorMat);
-        door.position.set(0, 2.0, 6.1);
-        door.castShadow = true;
-        group.add(door);
+        frontSide(0.28, floorH - 0.2);
+        fullWall(0, 0.28, -D / 2, W, floorH - 0.2, wallT);
+        fullWall(-W / 2, 0.28, 0, wallT, floorH - 0.2, D);
+        fullWall(W / 2, 0.28, 0, wallT, floorH - 0.2, D);
 
-        // Cửa sổ
-        const winMat = new THREE.MeshPhongMaterial({ color: 0x1e272e, emissive: 0x1e272e, emissiveIntensity: 0.15 });
-        for (let i = -1; i <= 1; i += 2) {
-            const win = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.1), winMat);
-            win.position.set(i * 2.5, 6.2, 4.55);
-            win.castShadow = true;
-            group.add(win);
+        // Tầng 2 + tầng 3 khép kín hơn, làm silhouette thật của HQ.
+        for (let level = 1; level <= 2; level++) {
+            const yBase = level * floorH + 0.28;
+            frontSide(yBase, floorH - 0.2);
+            fullWall(0, yBase, -D / 2, W, floorH - 0.2, wallT);
+            fullWall(-W / 2, yBase, 0, wallT, floorH - 0.2, D);
+            fullWall(W / 2, yBase, 0, wallT, floorH - 0.2, D);
         }
 
-        // Radar
-        const radarGroup = new THREE.Group();
-        const baseRadar = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 1.2, 8),
-            new THREE.MeshPhongMaterial({ color: 0x7f8c8d }));
-        baseRadar.position.y = 0.6;
-        baseRadar.castShadow = true;
-        radarGroup.add(baseRadar);
-
-        const dishMat = new THREE.MeshPhongMaterial({ color: 0x95a5a6, side: THREE.DoubleSide });
-        const dish = new THREE.Mesh(new THREE.CircleGeometry(1.6, 16), dishMat);
-        dish.position.y = 1.6;
-        dish.rotation.x = -Math.PI / 4;
-        dish.castShadow = true;
-        radarGroup.add(dish);
-
-        const antMat = new THREE.MeshPhongMaterial({ color: 0x2c3e50 });
-        const ant = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.0, 0.05), antMat);
-        ant.position.set(0, 2.8, 0);
-        ant.castShadow = true;
-        radarGroup.add(ant);
-
-        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6),
-            new THREE.MeshPhongMaterial({ color: 0xe74c3c, emissive: 0xe74c3c, emissiveIntensity: 0.3 }));
-        ball.position.set(0, 3.8, 0);
-        ball.castShadow = true;
-        radarGroup.add(ball);
-
-        radarGroup.position.set(0, 10.5, 0);
-        group.add(radarGroup);
-        this._radar = radarGroup;
-
-        // Cột ăng-ten
-        const towerMat = new THREE.MeshPhongMaterial({ color: 0x7f8c8d });
-        const towerGeo = new THREE.CylinderGeometry(0.2, 0.3, 14, 6);
-        const tower = new THREE.Mesh(towerGeo, towerMat);
-        tower.position.set(6, 7, 4);
-        tower.castShadow = true;
-        group.add(tower);
-        this._addCollisionMesh(tower);
-
-        for (let i = 1; i < 5; i++) {
-            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 0.8),
-                new THREE.MeshPhongMaterial({ color: 0x95a5a6 }));
-            bar.position.set(6, i * 2.8 + 1, 4);
-            bar.castShadow = true;
-            group.add(bar);
+        // Dải cửa kính cho cả 3 tầng.
+        for (let level = 0; level < 3; level++) {
+            const y = 1.75 + level * floorH;
+            const frontZ = D / 2 + 0.02;
+            for (let i = -2; i <= 2; i++) {
+                if (level === 0 && i === 0) continue; // cửa chính tầng 1
+                const win = addBox(new THREE.BoxGeometry(3.2, 1.2, 0.12), glassMat,
+                    i * 4.7, y, frontZ, false);
+                win.castShadow = false;
+            }
+            for (let i = -2; i <= 2; i++) {
+                const winL = addBox(new THREE.BoxGeometry(0.12, 1.1, 3.0), glassMat,
+                    -W / 2 - 0.02, y, i * 3.6, false);
+                const winR = addBox(new THREE.BoxGeometry(0.12, 1.1, 3.0), glassMat,
+                    W / 2 + 0.02, y, i * 3.6, false);
+                winL.castShadow = winR.castShadow = false;
+            }
         }
 
-        const signal = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6),
-            new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 }));
-        signal.position.set(6, 14.2, 4);
-        signal.castShadow = true;
-        group.add(signal);
+        // Cửa chính kiểu military airlock.
+        const doorOuter = addBox(new THREE.BoxGeometry(6.4, 3.0, 0.18), darkMat, 0, 1.62, D / 2 + 0.18, false);
+        doorOuter.castShadow = false;
+        const doorGlow = addBox(new THREE.BoxGeometry(5.2, 2.35, 0.08),
+            new THREE.MeshPhongMaterial({ color: 0x26363a, emissive: 0x4cc9dc, emissiveIntensity: 0.12 }),
+            0, 1.55, D / 2 + 0.29, false);
+        doorGlow.castShadow = false;
+
+        // Mái đua + tầng mái, làm công trình nổi bật từ xa.
+        addBox(new THREE.BoxGeometry(W + 1.8, 0.38, D + 1.8), darkMat, 0, floorH * 3 + 0.35, 0, true);
+        addBox(new THREE.BoxGeometry(18, 1.0, 9), new THREE.MeshPhongMaterial({ color: 0x30373c }), 0, floorH * 3 + 1.0, -0.5, true);
+        addBox(new THREE.BoxGeometry(20, 0.28, 11), trimMat, 0, floorH * 3 + 1.48, -0.5, true);
+
+        // Cờ hiệu + logo HQ trên mặt tiền.
+        const sign = this._createBuildingSign('COMMAND HQ', 0x74e7ff, 8.5, 1.8);
+        sign.position.set(0, 5.9, D / 2 + 0.42);
+        group.add(sign);
+
+        const subSign = this._createBuildingSign('BASE OPERATIONS', 0xf1c40f, 7.3, 1.25);
+        subSign.position.set(0, 2.8, D / 2 + 0.42);
+        group.add(subSign);
+
+        // Nội thất tầng 1: các khu build minter cố định, rộng và thoáng.
+        const interiorPadMat = new THREE.MeshPhongMaterial({ color: 0x263238 });
+        const laneMat = new THREE.MeshPhongMaterial({ color: 0x40545b });
+        const mintGlowMat = new THREE.MeshPhongMaterial({ color: 0x7bed9f, emissive: 0x2ecc71, emissiveIntensity: 0.3 });
+
+        for (let row = 0; row < 2; row++) {
+            for (let col = 0; col < 3; col++) {
+                const x = -8.5 + col * 8.5;
+                const z = -4.0 + row * 7.0;
+                const pad = addBox(new THREE.BoxGeometry(6.8, 0.12, 4.9), interiorPadMat, x, 0.40, z, false);
+                pad.userData = { buildZone: 'minter', slot: `${row}-${col}` };
+
+                const inner = addBox(new THREE.BoxGeometry(5.7, 0.05, 3.8), laneMat, x, 0.48, z, false);
+                inner.userData = { buildZone: 'minter' };
+
+                // Viền slot màu xanh + điểm sáng, báo cho player đây là khu build tiền.
+                for (const edge of [[5.9,0.06,0.08,0],[5.9,0.06,0.08,Math.PI], [0.08,0.06,3.9,0],[0.08,0.06,3.9,0]]) {
+                    // Khung nhẹ; không collision để player đi qua.
+                }
+                const marker = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.22), mintGlowMat);
+                marker.position.set(x - 2.65, 0.58, z - 1.8);
+                marker.castShadow = true;
+                group.add(marker);
+            }
+        }
+
+        // Trục giao thông trong sảnh.
+        addBox(new THREE.BoxGeometry(1.0, 0.05, D - 2.0),
+            new THREE.MeshPhongMaterial({ color: 0x92a1a8 }), 0, 0.55, 1.6, false);
+
+        // Cầu thang bên hông nối lên tầng 2/3 (đẹp và có thể mở gameplay sau).
+        const stairMat = new THREE.MeshPhongMaterial({ color: 0x59666d });
+        for (let level = 0; level < 2; level++) {
+            for (let i = 0; i < 9; i++) {
+                const step = addBox(new THREE.BoxGeometry(4.8, 0.28 + i * 0.04, 0.8), stairMat,
+                    W / 2 - 4.0, 0.62 + level * floorH + i * 0.18, -7.6 + i * 0.85, true);
+                step.rotation.y = 0;
+            }
+        }
+
+        // Hai terminal chức năng ở sảnh.
+        this._createTerminalKiosk(group, -11.0, 1.2, 5.0, 0x54a0ff, 'BASE UPGRADES');
+        this._createTerminalKiosk(group, 11.0, 1.2, 5.0, 0xffc857, 'MONEY CONTROL');
+
+        // Đèn/strips dưới mái.
+        for (let side of [-1, 1]) {
+            const strip = addBox(new THREE.BoxGeometry(W + 0.4, 0.18, 0.18),
+                new THREE.MeshPhongMaterial({ color: 0x64dff0, emissive: 0x33c7df, emissiveIntensity: 0.35 }),
+                0, floorH * 3 + 0.62, side * (D / 2 + 0.16), false);
+            strip.castShadow = false;
+        }
 
         group.position.set(cx, 0, cz);
         this.scene.add(group);
+
+        this._createInteriorBuildSign(cx, cz, W, D);
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.command = {
+            name: 'Command HQ',
+            function: 'Base upgrades + money production hub',
+            buildZone: 'minter'
+        };
+    },
+
+    _createBuildingSign: function(text, color, width = 6, height = 1.4) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#11181d';
+        ctx.fillRect(8, 8, 496, 112);
+        ctx.strokeStyle = '#' + color.toString(16).padStart(6, '0');
+        ctx.lineWidth = 6;
+        ctx.strokeRect(10, 10, 492, 108);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 42px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 256, 66);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        const mat = new THREE.MeshPhongMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
+        mesh.castShadow = false;
+        return mesh;
+    },
+
+    _createInteriorBuildSign: function(cx, cz, width, depth) {
+        const sign = this._createBuildingSign('BUILD MONEY MACHINES', 0x2ecc71, 9.4, 1.1);
+        sign.position.set(cx, 3.8, cz + depth / 2 + 0.36);
+        sign.rotation.y = Math.PI;
+        this.scene.add(sign);
+    },
+
+    _createTerminalKiosk: function(group, x, y, z, color, label) {
+        const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.2), new THREE.MeshPhongMaterial({ color: 0x252c31 }));
+        base.position.set(x, y, z);
+        base.castShadow = true;
+        group.add(base);
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.12), new THREE.MeshPhongMaterial({
+            color,
+            emissive: color,
+            emissiveIntensity: 0.28
+        }));
+        screen.position.set(x, y + 0.78, z - 0.18);
+        screen.castShadow = true;
+        group.add(screen);
+        const sign = this._createBuildingSign(label, color, 3.8, 0.62);
+        sign.position.set(x, y + 1.55, z + 0.06);
+        sign.rotation.x = -0.12;
+        group.add(sign);
     },
 
     _createDoubleWalls: function(cx, cz, radius) {
@@ -865,7 +1010,7 @@ let Renderer3D = {
     },
 
 
-    _createBoxBuilding: function(x, z, width, height, depth, bodyColor, accentColor, labelColor) {
+    _createBoxBuilding: function(x, z, width, height, depth, bodyColor, accentColor, labelColor, labelText) {
         const group = new THREE.Group();
 
         const body = new THREE.Mesh(
@@ -893,6 +1038,12 @@ let Renderer3D = {
         accent.position.set(0, Math.min(height - 0.5, height * 0.75), depth / 2 + 0.14);
         accent.castShadow = true;
         group.add(accent);
+
+        if (labelText) {
+            const label = this._createBuildingSign(labelText, accentColor || 0x74e7ff, Math.min(width - 1.5, 8.0), 0.8);
+            label.position.set(0, Math.min(height - 0.55, height * 0.78), depth / 2 + 0.18);
+            group.add(label);
+        }
 
         const door = new THREE.Mesh(
             new THREE.BoxGeometry(Math.min(2.2, width * 0.18), Math.min(2.8, height * 0.55), 0.12),
@@ -989,11 +1140,13 @@ let Renderer3D = {
     },
 
     _createLargeBarracksArea: function(cx, cz) {
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.barracks = { name: 'Barracks', function: 'Troop housing / future guard NPCs' };
         for (let row = 0; row < 2; row++) {
             for (let col = 0; col < 2; col++) {
                 const x = cx + col * 12;
                 const z = cz + row * 12;
-                this._createBoxBuilding(x, z, 9, 3.6, 7, 0x46504b, 0x6c8f77);
+                this._createBoxBuilding(x, z, 9, 3.6, 7, 0x46504b, 0x6c8f77, 0x9ad1b3, 'BARRACKS');
             }
         }
 
@@ -1015,7 +1168,9 @@ let Renderer3D = {
     },
 
     _createMessHall: function(cx, cz) {
-        this._createBoxBuilding(cx, cz, 15, 4.2, 9, 0x4c574f, 0x8c9d88);
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.mess = { name: 'Mess Hall', function: 'Food / stamina systems' };
+        this._createBoxBuilding(cx, cz, 15, 4.2, 9, 0x4c574f, 0x8c9d88, 0xb7d5c5, 'MESS HALL');
         const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.4, 0.8), new THREE.MeshPhongMaterial({ color: 0x252a2d }));
         chimney.position.set(cx + 4.5, 5.3, cz - 2.0);
         chimney.castShadow = true;
@@ -1023,7 +1178,9 @@ let Renderer3D = {
     },
 
     _createMedicalBlock: function(cx, cz) {
-        this._createBoxBuilding(cx, cz, 14, 4.0, 9, 0x54615d, 0xff5555);
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.medical = { name: 'Medical', function: 'Healing / respawn services' };
+        this._createBoxBuilding(cx, cz, 14, 4.0, 9, 0x54615d, 0xff5555, 0xffffff, 'MEDICAL');
         const crossMat = new THREE.MeshPhongMaterial({ color: 0xf3f6f7, emissive: 0xf3f6f7, emissiveIntensity: 0.08 });
         const v = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.22, 0.28), crossMat);
         const h = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 1.2), crossMat);
@@ -1033,7 +1190,9 @@ let Renderer3D = {
     },
 
     _createLargeSupplyDepot: function(cx, cz) {
-        this._createBoxBuilding(cx, cz, 18, 5.0, 12, 0x51575b, 0xd79b2b);
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.supply = { name: 'Supply Depot', function: 'Ammo / equipment logistics' };
+        this._createBoxBuilding(cx, cz, 18, 5.0, 12, 0x51575b, 0xd79b2b, 0xffd166, 'SUPPLY DEPOT');
         const awning = new THREE.Mesh(new THREE.BoxGeometry(17, 0.25, 4.8), new THREE.MeshPhongMaterial({ color: 0x2b3034 }));
         awning.position.set(cx, 5.2, cz + 8);
         awning.castShadow = true;
@@ -1048,6 +1207,8 @@ let Renderer3D = {
     },
 
     _createFuelFarm: function(cx, cz) {
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.fuel = { name: 'Fuel Farm', function: 'Vehicle fuel / generator economy' };
         const pad = this._createPavedPad(cx, cz, 22, 14, 0x2d3337);
         for (let i = -1; i <= 1; i++) {
             const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 4.2, 24),
@@ -1072,6 +1233,8 @@ let Renderer3D = {
     },
 
     _createMotorPool: function(cx, cz) {
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.motorPool = { name: 'Motor Pool', function: 'Vehicle storage / spawning' };
         this._createPavedPad(cx, cz, 28, 14, 0x2d3337);
         for (let i = -2; i <= 2; i++) {
             const vehicleBody = new THREE.Mesh(new THREE.BoxGeometry(4.3, 1.2, 2.4),
@@ -1094,7 +1257,9 @@ let Renderer3D = {
     },
 
     _createResearchFacility: function(cx, cz) {
-        this._createBoxBuilding(cx, cz, 19, 6.5, 13, 0x35454a, 0x45e0e9, 0x8ef6ff);
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.lab = { name: 'Research Lab', function: 'Zombie research / weapon upgrades' };
+        this._createBoxBuilding(cx, cz, 19, 6.5, 13, 0x35454a, 0x45e0e9, 0x8ef6ff, 'RESEARCH LAB');
         const roofUnit = new THREE.Mesh(new THREE.BoxGeometry(7, 1.0, 4),
             new THREE.MeshPhongMaterial({ color: 0x22282b }));
         roofUnit.position.set(cx, 7.0, cz);
@@ -1111,7 +1276,9 @@ let Renderer3D = {
     },
 
     _createVehicleWorkshop: function(cx, cz) {
-        this._createBoxBuilding(cx, cz, 18, 5.2, 14, 0x4b514f, 0xf4c542);
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.workshop = { name: 'Vehicle Workshop', function: 'Vehicle repair / upgrades' };
+        this._createBoxBuilding(cx, cz, 18, 5.2, 14, 0x4b514f, 0xf4c542, 0xffe082, 'VEHICLE WORKSHOP');
         const shutter = new THREE.Mesh(new THREE.BoxGeometry(7.5, 3.6, 0.18),
             new THREE.MeshPhongMaterial({ color: 0x252b2e }));
         shutter.position.set(cx, 1.9, cz + 7.05);
@@ -1119,6 +1286,8 @@ let Renderer3D = {
     },
 
     _createTrainingGround: function(cx, cz) {
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.training = { name: 'Training Ground', function: 'Weapon practice / aim training' };
         this._createPavedPad(cx, cz, 32, 18, 0x2e3437);
         const sandbagMat = new THREE.MeshPhongMaterial({ color: 0x806a4e });
         for (let i = -3; i <= 3; i++) {
@@ -1144,6 +1313,8 @@ let Renderer3D = {
     },
 
     _createShootingRange: function(cx, cz) {
+        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
+        this._militaryBuildingFunctions.range = { name: 'Shooting Range', function: 'Weapon testing / target practice' };
         this._createPavedPad(cx, cz, 38, 16, 0x282e32);
         const laneMat = new THREE.MeshPhongMaterial({ color: 0xbdc3c7 });
         for (let i = -2; i <= 2; i++) {

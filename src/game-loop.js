@@ -54,6 +54,9 @@ const GameLoop = {
         }
         
         this.updateUI();
+        if (Game && Game.updateMilitaryInteraction) {
+            Game.updateMilitaryInteraction();
+        }
         this.updateFPS(currentTime);
         requestAnimationFrame(this.loop.bind(this));
     },
@@ -111,20 +114,46 @@ const GameLoop = {
             moneyDisplay.textContent = Utils.formatMoney(GameState.money);
         }
 
-        // ---- HP ----
+        // ---- Player HP / permanent HP loss ----
         const hpDisplay = document.getElementById('hp-display');
-        if (hpDisplay) {
-            const hp = Math.ceil(GameState.fortressHP);
-            hpDisplay.textContent = hp;
+        const hpLossDisplay = document.getElementById('hp-loss-display');
+        const hpBar = document.getElementById('hp-bar');
+        const hpLostBar = document.getElementById('hp-lost-bar');
+        if (hpDisplay) hpDisplay.textContent = `${Math.ceil(GameState.playerHP)}/${Math.ceil(GameState.playerMaxHP)}`;
+        if (hpLossDisplay) {
+            const lost = Math.max(0, GameState.playerBaseMaxHP - GameState.playerMaxHP);
+            hpLossDisplay.textContent = lost > 0 ? `-${lost} MAX` : 'FULL';
+        }
+        if (hpBar) {
+            const percent = Math.max(0, Math.min(100, (GameState.playerHP / GameState.playerBaseMaxHP) * 100));
+            hpBar.style.width = percent + '%';
+        }
+        if (hpLostBar) {
+            const lostPercent = Math.max(0, Math.min(100, ((GameState.playerBaseMaxHP - GameState.playerMaxHP) / GameState.playerBaseMaxHP) * 100));
+            hpLostBar.style.width = lostPercent + '%';
         }
 
-        // ---- HP Bar ----
-        const hpBar = document.getElementById('hp-bar');
-        if (hpBar) {
-            const percent = Math.max(0, (GameState.fortressHP / CONFIG.FORTRESS_MAX_HP) * 100);
-            hpBar.style.width = percent + '%';
-            // Màu tự động theo gradient đã định sẵn trong CSS
-        }
+        // ---- Stamina ----
+        const staminaDisplay = document.getElementById('stamina-display');
+        const staminaBar = document.getElementById('stamina-bar');
+        if (staminaDisplay) staminaDisplay.textContent = `${Math.ceil(GameState.stamina)}`;
+        if (staminaBar) staminaBar.style.width = Math.max(0, Math.min(100, (GameState.stamina / GameState.maxStamina) * 100)) + '%';
+
+        // ---- Medical items ----
+        const bandageCount = document.getElementById('bandage-count');
+        const medkitCount = document.getElementById('medkit-count');
+        const bandageBtn = document.getElementById('btn-bandage');
+        const medkitBtn = document.getElementById('btn-medkit');
+        if (bandageCount) bandageCount.textContent = GameState.bandages;
+        if (medkitCount) medkitCount.textContent = GameState.medkits;
+        if (bandageBtn) bandageBtn.classList.toggle('disabled', GameState.bandages <= 0 || GameState.playerMaxHP >= GameState.playerBaseMaxHP);
+        if (medkitBtn) medkitBtn.classList.toggle('disabled', GameState.medkits <= 0);
+
+        // ---- Military stats ----
+        const ammoDisplay = document.getElementById('ammo-display');
+        if (ammoDisplay) ammoDisplay.textContent = `${Math.floor(GameState.ammo)}/${Math.floor(GameState.maxAmmo)}`;
+        const weaponDisplay = document.getElementById('weapon-display');
+        if (weaponDisplay) weaponDisplay.textContent = `T${GameState.weaponTier} • ${GameState.weaponDamage} DMG`;
 
         // ---- Update Buttons ----
         this.updateButtonStates();
