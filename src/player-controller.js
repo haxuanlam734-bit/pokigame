@@ -1,6 +1,10 @@
 /**
  * PLAYER-CONTROLLER.JS - Quản lý nhân vật và camera trong 3D
- * Xử lý di chuyển WASD theo hướng camera, orbit camera, va chạm
+ * Di chuyển WASD theo đúng chuẩn Three.js Vector:
+ *  - forward = camera.getWorldDirection(), flat on XZ plane
+ *  - right = forward cross DefaultUp (cross product)
+ *  - W = +forward, S = -forward, D = +right, A = -right
+ *  - rotation.y = atan2(move.x, move.z)
  */
 
 const PlayerController = {
@@ -21,8 +25,10 @@ const PlayerController = {
     targetMoveAngle: 0,
     hasMovementInput: false,
 
-    mouseX: 0,
-    mouseY: 0,
+    _forwardVec: null,
+    _rightVec: null,
+    _moveVec: null,
+    _camDir: null,
 
     init: function() {
         console.log('🚶 Khởi tạo Player Controller...');
@@ -34,6 +40,11 @@ const PlayerController = {
         this.targetMoveAngle = 0;
         this.hasMovementInput = false;
 
+        this._forwardVec = new THREE.Vector3();
+        this._rightVec = new THREE.Vector3();
+        this._moveVec = new THREE.Vector3();
+        this._camDir = new THREE.Vector3();
+
         console.log('✅ Player Controller khởi tạo xong');
     },
 
@@ -41,29 +52,27 @@ const PlayerController = {
         const deltaSec = deltaTime / 1000;
 
         const moveInput = InputManager.getMovementVector();
+        const inputW = moveInput.y < -0.01;
+        const inputS = moveInput.y > 0.01;
+        const inputA = moveInput.x < -0.01;
+        const inputD = moveInput.x > 0.01;
 
-        const yaw = InputManager.cameraYaw;
-        const forwardX = -Math.sin(yaw);
-        const forwardZ = -Math.cos(yaw);
-        const rightX = Math.cos(yaw);
-        const rightZ = -Math.sin(yaw);
+        this._computeForwardRight();
+        this._moveVec.set(0, 0, 0);
+        if (inputW) this._moveVec.add(this._forwardVec);
+        if (inputS) this._moveVec.sub(this._forwardVec);
+        if (inputD) this._moveVec.add(this._rightVec);
+        if (inputA) this._moveVec.sub(this._rightVec);
 
-        const rawMoveX = forwardX * (-moveInput.y) + rightX * moveInput.x;
-        const rawMoveZ = forwardZ * (-moveInput.y) + rightZ * moveInput.x;
-
-        const inputMag = Math.sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
-        this.hasMovementInput = inputMag > 0.01;
+        this.hasMovementInput = this._moveVec.lengthSq() > 0.0001;
 
         if (this.hasMovementInput) {
-            const moveMag = Math.sqrt(rawMoveX * rawMoveX + rawMoveZ * rawMoveZ);
-            if (moveMag > 0.0001) {
-                const normX = rawMoveX / moveMag;
-                const normZ = rawMoveZ / moveMag;
-                this.targetVelocity.x = normX * this.speed;
-                this.targetVelocity.z = normZ * this.speed;
+            this._moveVec.normalize();
 
-                this.targetMoveAngle = Math.atan2(normX, normZ);
-            }
+            this.targetVelocity.x = this._moveVec.x * this.speed;
+            this.targetVelocity.z = this._moveVec.z * this.speed;
+
+            this.targetMoveAngle = Math.atan2(this._moveVec.x, this._moveVec.z);
         } else {
             this.targetVelocity.x = 0;
             this.targetVelocity.z = 0;
@@ -103,11 +112,27 @@ const PlayerController = {
         );
     },
 
+    _computeForwardRight: function() {
+        if (!Renderer3D || !Renderer3D.camera) {
+            const yaw = InputManager.cameraYaw;
+            this._forwardVec.set(Math.sin(yaw), 0, Math.cos(yaw));
+            this._rightVec.crossVectors(this._forwardVec, THREE.Object3D.DefaultUp).normalize();
+            return;
+        }
+
+        Renderer3D.camera.getWorldDirection(this._camDir);
+        this._forwardVec.copy(this._camDir);
+        this._forwardVec.y = 0;
+        this._forwardVec.normalize();
+
+        this._rightVec.crossVectors(this._forwardVec, THREE.Object3D.DefaultUp).normalize();
+    },
+
     getForwardDirection: function() {
-        const yaw = InputManager.cameraYaw;
+        this._computeForwardRight();
         return {
-            x: -Math.sin(yaw),
-            z: -Math.cos(yaw)
+            x: this._forwardVec.x,
+            z: this._forwardVec.z
         };
     },
 

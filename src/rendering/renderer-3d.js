@@ -72,12 +72,24 @@ let Renderer3D = {
 
         this.createPlayer3D();
 
+        {
+            const defaultYaw = 0;
+            const defaultPitch = 0.3;
+            const horizontalDist = this.cameraDistance * Math.cos(defaultPitch);
+            const verticalOffset = this.cameraDistance * Math.sin(defaultPitch) + this.cameraHeightOffset;
+            const offsetX = horizontalDist * Math.sin(defaultYaw);
+            const offsetZ = horizontalDist * Math.cos(defaultYaw);
+            const px = 300, pz = 300;
+            this.camera.position.set(px - offsetX, verticalOffset, pz - offsetZ);
+            this.camera.lookAt(px, this.cameraLookAtHeight, pz);
+        }
+
         this._smoothedCameraX = this.camera.position.x;
         this._smoothedCameraY = this.camera.position.y;
         this._smoothedCameraZ = this.camera.position.z;
-        this._smoothedLookAtX = 150;
+        this._smoothedLookAtX = 300;
         this._smoothedLookAtY = 20;
-        this._smoothedLookAtZ = 150;
+        this._smoothedLookAtZ = 300;
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
 
@@ -182,8 +194,8 @@ let Renderer3D = {
         const indicatorGeometry = new THREE.ConeGeometry(playerWidth * 0.3, playerWidth * 0.5, 4);
         const indicatorMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
         const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
-        indicator.position.set(0, playerHeight / 2, -playerWidth * 0.6);
-        indicator.rotation.x = Math.PI / 2;
+        indicator.position.set(0, playerHeight / 2, playerWidth * 0.6);
+        indicator.rotation.x = -Math.PI / 2;
         indicator.castShadow = true;
 
         const group = new THREE.Group();
