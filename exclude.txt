@@ -1,0 +1,14 @@
+.git
+.gitignore
+node_modules
+npm-debug.log
+build.bat
+exclude.txt
+fortress-defense-build
+fortress-defense-poki.zip
+README_BUILD.md
+DEPLOYMENT.md
+*.tmp
+*.swp
+Thumbs.db
+.DS_Store

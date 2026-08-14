@@ -1,0 +1,33 @@
+{
+  "name": "fortress-defense-poki",
+  "version": "1.0.0",
+  "description": "Tower Defense game with Zombie Waves - Ready for Poki Platform",
+  "main": "index.html",
+  "scripts": {
+    "start": "http-server -p 8000 -o",
+    "test": "echo \"No test defined\"",
+    "build": "echo \"Game is ready to use as-is (no build required)\""
+  },
+  "keywords": [
+    "tower-defense",
+    "zombie",
+    "strategy",
+    "game",
+    "html5",
+    "canvas",
+    "poki"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/pokigame"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/pokigame/issues"
+  },
+  "homepage": "https://poki.com/en/g/fortress-defense-zombie"
+}

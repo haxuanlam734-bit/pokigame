@@ -1,76 +1,341 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
-  <title>City Parkour: Zombie Escape</title>
-  <script src="https://unpkg.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pháo Đài Chống Zombie - Fortress Defense</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+            background: #000;
+            overflow: hidden;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #game-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        /* UI Overlay */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        .ui-panel {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00ff00;
+            padding: 15px;
+            font-size: 16px;
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        #top-panel {
+            top: 10px;
+            left: 10px;
+            min-width: 250px;
+        }
+        
+        #right-panel {
+            top: 10px;
+            right: 10px;
+            min-width: 180px;
+        }
+        
+        #bottom-panel {
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            text-align: center;
+            min-height: 60px;
+        }
+        
+        .stat-line {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        
+        .stat-label {
+            color: #00ff00;
+        }
+        
+        .stat-value {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        
+        #button-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            pointer-events: auto;
+        }
+        
+        .game-button {
+            padding: 10px 15px;
+            background: #1a4d1a;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .game-button:hover {
+            background: #2d7a2d;
+            border-color: #ffff00;
+            color: #ffff00;
+        }
+        
+        .game-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .game-button.active {
+            background: #00ff00;
+            color: #000;
+        }
+        
+        /* Virtual Joystick */
+        #joystick-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(0, 255, 0, 0.1);
+            border: 2px solid rgba(0, 255, 0, 0.5);
+            border-radius: 50%;
+            pointer-events: auto;
+            display: none;
+            z-index: 50;
+        }
+        
+        #joystick-thumb {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 255, 0, 0.7);
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+        }
+        
+        #joystick-thumb:active {
+            cursor: grabbing;
+        }
+        
+        /* Game Over Screen */
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            pointer-events: auto;
+            color: #00ff00;
+        }
+        
+        .game-over-content {
+            text-align: center;
+            border: 3px solid #00ff00;
+            padding: 40px;
+            background: rgba(0, 20, 0, 0.8);
+        }
+        
+        .game-over-content h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ff0000;
+        }
+        
+        .game-over-stats {
+            font-size: 24px;
+            margin: 20px 0;
+            color: #ffff00;
+        }
+        
+        #restart-button {
+            margin-top: 30px;
+            padding: 15px 30px;
+            font-size: 20px;
+            background: #ff0000;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        #restart-button:hover {
+            background: #ff3333;
+        }
+
+        /* Loading Screen */
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 300;
+            color: #00ff00;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(0, 255, 0, 0.3);
+            border-top: 4px solid #00ff00;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 20px;
+            font-weight: bold;
+        }
+    </style>
 </head>
-<body style="margin:0; overflow:hidden;">
-<script>
-  kaboom();
-  setBackground(0, 0, 0);
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Loading Screen -->
+        <div id="loading-screen">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Đang tải game...</div>
+        </div>
+        
+        <!-- Game Over Screen -->
+        <div id="game-over-screen">
+            <div class="game-over-content">
+                <h1 id="game-over-title">PHÁO ĐÀI TỔN THẤT!</h1>
+                <div class="game-over-stats">
+                    <p>Sóng Zombie: <span id="final-wave">0</span></p>
+                    <p>Tiền tích lũy: <span id="final-money">0</span></p>
+                    <p>Điểm số: <span id="final-score">0</span></p>
+                </div>
+                <button id="restart-button">Chơi Lại</button>
+            </div>
+        </div>
+        
+        <!-- UI Overlay -->
+        <div id="ui-overlay">
+            <!-- Top Panel: Phase & Wave Info -->
+            <div id="top-panel" class="ui-panel">
+                <div class="stat-line">
+                    <span class="stat-label">Pha:</span>
+                    <span class="stat-value" id="phase-display">NGÀY</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Sóng:</span>
+                    <span class="stat-value" id="wave-display">1</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Thời gian:</span>
+                    <span class="stat-value" id="time-display">60s</span>
+                </div>
+            </div>
+            
+            <!-- Right Panel: Resources -->
+            <div id="right-panel" class="ui-panel">
+                <div class="stat-line">
+                    <span class="stat-label">💰 Tiền:</span>
+                    <span class="stat-value" id="money-display">500</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">❤️ HP:</span>
+                    <span class="stat-value" id="hp-display">100</span>
+                </div>
+            </div>
+            
+            <!-- Bottom Panel: Build Buttons -->
+            <div id="bottom-panel" class="ui-panel">
+                <div id="button-container">
+                    <button class="game-button" id="btn-wall">
+                        🧱 Tường (50💰)
+                    </button>
+                    <button class="game-button" id="btn-turret">
+                        🔫 Tháp Pháo (100💰)
+                    </button>
+                    <button class="game-button" id="btn-minter">
+                        💵 Máy In Tiền (80💰)
+                    </button>
+                    <button class="game-button" id="btn-ads">
+                        📺 Xem QC (x2 Tiền)
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Virtual Joystick (Mobile) -->
+            <div id="joystick-container">
+                <div id="joystick-thumb"></div>
+            </div>
+        </div>
+    </div>
 
-  setGravity(1600);
-
-  const player = add([
-    rect(40, 60),
-    pos(100, 0),
-    color(0, 120, 255),
-    area(),
-    body(),
-  ]);
-
-  const floor = add([
-    rect(width(), 60),
-    pos(0, height() - 60),
-    outline(4),
-    area(),
-    body({ isStatic: true }),
-    color(100, 100, 100),
-  ]);
-
-  let score = 0;
-  const scoreLabel = add([
-    text("Score: 0"),
-    pos(24, 24),
-  ]);
-
-  onKeyPress("space", () => {
-    if (player.isGrounded()) {
-      player.jump(650);
-    }
-  });
-
-  function spawnZombie() {
-    add([
-      rect(40, 50),
-      pos(width(), height() - 110),
-      color(255, 50, 50),
-      area(),
-      "zombie",
-      move(LEFT, 350),
-    ]);
-    wait(rand(1.5, 3), spawnZombie);
-  }
-
-  spawnZombie();
-
-  onUpdate(() => {
-    score++;
-    scoreLabel.text = "Score: " + score;
-  });
-
-  player.onCollide("zombie", () => {
-    shake();
-    add([
-      text("GAME OVER\nPress Space to Restart"),
-      pos(width() / 2, height() / 2),
-      anchor("center"),
-    ]);
-    destroy(player);
-    onKeyPress("space", () => {
-      location.reload();
-    });
-  });
-</script>
+    <!-- Poki SDK -->
+    <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
+    
+    <!-- Game Scripts -->
+    <script src="src/config.js"></script>
+    <script src="src/utils.js"></script>
+    <script src="src/poki-manager.js"></script>
+    <script src="src/input-manager.js"></script>
+    <script src="src/game-state.js"></script>
+    <script src="src/entities/tower.js"></script>
+    <script src="src/entities/wall.js"></script>
+    <script src="src/entities/zombie.js"></script>
+    <script src="src/entities/minter.js"></script>
+    <script src="src/rendering/renderer.js"></script>
+    <script src="src/game-loop.js"></script>
+    <script src="src/main.js"></script>
 </body>
 </html>
