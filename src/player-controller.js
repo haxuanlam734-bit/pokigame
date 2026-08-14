@@ -18,6 +18,11 @@ const PlayerController = {
     targetVelocity: { x: 0, z: 0 },
     speed: 6,
 
+    // Kích thước collision của nhân vật trên mặt phẳng XZ.
+    playerRadius: 0.42,
+    playerHeight: 1.8,
+    collisionPadding: 0.06,
+
     movementSmoothness: 8.0,
     playerRotationSmoothness: 10.0,
 
@@ -204,8 +209,11 @@ const PlayerController = {
         this.velocity.x += (this.targetVelocity.x - this.velocity.x) * smoothFactor;
         this.velocity.z += (this.targetVelocity.z - this.velocity.z) * smoothFactor;
 
-        this.position.x += this.velocity.x * deltaSec;
-        this.position.z += this.velocity.z * deltaSec;
+        // Di chuyển có collision. Tách X/Z thành hai bước để nhân vật có thể
+        // trượt dọc theo tường thay vì bị kẹt khi chạy chéo vào góc.
+        const dx = this.velocity.x * deltaSec;
+        const dz = this.velocity.z * deltaSec;
+        this._moveWithCollision(dx, dz);
 
         const mapSize = 500;
         this.position.x = Math.max(0, Math.min(mapSize, this.position.x));
@@ -245,12 +253,6 @@ const PlayerController = {
         Renderer3D.firstPersonThreshold = this.firstPersonThreshold;
         Renderer3D.eyeHeight = this.eyeHeight;
 
-        // Kiểm tra phím F để toggle FPS mode
-        if (InputManager.getFPSToggle()) {
-            Renderer3D.manualFirstPersonMode = !Renderer3D.manualFirstPersonMode;
-            console.log(Renderer3D.manualFirstPersonMode ? '🎮 FPS Mode BẬT' : '🎮 FPS Mode TẮT');
-        }
-
         // Tự động khóa/mở khóa con trỏ chuột theo ngưỡng zoom (FPS Mode)
         this._syncPointerLockWithZoom();
 
@@ -269,6 +271,66 @@ const PlayerController = {
             this.hasMovementInput,
             this.position.y
         );
+    },
+
+    /**
+     * Di chuyển player với collision đơn giản theo AABB của các mesh
+     * được Renderer3D đăng ký. Chỉ lấy các vật thể đủ cao để làm
+     * chướng ngại vật; sàn/base mỏng sẽ không chặn player.
+     */
+    _moveWithCollision: function(dx, dz) {
+        const renderer = (typeof Renderer3D !== 'undefined') ? Renderer3D : null;
+        const meshes = renderer && Array.isArray(renderer._collisionMeshes)
+            ? renderer._collisionMeshes
+            : [];
+
+        const tryMove = (moveX, moveZ) => {
+            if (Math.abs(moveX) < 0.000001 && Math.abs(moveZ) < 0.000001) return;
+
+            const nextX = this.position.x + moveX;
+            const nextZ = this.position.z + moveZ;
+
+            if (!this._playerCollidesAt(nextX, nextZ, meshes)) {
+                this.position.x = nextX;
+                this.position.z = nextZ;
+            }
+        };
+
+        // Ưu tiên trục chính để cho cảm giác trượt mượt dọc theo vật thể.
+        tryMove(dx, 0);
+        tryMove(0, dz);
+    },
+
+    _playerCollidesAt: function(x, z, meshes) {
+        const radius = this.playerRadius + this.collisionPadding;
+        const feetY = this.position.y;
+        const headY = feetY + this.playerHeight;
+
+        for (let i = 0; i < meshes.length; i++) {
+            const mesh = meshes[i];
+            if (!mesh || !mesh.isMesh || !mesh.visible) continue;
+
+            // Tính bounding box theo world transform để bắt cả mesh đã rotate.
+            const box = new THREE.Box3().setFromObject(mesh);
+            if (box.isEmpty()) continue;
+
+            // Bỏ qua mặt sàn / nền mỏng.
+            if (box.max.y - box.min.y < 0.65) continue;
+
+            // Không va chạm với vật thể nằm hoàn toàn trên đầu hoặc dưới chân.
+            if (box.max.y <= feetY + 0.05 || box.min.y >= headY + 0.05) continue;
+
+            const closestX = Math.max(box.min.x, Math.min(x, box.max.x));
+            const closestZ = Math.max(box.min.z, Math.min(z, box.max.z));
+            const diffX = x - closestX;
+            const diffZ = z - closestZ;
+
+            if ((diffX * diffX + diffZ * diffZ) < radius * radius) {
+                return true;
+            }
+        }
+
+        return false;
     },
 
     _computeForwardRight: function() {

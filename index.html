@@ -2,36 +2,38 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Pháo Đài Chống Zombie - Fortress Defense</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ===== RESET ===== */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
         html, body {
             width: 100%;
             height: 100%;
-            font-family: Arial, sans-serif;
-            background: #000;
+            background: #0a0a0f;
             overflow: hidden;
+            font-family: 'Rajdhani', sans-serif;
         }
-        
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
-        
         #game-container {
             width: 100%;
             height: 100%;
             position: relative;
+            background: #0a0a0f;
         }
-        
-        /* UI Overlay */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #0a0a0f;
+        }
+
+        /* ===== UI OVERLAY ===== */
         #ui-overlay {
             position: absolute;
             top: 0;
@@ -40,281 +42,491 @@
             height: 100%;
             pointer-events: none;
             z-index: 100;
+            font-family: 'Rajdhani', sans-serif;
         }
-        
-        .ui-panel {
+
+        /* ===== PANELS ===== */
+        .panel {
             position: absolute;
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #00ff00;
-            padding: 15px;
-            font-size: 16px;
-            color: #00ff00;
-            font-weight: bold;
+            background: rgba(10, 12, 20, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 180, 0.2);
+            border-radius: 16px;
+            padding: 16px 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            pointer-events: auto;
+            color: #e0e8f0;
         }
-        
+
+        /* ===== TOP-LEFT PANEL (Phase & Wave) ===== */
         #top-panel {
-            top: 10px;
-            left: 10px;
-            min-width: 250px;
+            top: 20px;
+            left: 20px;
+            min-width: 200px;
+            border-left: 3px solid #00ffb4;
         }
-        
-        #right-panel {
-            top: 10px;
-            right: 10px;
-            min-width: 180px;
+        #top-panel .phase-badge {
+            display: inline-block;
+            padding: 2px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 1px;
+            background: rgba(0, 255, 180, 0.15);
+            color: #00ffb4;
+            border: 1px solid rgba(0, 255, 180, 0.3);
         }
-        
-        #bottom-panel {
-            bottom: 10px;
-            left: 10px;
-            right: 10px;
-            text-align: center;
-            min-height: 60px;
+        #top-panel .phase-badge.night {
+            background: rgba(255, 75, 75, 0.15);
+            color: #ff4d4d;
+            border-color: rgba(255, 75, 75, 0.3);
         }
-        
-        .stat-line {
-            margin: 5px 0;
+        .stat-row {
             display: flex;
             justify-content: space-between;
-            gap: 20px;
+            align-items: center;
+            margin-top: 6px;
+            font-size: 16px;
+            font-weight: 600;
         }
-        
-        .stat-label {
-            color: #00ff00;
+        .stat-row .label {
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 400;
+            font-size: 14px;
+            letter-spacing: 0.5px;
         }
-        
-        .stat-value {
-            color: #ffff00;
-            font-weight: bold;
+        .stat-row .value {
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 18px;
+            font-family: 'Orbitron', monospace;
+            letter-spacing: 0.5px;
         }
-        
-        #button-container {
+        .stat-row .value.time {
+            color: #ffd700;
+        }
+        #time-display {
+            min-width: 50px;
+            text-align: right;
+        }
+
+        /* ===== TOP-RIGHT PANEL (Resources) ===== */
+        #right-panel {
+            top: 20px;
+            right: 20px;
+            min-width: 170px;
+            border-left: 3px solid #ffd700;
+        }
+        #right-panel .resource {
             display: flex;
+            align-items: center;
             gap: 10px;
+            margin-top: 4px;
+        }
+        #right-panel .resource .icon {
+            font-size: 22px;
+            line-height: 1;
+        }
+        #right-panel .resource .amount {
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
+            font-size: 22px;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+        #right-panel .resource .amount.money {
+            color: #ffd700;
+        }
+        #right-panel .resource .amount.hp {
+            color: #ff4d4d;
+        }
+
+        /* HP Bar */
+        #hp-bar-container {
+            margin-top: 8px;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+        }
+        #hp-bar {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #ff4d4d, #ffd700, #00ffb4);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        /* ===== BOTTOM PANEL (Build Buttons) ===== */
+        #bottom-panel {
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            padding: 14px 24px;
+            background: rgba(10, 12, 20, 0.8);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 255, 180, 0.15);
+            border-radius: 20px;
             flex-wrap: wrap;
             justify-content: center;
+            max-width: 90%;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+        }
+
+        .btn-build {
             pointer-events: auto;
-        }
-        
-        .game-button {
-            padding: 10px 15px;
-            background: #1a4d1a;
-            border: 2px solid #00ff00;
-            color: #00ff00;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: 0.5px;
             cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        
-        .game-button:hover {
-            background: #2d7a2d;
-            border-color: #ffff00;
-            color: #ffff00;
+        .btn-build .icon {
+            font-size: 18px;
         }
-        
-        .game-button:disabled {
-            opacity: 0.5;
+        .btn-build .cost {
+            font-family: 'Orbitron', monospace;
+            font-size: 13px;
+            opacity: 0.8;
+        }
+        .btn-build.available {
+            background: rgba(0, 255, 180, 0.12);
+            color: #00ffb4;
+            border-color: rgba(0, 255, 180, 0.3);
+            box-shadow: 0 0 20px rgba(0, 255, 180, 0.05);
+        }
+        .btn-build.available:hover {
+            background: rgba(0, 255, 180, 0.2);
+            border-color: #00ffb4;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 255, 180, 0.15);
+        }
+        .btn-build.available:active {
+            transform: scale(0.96);
+        }
+        .btn-build.active {
+            background: #00ffb4;
+            color: #0a0a0f;
+            border-color: #00ffb4;
+            box-shadow: 0 0 40px rgba(0, 255, 180, 0.3);
+        }
+        .btn-build.disabled {
+            opacity: 0.35;
             cursor: not-allowed;
+            filter: grayscale(0.5);
         }
-        
-        .game-button.active {
-            background: #00ff00;
-            color: #000;
+        .btn-build.ads {
+            background: rgba(255, 215, 0, 0.12);
+            color: #ffd700;
+            border-color: rgba(255, 215, 0, 0.25);
         }
-        
-        /* Virtual Joystick */
+        .btn-build.ads:hover {
+            background: rgba(255, 215, 0, 0.2);
+            border-color: #ffd700;
+            transform: translateY(-2px);
+        }
+
+        /* ===== JOYSTICK ===== */
         #joystick-container {
             position: absolute;
-            bottom: 20px;
-            left: 20px;
-            width: 120px;
-            height: 120px;
-            background: rgba(0, 255, 0, 0.1);
-            border: 2px solid rgba(0, 255, 0, 0.5);
+            bottom: 100px;
+            left: 24px;
+            width: 110px;
+            height: 110px;
+            background: rgba(0, 255, 180, 0.06);
+            border: 1px solid rgba(0, 255, 180, 0.15);
             border-radius: 50%;
             pointer-events: auto;
             display: none;
             z-index: 50;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 0 40px rgba(0, 255, 180, 0.05), inset 0 0 40px rgba(0, 255, 180, 0.02);
         }
-        
         #joystick-thumb {
             position: absolute;
-            width: 40px;
-            height: 40px;
-            background: rgba(0, 255, 0, 0.7);
-            border: 2px solid #00ff00;
+            width: 44px;
+            height: 44px;
+            background: radial-gradient(circle at 30% 30%, #00ffb4, #008b7a);
             border-radius: 50%;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             cursor: grab;
+            box-shadow: 0 0 30px rgba(0, 255, 180, 0.2);
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        
         #joystick-thumb:active {
             cursor: grabbing;
         }
-        
-        /* Game Over Screen */
+
+        /* ===== GAME OVER SCREEN ===== */
         #game-over-screen {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
             display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 200;
             pointer-events: auto;
-            color: #00ff00;
         }
-        
-        .game-over-content {
+        .go-container {
+            background: rgba(10, 12, 20, 0.9);
+            border: 1px solid rgba(255, 75, 75, 0.3);
+            border-radius: 32px;
+            padding: 48px 56px;
+            max-width: 480px;
+            width: 90%;
             text-align: center;
-            border: 3px solid #00ff00;
-            padding: 40px;
-            background: rgba(0, 20, 0, 0.8);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
         }
-        
-        .game-over-content h1 {
-            font-size: 48px;
-            margin-bottom: 20px;
-            color: #ff0000;
+        .go-title {
+            font-family: 'Orbitron', monospace;
+            font-weight: 900;
+            font-size: 40px;
+            color: #ff4d4d;
+            text-shadow: 0 0 60px rgba(255, 75, 75, 0.2);
+            letter-spacing: 2px;
+            margin-bottom: 8px;
         }
-        
-        .game-over-stats {
-            font-size: 24px;
-            margin: 20px 0;
-            color: #ffff00;
+        .go-sub {
+            color: rgba(255,255,255,0.4);
+            font-size: 16px;
+            margin-bottom: 28px;
         }
-        
+        .go-stats {
+            display: flex;
+            justify-content: space-around;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .go-stat {
+            background: rgba(255,255,255,0.04);
+            border-radius: 16px;
+            padding: 16px 12px;
+            flex: 1;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .go-stat .num {
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
+            font-size: 28px;
+            color: #ffffff;
+        }
+        .go-stat .label {
+            font-size: 13px;
+            color: rgba(255,255,255,0.4);
+            margin-top: 4px;
+        }
+        .go-stat .num.gold {
+            color: #ffd700;
+        }
+        .go-stat .num.green {
+            color: #00ffb4;
+        }
         #restart-button {
-            margin-top: 30px;
-            padding: 15px 30px;
-            font-size: 20px;
-            background: #ff0000;
-            color: #fff;
+            pointer-events: auto;
+            padding: 14px 40px;
             border: none;
+            border-radius: 60px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 20px;
+            letter-spacing: 1px;
+            background: linear-gradient(135deg, #ff4d4d, #cc0000);
+            color: #fff;
             cursor: pointer;
-            font-weight: bold;
+            transition: all 0.25s ease;
+            box-shadow: 0 8px 30px rgba(255, 75, 75, 0.2);
+            width: 100%;
         }
-        
         #restart-button:hover {
-            background: #ff3333;
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 12px 40px rgba(255, 75, 75, 0.3);
         }
 
-        /* Loading Screen */
+        /* ===== LOADING SCREEN ===== */
         #loading-screen {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.95);
+            background: #0a0a0f;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 300;
-            color: #00ff00;
+            color: #00ffb4;
+            font-family: 'Rajdhani', sans-serif;
         }
-
-        .loading-spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid rgba(0, 255, 0, 0.3);
-            border-top: 4px solid #00ff00;
+        .loader-ring {
+            width: 64px;
+            height: 64px;
+            border: 3px solid rgba(0, 255, 180, 0.08);
+            border-top: 3px solid #00ffb4;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
+            animation: spin 1s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+            margin-bottom: 24px;
+            box-shadow: 0 0 40px rgba(0, 255, 180, 0.05);
         }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .loader-text {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            opacity: 0.7;
+        }
 
-        .loading-text {
-            font-size: 20px;
-            font-weight: bold;
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .panel { padding: 12px 14px; border-radius: 12px; }
+            #top-panel { min-width: 140px; }
+            #right-panel { min-width: 120px; }
+            .stat-row { font-size: 13px; }
+            .stat-row .value { font-size: 15px; }
+            #right-panel .resource .amount { font-size: 18px; }
+            #bottom-panel {
+                padding: 10px 16px;
+                gap: 8px;
+                bottom: 16px;
+                border-radius: 16px;
+            }
+            .btn-build {
+                padding: 8px 14px;
+                font-size: 13px;
+                border-radius: 10px;
+            }
+            .btn-build .icon { font-size: 15px; }
+            .btn-build .cost { font-size: 11px; }
+            .go-container { padding: 32px 24px; }
+            .go-title { font-size: 30px; }
+            .go-stats { flex-direction: column; }
+            #joystick-container { width: 90px; height: 90px; bottom: 80px; left: 16px; }
+            #joystick-thumb { width: 36px; height: 36px; }
+        }
+        @media (max-width: 480px) {
+            #top-panel { top: 12px; left: 12px; padding: 10px; min-width: 100px; }
+            #right-panel { top: 12px; right: 12px; padding: 10px; min-width: 80px; }
+            .stat-row { font-size: 11px; }
+            .stat-row .value { font-size: 13px; }
+            #right-panel .resource .amount { font-size: 15px; }
+            .btn-build { font-size: 11px; padding: 6px 10px; gap: 4px; }
+            #bottom-panel { padding: 8px 12px; gap: 6px; }
+            .go-title { font-size: 24px; }
         }
     </style>
 </head>
 <body>
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        
-        <!-- Loading Screen -->
+
+        <!-- LOADING -->
         <div id="loading-screen">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Đang tải game...</div>
+            <div class="loader-ring"></div>
+            <div class="loader-text">ĐANG TRIỂN KHAI CĂN CỨ...</div>
         </div>
-        
-        <!-- Game Over Screen -->
+
+        <!-- GAME OVER -->
         <div id="game-over-screen">
-            <div class="game-over-content">
-                <h1 id="game-over-title">PHÁO ĐÀI TỔN THẤT!</h1>
-                <div class="game-over-stats">
-                    <p>Sóng Zombie: <span id="final-wave">0</span></p>
-                    <p>Tiền tích lũy: <span id="final-money">0</span></p>
-                    <p>Điểm số: <span id="final-score">0</span></p>
+            <div class="go-container">
+                <div class="go-title">CĂN CỨ THẤT THỦ</div>
+                <div class="go-sub">Fortress has fallen</div>
+                <div class="go-stats">
+                    <div class="go-stat">
+                        <div class="num" id="final-wave">0</div>
+                        <div class="label">SÓNG ZOMBIE</div>
+                    </div>
+                    <div class="go-stat">
+                        <div class="num gold" id="final-money">0</div>
+                        <div class="label">TIỀN TÍCH LŨY</div>
+                    </div>
+                    <div class="go-stat">
+                        <div class="num green" id="final-score">0</div>
+                        <div class="label">ĐIỂM SỐ</div>
+                    </div>
                 </div>
-                <button id="restart-button">Chơi Lại</button>
+                <button id="restart-button">⚡ CHƠI LẠI</button>
             </div>
         </div>
-        
-        <!-- UI Overlay -->
+
+        <!-- UI OVERLAY -->
         <div id="ui-overlay">
-            <!-- Top Panel: Phase & Wave Info -->
-            <div id="top-panel" class="ui-panel">
-                <div class="stat-line">
-                    <span class="stat-label">Pha:</span>
-                    <span class="stat-value" id="phase-display">NGÀY</span>
+            <!-- TOP LEFT -->
+            <div id="top-panel" class="panel">
+                <div class="phase-badge" id="phase-badge">☀️ NGÀY</div>
+                <div class="stat-row">
+                    <span class="label">SÓNG</span>
+                    <span class="value" id="wave-display">1</span>
                 </div>
-                <div class="stat-line">
-                    <span class="stat-label">Sóng:</span>
-                    <span class="stat-value" id="wave-display">1</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Thời gian:</span>
-                    <span class="stat-value" id="time-display">60s</span>
+                <div class="stat-row">
+                    <span class="label">THỜI GIAN</span>
+                    <span class="value time" id="time-display">60s</span>
                 </div>
             </div>
-            
-            <!-- Right Panel: Resources -->
-            <div id="right-panel" class="ui-panel">
-                <div class="stat-line">
-                    <span class="stat-label">💰 Tiền:</span>
-                    <span class="stat-value" id="money-display">500</span>
+
+            <!-- TOP RIGHT -->
+            <div id="right-panel" class="panel">
+                <div class="resource">
+                    <span class="icon">💰</span>
+                    <span class="amount money" id="money-display">500</span>
                 </div>
-                <div class="stat-line">
-                    <span class="stat-label">❤️ HP:</span>
-                    <span class="stat-value" id="hp-display">100</span>
+                <div class="resource">
+                    <span class="icon">❤️</span>
+                    <span class="amount hp" id="hp-display">100</span>
                 </div>
-            </div>
-            
-            <!-- Bottom Panel: Build Buttons -->
-            <div id="bottom-panel" class="ui-panel">
-                <div id="button-container">
-                    <button class="game-button" id="btn-wall">
-                        🧱 Tường (50💰)
-                    </button>
-                    <button class="game-button" id="btn-turret">
-                        🔫 Tháp Pháo (100💰)
-                    </button>
-                    <button class="game-button" id="btn-minter">
-                        💵 Máy In Tiền (80💰)
-                    </button>
-                    <button class="game-button" id="btn-ads">
-                        📺 Xem QC (x2 Tiền)
-                    </button>
+                <div id="hp-bar-container">
+                    <div id="hp-bar" style="width:100%"></div>
                 </div>
             </div>
-            
-            <!-- Virtual Joystick (Mobile) -->
+
+            <!-- BOTTOM BUTTONS -->
+            <div id="bottom-panel">
+                <button class="btn-build disabled" id="btn-wall">
+                    <span class="icon">🧱</span> Tường
+                    <span class="cost">50💰</span>
+                </button>
+                <button class="btn-build disabled" id="btn-turret">
+                    <span class="icon">🔫</span> Tháp
+                    <span class="cost">100💰</span>
+                </button>
+                <button class="btn-build disabled" id="btn-minter">
+                    <span class="icon">💵</span> Máy In
+                    <span class="cost">80💰</span>
+                </button>
+                <button class="btn-build ads" id="btn-ads">
+                    <span class="icon">📺</span> Xem QC
+                    <span class="cost">x2 Tiền</span>
+                </button>
+            </div>
+
+            <!-- JOYSTICK -->
             <div id="joystick-container">
                 <div id="joystick-thumb"></div>
             </div>
@@ -323,27 +535,20 @@
 
     <!-- Poki SDK -->
     <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
-
-    <!-- Three.js Library -->
+    <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- Game Scripts - Core -->
+    <!-- Game Scripts -->
     <script src="src/config.js"></script>
     <script src="src/utils.js"></script>
     <script src="src/poki-manager.js"></script>
     <script src="src/input-manager.js"></script>
-
-    <!-- Game Scripts - 3D Rendering -->
     <script src="src/rendering/renderer-3d.js"></script>
     <script src="src/player-controller.js"></script>
-
-    <!-- Game Scripts - 3D Entities -->
     <script src="src/entities/tower-3d.js"></script>
     <script src="src/entities/wall-3d.js"></script>
     <script src="src/entities/zombie-3d.js"></script>
     <script src="src/entities/minter-3d.js"></script>
-
-    <!-- Game Scripts - Core Game Logic -->
     <script src="src/game-state.js"></script>
     <script src="src/game-loop.js"></script>
     <script src="src/main.js"></script>

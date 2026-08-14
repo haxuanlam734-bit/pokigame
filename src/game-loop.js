@@ -15,15 +15,11 @@ const GameLoop = {
      */
     start: function() {
         console.log('▶️ Khởi động Game Loop...');
-        
         this.isRunning = true;
         this.lastFrameTime = Date.now();
         this.frameCount = 0;
         this.lastFpsUpdate = this.lastFrameTime;
-        
-        // Bắt đầu vòng lặp
         requestAnimationFrame(this.loop.bind(this));
-        
         console.log('✅ Game Loop đã khởi động');
     },
     
@@ -42,34 +38,23 @@ const GameLoop = {
     loop: function(timestamp) {
         if (!this.isRunning) return;
         
-        // Tính delta time
         const currentTime = Date.now();
         const deltaTime = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
+        const clampedDeltaTime = Math.min(deltaTime, 50);
         
-        // Giới hạn deltaTime (tránh lag spike)
-        const clampedDeltaTime = Math.min(deltaTime, 50); // Max 50ms per frame
-        
-        // Cập nhật player
         if (PlayerController) {
             PlayerController.update(clampedDeltaTime);
         }
         
-        // Cập nhật game state
         this.update(clampedDeltaTime);
         
-        // Render 3D
         if (Renderer3D) {
             Renderer3D.render();
         }
         
-        // Cập nhật UI
         this.updateUI();
-        
-        // Cập nhật FPS
         this.updateFPS(currentTime);
-        
-        // Tiếp tục vòng lặp
         requestAnimationFrame(this.loop.bind(this));
     },
     
@@ -79,8 +64,6 @@ const GameLoop = {
      */
     update: function(deltaTime) {
         if (!GameState.isRunning) return;
-        
-        // Cập nhật trạng thái game
         GameState.update(deltaTime);
     },
     
@@ -90,15 +73,10 @@ const GameLoop = {
      */
     updateFPS: function(currentTime) {
         this.frameCount++;
-        
-        // Cập nhật mỗi 1 giây
         if (currentTime - this.lastFpsUpdate >= 1000) {
             this.frameRate = this.frameCount;
             this.frameCount = 0;
             this.lastFpsUpdate = currentTime;
-            
-            // Log FPS nếu cần debug
-            // console.log('FPS: ' + this.frameRate);
         }
     },
 
@@ -106,43 +84,54 @@ const GameLoop = {
      * Cập nhật UI display (3D version)
      */
     updateUI: function() {
-        // Cập nhật pha
-        const phaseDisplay = document.getElementById('phase-display');
-        if (phaseDisplay) {
-            phaseDisplay.textContent = GameState.phase === CONFIG.PHASE_DAY ? '☀️ NGÀY' : '🌙 ĐÊM';
+        // ---- Phase ----
+        const phaseBadge = document.getElementById('phase-badge');
+        if (phaseBadge) {
+            const isDay = GameState.phase === CONFIG.PHASE_DAY;
+            phaseBadge.textContent = isDay ? '☀️ NGÀY' : '🌙 ĐÊM';
+            phaseBadge.className = 'phase-badge' + (isDay ? '' : ' night');
         }
 
-        // Cập nhật sóng
+        // ---- Wave ----
         const waveDisplay = document.getElementById('wave-display');
         if (waveDisplay) {
             waveDisplay.textContent = GameState.currentWave;
         }
 
-        // Cập nhật thời gian
+        // ---- Time ----
         const timeDisplay = document.getElementById('time-display');
         if (timeDisplay) {
             const timeLeft = Math.ceil(GameState.phaseTimeRemaining);
             timeDisplay.textContent = timeLeft + 's';
         }
 
-        // Cập nhật tiền
+        // ---- Money ----
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
             moneyDisplay.textContent = Utils.formatMoney(GameState.money);
         }
 
-        // Cập nhật HP pháo đài
+        // ---- HP ----
         const hpDisplay = document.getElementById('hp-display');
         if (hpDisplay) {
-            hpDisplay.textContent = Math.ceil(GameState.fortressHP);
+            const hp = Math.ceil(GameState.fortressHP);
+            hpDisplay.textContent = hp;
         }
 
-        // Cập nhật trạng thái nút
+        // ---- HP Bar ----
+        const hpBar = document.getElementById('hp-bar');
+        if (hpBar) {
+            const percent = Math.max(0, (GameState.fortressHP / CONFIG.FORTRESS_MAX_HP) * 100);
+            hpBar.style.width = percent + '%';
+            // Màu tự động theo gradient đã định sẵn trong CSS
+        }
+
+        // ---- Update Buttons ----
         this.updateButtonStates();
     },
 
     /**
-     * Cập nhật trạng thái nút (enable/disable)
+     * Cập nhật trạng thái nút (enable/disable + style)
      */
     updateButtonStates: function() {
         const buttons = {
@@ -158,27 +147,31 @@ const GameLoop = {
             const def = GameState.getBuildingDef(type);
             const unlocked = GameState.hasUnlockedBuilding(type);
             const affordable = GameState.money >= def.cost;
-            const canUse = unlocked && affordable && GameState.phase === CONFIG.PHASE_DAY;
+            const isDay = GameState.phase === CONFIG.PHASE_DAY;
+            const canUse = unlocked && affordable && isDay;
 
-            btn.disabled = !canUse;
-            btn.style.background = canUse ? '#1a4d1a' : '#3a1a1a';
-            btn.style.borderColor = canUse ? '#00ff00' : '#ff4d4d';
-            btn.style.color = canUse ? '#00ff00' : '#ffaaaa';
-
+            // Xóa các class cũ
+            btn.classList.remove('available', 'active', 'disabled');
+            
             if (GameState.buildingMode && GameState.buildingType === type) {
-                btn.style.background = '#00ff00';
-                btn.style.color = '#000';
+                btn.classList.add('active');
+            } else if (canUse) {
+                btn.classList.add('available');
+            } else {
+                btn.classList.add('disabled');
             }
         }
 
-        // Nút xem quảng cáo luôn bật
+        // Nút quảng cáo luôn sẵn sàng (chỉ disable nếu game over)
         const adsBtn = document.getElementById('btn-ads');
         if (adsBtn) {
-            adsBtn.disabled = false;
-            adsBtn.style.background = '#1a4d1a';
+            if (GameState.isGameOver) {
+                adsBtn.classList.add('disabled');
+            } else {
+                adsBtn.classList.remove('disabled');
+            }
         }
     }
-
 };
 
 // Xuất GameLoop

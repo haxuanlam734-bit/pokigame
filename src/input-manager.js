@@ -17,9 +17,6 @@ const InputManager = {
     mouseX: 0,
     mouseY: 0,
 
-    // --- FPS Toggle (phím F) ---
-    fpsTogglePressed: false,
-
     // --- Camera xoay kiểu Roblox: Pointer Lock + Spherical Orbit ---
     // targetYaw/targetPitch = giá trị "thô" cộng dồn trực tiếp từ movementX/movementY.
     // cameraYaw/cameraPitch = giá trị đã làm mượt (lerp) mỗi frame, đây mới là giá trị
@@ -30,7 +27,8 @@ const InputManager = {
     cameraPitch: 0.3,
 
     // Độ mượt quán tính khi lerp currentYaw/currentPitch -> targetYaw/targetPitch mỗi frame
-    cameraRotateLerp: 0.15,
+    // Tăng từ 0.15 lên 0.25 để camera xoay nhanh hơn và mượt hơn (kiểu Roblox)
+    cameraRotateLerp: 0.25,
 
     // Pitch Clamp: khóa góc nhìn dọc trong khoảng an toàn [-80°, 80°]
     // để nhân vật không bao giờ bị "lật ngược đầu" khi kéo chuột lên/xuống hết cỡ.
@@ -42,6 +40,9 @@ const InputManager = {
     isPointerLocked: false,
     lastMouseX: 0,
     lastMouseY: 0,
+
+    // Tăng độ nhạy từ 0.0025 lên 0.006 – tốc độ xoay nhanh hơn hẳn
+    sensitivity: 0.006,
 
     init: function() {
         console.log('⌨️ Khởi tạo Input Manager...');
@@ -86,11 +87,6 @@ const InputManager = {
             this.keys['space'] = true;
             event.preventDefault(); // Chặn cuộn trang khi nhấn Space
         }
-
-        // Phím F để toggle First-Person View
-        if (key === 'f') {
-            this.fpsTogglePressed = true;
-        }
     },
     
     onKeyUp: function(event) {
@@ -131,13 +127,13 @@ const InputManager = {
             const deltaX = event.movementX || 0;
             const deltaY = event.movementY || 0;
 
-            const sensitivity = 0.0025;
-
+            // Đã dùng biến this.sensitivity = 0.006
             // Yaw: xoay ngang 360 độ tự do, KHÔNG clamp
-            this.targetYaw -= deltaX * sensitivity;
+            this.targetYaw -= deltaX * this.sensitivity;
 
-            // Pitch: Chuột lên/xuống điều khiển nhìn lên/xuống (chuẩn game 3D)
-            this.targetPitch += deltaY * sensitivity;
+            // Pitch: Chuột lên (deltaY âm) -> tăng pitch (nhìn lên)
+            // Chuột xuống (deltaY dương) -> giảm pitch (nhìn xuống)
+            this.targetPitch += deltaY * this.sensitivity;
             this.targetPitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.targetPitch));
             return;
         }
@@ -162,16 +158,6 @@ const InputManager = {
     update: function() {
         this.cameraYaw = this._lerp(this.cameraYaw, this.targetYaw, this.cameraRotateLerp);
         this.cameraPitch = this._lerp(this.cameraPitch, this.targetPitch, this.cameraRotateLerp);
-    },
-
-    /**
-     * Kiểm tra xem phím F (toggle FPS) có được nhấn không
-     * @returns {boolean}
-     */
-    getFPSToggle: function() {
-        const result = this.fpsTogglePressed;
-        this.fpsTogglePressed = false; // Reset sau khi đọc
-        return result;
     },
 
     onMouseUp: function(event) {
