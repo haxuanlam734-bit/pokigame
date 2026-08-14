@@ -24,6 +24,11 @@ let Renderer3D = {
     trees: [],
     rocks: [],
 
+    // Kích thước & tâm bản đồ (dùng chung cho ground + rải cây/đá)
+    groundSize: 600,        // Mặt đất 600x600 (thừa biên so với vùng rải cây 0-500)
+    worldCenterX: 250,
+    worldCenterZ: 250,
+
     cameraSmoothness: 10.0,
     _smoothedCameraX: 0,
     _smoothedCameraY: 0,
@@ -133,16 +138,20 @@ let Renderer3D = {
      * Tạo mặt đất - Xanh rừng rậm
      */
     createGround: function() {
-        const groundGeometry = new THREE.PlaneGeometry(500, 500);
+        const groundGeometry = new THREE.PlaneGeometry(this.groundSize, this.groundSize);
         const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x1d4a21 });
         this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
         this.ground.rotation.x = -Math.PI / 2;
+        // Căn mặt đất trùng với tâm bản đồ (250, 250) - nơi pháo đài/nhân vật/cây cối
+        // được đặt, tránh lệch khiến bản đồ "trôi" ra ngoài viền cỏ.
+        this.ground.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.ground.castShadow = false;
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
 
-        // Thêm grid helper (để debug, màu xanh lá dịu)
-        const gridHelper = new THREE.GridHelper(500, 50, 0x2a6b30, 0x1b5720);
+        // Thêm grid helper (để debug, màu xanh lá dịu) - căn cùng tâm với ground
+        const gridHelper = new THREE.GridHelper(this.groundSize, 60, 0x2a6b30, 0x1b5720);
+        gridHelper.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(gridHelper);
     },
 
@@ -487,11 +496,25 @@ let Renderer3D = {
      * - Tổng 40-60 cây + đá
      */
     createForestEnvironment: function() {
-        const centerX = 250;
-        const centerZ = 250;
-        const safeHalf = 15; // 30m x 30m sạch sẻ ở giữa (250 ± 15)
+        const centerX = this.worldCenterX;
+        const centerZ = this.worldCenterZ;
+        const safeHalf = 15; // 30m x 30m sạch sẻ ở giữa (center ± 15)
 
         const minDistFromCenter = safeHalf + 3;
+
+        // Biên rải cây/đá = đúng vùng người chơi/zombie có thể di chuyển tới
+        // (0..playFieldSize, giống clamp trong player-controller.js /
+        // spawnZombies), trừ hao padding 8m ở mép. Vùng ground rộng hơn
+        // (this.groundSize) chỉ để tạo viền cỏ đệm ngoài vùng chơi được, tránh
+        // trường hợp trước đây ground lệch tâm khiến cây sinh ra ngoài viền cỏ.
+        const playFieldSize = 500;
+        const padding = 8;
+        const minX = 0 + padding;
+        const maxX = playFieldSize - padding;
+        const minZ = 0 + padding;
+        const maxZ = playFieldSize - padding;
+        const spanX = maxX - minX;
+        const spanZ = maxZ - minZ;
 
         const treeCount = 38;
         const rockCount = 17;
@@ -509,7 +532,8 @@ let Renderer3D = {
             const distSqCenter = dx * dx + dz * dz;
             if (distSqCenter < minDistFromCenter * minDistFromCenter) return false;
 
-            if (x < 8 || x > 492 || z < 8 || z > 492) return false;
+            // Luôn phải nằm trong phạm vi nền đất thật (minX..maxX, minZ..maxZ)
+            if (x < minX || x > maxX || z < minZ || z > maxZ) return false;
 
             for (let i = 0; i < positions.length; i++) {
                 const ddx = x - positions[i].x;
@@ -522,36 +546,20 @@ let Renderer3D = {
         function randomPerimeterPosition() {
             const band = Math.random();
             if (band < 0.5) {
-                const r = minDistFromCenter + Math.random() * 30;
+                const maxR = Math.min(spanX, spanZ) / 2;
+                const r = minDistFromCenter + Math.random() * Math.max(1, (maxR - minDistFromCenter));
                 const a = Math.random() * Math.PI * 2;
                 return {
                     x: centerX + Math.cos(a) * r,
                     z: centerZ + Math.sin(a) * r
                 };
             } else {
-                const edge = Math.floor(Math.random() * 4);
-                switch (edge) {
-                    case 0:
-                        return {
-                            x: 8 + Math.random() * 484,
-                            z: 8 + Math.random() * (centerZ - minDistFromCenter - 10)
-                        };
-                    case 1:
-                        return {
-                            x: 8 + Math.random() * 484,
-                            z: centerZ + minDistFromCenter + 10 + Math.random() * (242 - minDistFromCenter - 10)
-                        };
-                    case 2:
-                        return {
-                            x: 8 + Math.random() * (centerX - minDistFromCenter - 10),
-                            z: 8 + Math.random() * 484
-                        };
-                    default:
-                        return {
-                            x: centerX + minDistFromCenter + 10 + Math.random() * (242 - minDistFromCenter - 10),
-                            z: 8 + Math.random() * 484
-                        };
-                }
+                // Rải đều trong toàn bộ phạm vi nền đất (đã trừ vùng an toàn ở
+                // isValidPosition), tránh phụ thuộc số cứng theo kích thước cũ.
+                return {
+                    x: minX + Math.random() * spanX,
+                    z: minZ + Math.random() * spanZ
+                };
             }
         }
 
