@@ -17,6 +17,10 @@ let Renderer3D = {
     ground: null,
     player: null,
 
+    // External GLB assets loaded from src/assets/models.
+    _assetPromises: [],
+    _externalModels: {},
+
     cameraDistance: 20,
     cameraHeightOffset: 8,
     cameraLookAtHeight: 1.2,
@@ -2238,8 +2242,10 @@ Renderer3D.buildGrandBase = function() {
     this._createPerimeterLighting(cx, cz);
     this._createPerimeterDefense(cx, cz, 103);
 
-    // Main HQ: imported GLB replaces the old procedural HQ.
-    this._loadMainHQModel(cx, cz - 9);
+    // Main HQ: use the supplied game-ready GLB as the centerpiece, replacing
+    // the old procedural HQ mesh. The existing HQ gameplay/interior systems
+    // remain active so interaction logic does not break.
+    this._loadMainHQAndTent(cx, cz);
 
     // West residential / medical district.
     this._createApocalypseBarracksArea(cx - 55, cz - 28);
@@ -2269,9 +2275,8 @@ Renderer3D.buildGrandBase = function() {
     this._createApocalypseMainGate(cx, cz + 104);
     this._createApocalypseSecondaryGate(cx, cz - 104);
     this._createApocalypseBaseProps(cx, cz);
-    // Interior is part of the imported HQ model; do not spawn the old procedural interior.
+    this._createHQInterior(cx, cz - 9);
     this._createAutomatedMachineGunNetwork(cx, cz);
-    this._loadTentModel(cx - 78, cz + 48);
 
     this._registerApocalypseMilitaryInteractions(cx, cz);
     console.log('✅ Modern post-apocalypse base complete');
@@ -2291,6 +2296,34 @@ Renderer3D._prepareImportedModel = function(root, options = {}) {
                 mat.needsUpdate = true;
             });
         }
+    });
+    return root;
+};
+
+Renderer3D._fitModelToGround = function(object, targetX, targetZ, rotationY, scale) {
+    object.scale.setScalar(scale);
+    object.rotation.y = rotationY || 0;
+    object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    const minY = box.min.y;
+
+    object.position.x += targetX - center.x;
+    object.position.z += targetZ - center.z;
+    object.position.y += -minY;
+    object.updateMatrixWorld(true);
+};
+
+Renderer3D._prepareExternalModel = function(root, options = {}) {
+    root.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = options.castShadow !== false;
+        child.receiveShadow = options.receiveShadow !== false;
+        if (child.material && child.material.map) child.material.map.anisotropy = 2;
+    });
+    return root;
+};
     });
     return root;
 };
@@ -2391,6 +2424,88 @@ Renderer3D._loadTentModel = function(x, z) {
     }, undefined, (err) => {
         console.error('Không tải được lều/outpost GLB:', url, err);
     });
+};
+
+Renderer3D._loadGLBAsset = function(url, key, options = {}) {
+    if (typeof THREE.GLTFLoader !== 'function') {
+        console.warn('⚠️ GLTFLoader chưa được nạp, bỏ qua asset:', key);
+        return Promise.resolve(null);
+    }
+
+    const loader = new THREE.GLTFLoader();
+    const promise = new Promise((resolve, reject) => {
+        loader.load(
+            url,
+            (gltf) => {
+                const root = this._prepareExternalModel(gltf.scene, options);
+                root.name = options.name || key;
+                this._externalModels[key] = root;
+                this.scene.add(root);
+                resolve(root);
+            },
+            undefined,
+            (error) => {
+                console.error('❌ Không tải được GLB:', key, error);
+                // Asset failure should not kill the whole game.
+                resolve(null);
+            }
+        );
+    });
+
+    this._assetPromises.push(promise);
+    return promise;
+};
+
+Renderer3D._loadMainHQAndTent = function(cx, cz) {
+    const mainHQPromise = this._loadGLBAsset('src/assets/models/model_game_ready.glb', 'mainHQModel', {
+        name: 'MainHQModel',
+        castShadow: true,
+        receiveShadow: true
+    }).then((root) => {
+        if (!root) return null;
+        // model_game_ready.glb is a wide, low-profile structure. This scale
+        // keeps it proportionate to the existing central compound.
+        this._fitModelToGround(root, cx, cz - 9, 0, 0.42);
+        this._createPavedPad(cx, cz - 9, 58, 24, 0x30363b);
+
+        // Keep the gameplay interaction point at the visual HQ center.
+        this._militaryBuildingFunctions.command = {
+            name: 'Command HQ',
+            function: 'Base upgrades + money production hub'
+        };
+        return root;
+    });
+
+    const tentPromise = this._loadGLBAsset('src/assets/models/base_hq.glb', 'militaryHutModel', {
+        name: 'MilitaryHutModel',
+        castShadow: true,
+        receiveShadow: true
+    }).then((root) => {
+        if (!root) return null;
+
+        // Place the hut in the south-west support area, away from the HQ and
+        // the main road lanes. It reads as a field command/survivor outpost.
+        const x = cx - 39;
+        const z = cz + 22;
+        this._fitModelToGround(root, x, z, 0, 0.62);
+        this._createPavedPad(x, z, 17, 25, 0x2a3034);
+
+        // Add a small beacon/light to integrate it into the base layout.
+        const beacon = new THREE.Mesh(
+            new THREE.SphereGeometry(0.18, 8, 8),
+            new THREE.MeshPhongMaterial({
+                color: 0xffc857,
+                emissive: 0xff9f1a,
+                emissiveIntensity: 0.75
+            })
+        );
+        beacon.position.set(x, 4.15, z - 8.0);
+        beacon.castShadow = false;
+        this.scene.add(beacon);
+        return root;
+    });
+
+    return Promise.all([mainHQPromise, tentPromise]);
 };
 
 Renderer3D._createApocalypseCommandCenter = function(cx, cz) {

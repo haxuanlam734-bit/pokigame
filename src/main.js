@@ -60,10 +60,13 @@ const Game = {
      * @returns {Promise} Promise hoàn tất
      */
     waitForAssets: async function() {
-        // Giả sử mọi asset đã tải xong (không có assets bên ngoài)
-        return new Promise(resolve => {
-            setTimeout(resolve, 100);
-        });
+        // Chờ các GLB external assets trong Renderer3D được tải xong.
+        // Nếu một asset lỗi, Renderer3D đã xử lý mềm và resolve(null), nên game
+        // vẫn có thể khởi động thay vì bị kẹt loading.
+        if (typeof Renderer3D !== 'undefined' && Array.isArray(Renderer3D._assetPromises)) {
+            await Promise.allSettled(Renderer3D._assetPromises);
+        }
+        return new Promise(resolve => setTimeout(resolve, 50));
     },
     
     /**
