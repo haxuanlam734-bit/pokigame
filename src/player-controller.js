@@ -56,6 +56,35 @@ const PlayerController = {
     jumpForce: 10,
     isGrounded: true,
 
+    // ==========================================
+    // --- HỆ THỐNG SÚNG VÀ BẮN ZOMBIE (BỔ SUNG) ---
+    // ==========================================
+    weapons: {
+        rifle: {
+            name: "Súng Trường (Assault Rifle)",
+            damage: 30,
+            fireRate: 0.12,       // Bắn nhanh
+            range: 120,
+            maxAmmo: 30,
+            currentAmmo: 30,
+            reloadTime: 2.0,
+            zoomDistance: 0.1     // FPS
+        },
+        sniper: {
+            name: "Súng Tỉa / Súng Ngắm (Sniper Rifle)",
+            damage: 150,          // Bắn 1 phát chết ngay
+            fireRate: 1.2,        // Bắn chậm
+            range: 300,           // Tầm xa cực lớn
+            maxAmmo: 5,
+            currentAmmo: 5,
+            reloadTime: 3.5,
+            zoomDistance: 0.1     // Tự zoom sát để ngắm
+        }
+    },
+    currentWeaponKey: 'rifle',   // Mặc định dùng súng trường
+    isReloading: false,
+    lastShootTime: 0,
+
     _forwardVec: null,
     _rightVec: null,
     _moveVec: null,
@@ -93,6 +122,13 @@ const PlayerController = {
         // con trỏ đã bị nhả ra (ví dụ người chơi nhấn Esc)
         this._onScreenClick = this._onScreenClick.bind(this);
         document.addEventListener('click', this._onScreenClick);
+
+        // --- LẮNG NGHE BẤM PHÍM CHUYỂN SÚNG VÀ NẠP ĐẠN ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '1') this.switchWeapon('rifle');
+            if (e.key === '2') this.switchWeapon('sniper');
+            if (e.key.toLowerCase() === 'r') this.reloadWeapon();
+        });
 
         console.log('✅ Player Controller khởi tạo xong');
     },
@@ -176,11 +212,87 @@ const PlayerController = {
         return Math.max(0, Math.min(1, t));
     },
 
+    // ==========================================
+    // --- LOGIC XỬ LÝ BẮN SÚNG / ĐỔI SÚNG / NẠP ĐẠN ---
+    // ==========================================
+    switchWeapon: function(weaponKey) {
+        if (this.weapons[weaponKey]) {
+            this.currentWeaponKey = weaponKey;
+            const gun = this.weapons[weaponKey];
+            console.log(`🔫 Đã chuyển sang: ${gun.name}`);
+        }
+    },
+
+    reloadWeapon: function() {
+        const gun = this.weapons[this.currentWeaponKey];
+        if (this.isReloading || gun.currentAmmo === gun.maxAmmo) return;
+
+        this.isReloading = true;
+        console.log(`🔄 Đang nạp đạn cho ${gun.name}...`);
+
+        setTimeout(() => {
+            gun.currentAmmo = gun.maxAmmo;
+            this.isReloading = false;
+            console.log(`✅ Nạp đạn xong! [${gun.currentAmmo}/${gun.maxAmmo}]`);
+        }, gun.reloadTime * 1000);
+    },
+
+    shootWeapon: function() {
+        const gun = this.weapons[this.currentWeaponKey];
+        const now = performance.now() / 1000;
+
+        if (this.isReloading) return;
+
+        if (gun.currentAmmo <= 0) {
+            console.log("❌ Hết đạn! Nhấn R để nạp đạn.");
+            this.reloadWeapon();
+            return;
+        }
+
+        if (now - this.lastShootTime < gun.fireRate) return;
+
+        this.lastShootTime = now;
+        gun.currentAmmo--;
+
+        console.log(`💥 BẮN [${gun.name}] - Đạn còn: ${gun.currentAmmo}/${gun.maxAmmo}`);
+
+        // Tia Raycast tiêu diệt Zombie
+        if (!Renderer3D || !Renderer3D.camera) return;
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), Renderer3D.camera);
+
+        const targets = (typeof GameState !== 'undefined' && GameState.zombies) 
+            ? GameState.zombies 
+            : (Renderer3D._collisionMeshes || []);
+
+        const intersects = raycaster.intersectObjects(targets, true);
+
+        if (intersects.length > 0) {
+            const hit = intersects[0];
+            let hitObj = hit.object;
+
+            // Tìm đối tượng Zombie bị trúng đạn
+            let targetEntity = hitObj.userData.takeDamage ? hitObj.userData : 
+                              (hitObj.parent && hitObj.parent.userData.takeDamage ? hitObj.parent.userData : null);
+
+            if (targetEntity && typeof targetEntity.takeDamage === 'function') {
+                targetEntity.takeDamage(gun.damage);
+                console.log(`🎯 Trúng Zombie! Gây ${gun.damage} sát thương.`);
+            }
+        }
+    },
+
     update: function(deltaTime) {
         const deltaSec = deltaTime / 1000;
 
         // Làm mượt (lerp) góc xoay camera trước khi dùng — quán tính Roblox-style
         InputManager.update();
+
+        // --- Kiểm tra bấm giữ chuột trái để bắn súng ---
+        if (InputManager.isMouseDown || InputManager.isKeyPressed('mouse0')) {
+            this.shootWeapon();
+        }
 
         const moveInput = InputManager.getMovementVector();
         const inputW = moveInput.y < -0.01;
