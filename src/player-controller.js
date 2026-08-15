@@ -11,7 +11,7 @@ const PlayerController = {
     position: {
         x: 250,
         y: 0,
-        z: 250
+        z: 280
     },
 
     velocity: { x: 0, z: 0 },
@@ -64,7 +64,9 @@ const PlayerController = {
     init: function() {
         console.log('🚶 Khởi tạo Player Controller...');
 
-        this.position = { x: 250, y: 0, z: 250 };
+        // Spawn ở khoảng sân trước HQ (cách xa mặt tường của model nhà chính
+        // GLB ~15-20 units) để tránh player/camera bị kẹt bên trong khối nhà.
+        this.position = { x: 250, y: 0, z: 280 };
         this.velocity = { x: 0, z: 0 };
         this.targetVelocity = { x: 0, z: 0 };
         this.currentMoveAngle = 0;
@@ -232,6 +234,9 @@ const PlayerController = {
         this.position.x = Math.max(0, Math.min(mapSize, this.position.x));
         this.position.z = Math.max(0, Math.min(mapSize, this.position.z));
 
+        const floorY = (typeof Renderer3D !== 'undefined' && Renderer3D.getPlayerFloorHeight)
+            ? Renderer3D.getPlayerFloorHeight(this.position.x, this.position.z) : 0;
+
         // --- Nhảy (Jump) ---
         if (InputManager.isKeyPressed('space') && this.isGrounded) {
             this.velocityY = this.jumpForce;
@@ -243,11 +248,14 @@ const PlayerController = {
             this.velocityY -= this.gravity * deltaSec;
             this.position.y += this.velocityY * deltaSec;
 
-            if (this.position.y <= 0) {
-                this.position.y = 0;
+            if (this.position.y <= floorY) {
+                this.position.y = floorY;
                 this.velocityY = 0;
                 this.isGrounded = true;
             }
+        } else {
+            // Snapping theo sàn/ramp của HQ giúp có thể thực sự leo các cầu thang.
+            this.position.y = floorY;
         }
 
         if (this.hasMovementInput) {
