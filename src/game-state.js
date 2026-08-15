@@ -263,8 +263,12 @@ const GameState = {
         // Cập nhật máy in tiền
         this.updateMinters(deltaTime);
         
-        // Cập nhật tháp pháo (quay nòng và bắn)
+        // Cập nhật tháp pháo do người chơi xây
         this.updateTowers(deltaTime);
+        // Cập nhật mạng súng máy tự động của đại bản doanh
+        if (typeof Renderer3D !== 'undefined' && Renderer3D.updateAutomatedDefenses) {
+            Renderer3D.updateAutomatedDefenses(deltaTime, this.zombies);
+        }
         
         // Cập nhật zombie
         this.updateZombies(deltaTime);

@@ -17,6 +17,10 @@ let Renderer3D = {
     ground: null,
     player: null,
 
+    // External GLB assets loaded from src/assets/models.
+    _assetPromises: [],
+    _externalModels: {},
+
     cameraDistance: 20,
     cameraHeightOffset: 8,
     cameraLookAtHeight: 1.2,
@@ -43,6 +47,9 @@ let Renderer3D = {
 
     // ---- Danh sách mesh chặn camera (cho collision) ----
     _collisionMeshes: [],
+    _autoDefenseTurrets: [],
+    _autoDefenseTracers: [],
+    _hqInterior: null,
 
     init: function() {
         console.log('🎨 Khởi tạo Renderer 3D (Three.js)...');
@@ -71,6 +78,9 @@ let Renderer3D = {
 
         // Khởi tạo mảng collision
         this._collisionMeshes = [];
+        this._autoDefenseTurrets = [];
+        this._autoDefenseTracers = [];
+        this._hqInterior = null;
 
         this.setupLighting();
         this.createGround();
@@ -333,6 +343,8 @@ let Renderer3D = {
             { id: 'comms', name: 'COMMS TOWER', description: 'Nhận hợp đồng tiếp tế và phần thưởng tiền.', x: cx - 72, z: cz - 70, radius: 9 }
         ];
     },
+
+    updateAutomatedDefenses: function(deltaTime, zombies) { this._updateAutomatedMachineGuns(deltaTime, zombies); },
 
     getNearbyMilitaryInteraction: function(x, z) {
         if (!Array.isArray(this._militaryInteractions)) return null;
@@ -2082,6 +2094,869 @@ let Renderer3D = {
         );
     }
 };
+
+
+/* ============================================================================
+ * APOCALYPSE MILITARY COMPLEX — VISUAL OVERHAUL
+ * Inspired by the user's references: brutalist concrete, asymmetrical towers,
+ * cyan emergency lighting, rooftop control decks, dense functional districts.
+ * ========================================================================== */
+
+Renderer3D._apocalypseMaterials = function() {
+    if (this._apocMats) return this._apocMats;
+    this._apocMats = {
+        concrete: new THREE.MeshPhongMaterial({ color: 0x505962, flatShading: true }),
+        concreteDark: new THREE.MeshPhongMaterial({ color: 0x2a3137, flatShading: true }),
+        concreteLight: new THREE.MeshPhongMaterial({ color: 0x707a80, flatShading: true }),
+        metal: new THREE.MeshPhongMaterial({ color: 0x20272c, flatShading: true }),
+        steel: new THREE.MeshPhongMaterial({ color: 0x85939a, flatShading: true }),
+        military: new THREE.MeshPhongMaterial({ color: 0x39453f, flatShading: true }),
+        olive: new THREE.MeshPhongMaterial({ color: 0x506052, flatShading: true }),
+        glass: new THREE.MeshPhongMaterial({ color: 0x72d9ee, emissive: 0x1c8191, emissiveIntensity: 0.38, transparent: true, opacity: 0.72 }),
+        cyan: new THREE.MeshPhongMaterial({ color: 0x62e8ff, emissive: 0x21c3d8, emissiveIntensity: 0.62 }),
+        cyanSoft: new THREE.MeshPhongMaterial({ color: 0x315e66, emissive: 0x168a99, emissiveIntensity: 0.36 }),
+        amber: new THREE.MeshPhongMaterial({ color: 0xffc857, emissive: 0xc87b0c, emissiveIntensity: 0.28 }),
+        red: new THREE.MeshPhongMaterial({ color: 0xc94a4a, emissive: 0x6f1717, emissiveIntensity: 0.3 }),
+        darkGlass: new THREE.MeshPhongMaterial({ color: 0x10181c, emissive: 0x0b2025, emissiveIntensity: 0.2, transparent: true, opacity: 0.86 }),
+        hazard: new THREE.MeshPhongMaterial({ color: 0xd39b2f, emissive: 0x5a3d0c, emissiveIntensity: 0.14 }),
+        sand: new THREE.MeshPhongMaterial({ color: 0x625648, flatShading: true })
+    };
+    return this._apocMats;
+};
+
+Renderer3D._apocBox = function(group, w, h, d, x, y, z, mat, collision = true) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    if (collision) this._addCollisionMesh(mesh);
+    return mesh;
+};
+
+Renderer3D._apocStrip = function(group, x, y, z, w, d, mat, rotY = 0) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), mat);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rotY;
+    mesh.castShadow = false;
+    group.add(mesh);
+    return mesh;
+};
+
+Renderer3D._apocSlitWindow = function(group, x, y, z, w = 2.2, h = 0.7, depth = 0.08) {
+    return this._apocBox(group, w, h, depth, x, y, z, this._apocalypseMaterials().darkGlass, false);
+};
+
+Renderer3D._apocRoof = function(group, w, d, y, lip = 0.8) {
+    const mats = this._apocalypseMaterials();
+    this._apocBox(group, w + lip, 0.36, d + lip, 0, y, 0, mats.concreteDark, true);
+    this._apocStrip(group, 0, y + 0.25, d / 2 + 0.12, w - 1, 0.16, mats.cyan);
+};
+
+Renderer3D._apocLabel = function(group, text, color, x, y, z, width = 7, height = 0.85, rotY = 0) {
+    const sign = this._createBuildingSign(text, color, width, height);
+    sign.position.set(x, y, z);
+    sign.rotation.y = rotY;
+    group.add(sign);
+    return sign;
+};
+
+Renderer3D._createApocalypseBlock = function(x, z, cfg = {}) {
+    const mats = this._apocalypseMaterials();
+    const w = cfg.width || 16, h = cfg.height || 6, d = cfg.depth || 12;
+    const group = new THREE.Group();
+
+    // Main concrete mass + offset upper volume for the asymmetric post-apocalypse silhouette.
+    this._apocBox(group, w, h, d, 0, h / 2, 0, cfg.bodyMat || mats.concrete, true);
+    if (cfg.upper !== false) {
+        const uw = cfg.upperWidth || Math.max(7, w * 0.54);
+        const uh = cfg.upperHeight || 2.3;
+        const ud = cfg.upperDepth || Math.max(5, d * 0.58);
+        const ux = cfg.upperOffsetX || -w * 0.18;
+        const uz = cfg.upperOffsetZ || -d * 0.08;
+        this._apocBox(group, uw, uh, ud, ux, h + uh / 2 - 0.15, uz, cfg.upperMat || mats.concreteLight, true);
+    }
+
+    // Deep entrance / service bay.
+    const doorW = cfg.doorWidth || Math.min(4.8, w * 0.33);
+    const doorH = cfg.doorHeight || Math.min(3.4, h * 0.62);
+    this._apocBox(group, doorW + 0.65, doorH + 0.65, 0.22, 0, doorH / 2 - 0.05, d / 2 + 0.13, mats.metal, false);
+    this._apocBox(group, doorW, doorH, 0.1, 0, doorH / 2, d / 2 + 0.27, mats.darkGlass, false);
+
+    // Vertical facade ribs.
+    const ribCount = Math.max(3, Math.floor(w / 3.4));
+    for (let i = 0; i < ribCount; i++) {
+        const rx = -w / 2 + 1.5 + i * ((w - 3) / Math.max(1, ribCount - 1));
+        this._apocBox(group, 0.18, h - 0.7, 0.24, rx, h / 2 + 0.05, d / 2 + 0.16, mats.concreteDark, false);
+    }
+
+    // Cyan architectural strip + segmented windows.
+    const stripY = Math.min(h - 0.9, h * 0.73);
+    this._apocStrip(group, 0, stripY, d / 2 + 0.2, w - 1.2, 0.15, cfg.accentMat || mats.cyan);
+    const windows = Math.max(3, Math.floor(w / 3.2));
+    for (let i = 0; i < windows; i++) {
+        const wx = -w / 2 + 1.8 + i * ((w - 3.6) / Math.max(1, windows - 1));
+        this._apocSlitWindow(group, wx, h * 0.54, d / 2 + 0.19, 1.45, 0.48);
+    }
+
+    // Side emergency windows.
+    for (let side of [-1, 1]) {
+        for (let i = 0; i < Math.max(2, Math.floor(d / 4)); i++) {
+            const zz = -d / 2 + 2.4 + i * ((d - 4.8) / Math.max(1, Math.floor(d / 4) - 1));
+            const win = this._apocBox(group, 0.08, 0.55, 1.8, side * (w / 2 + 0.1), h * 0.53, zz, mats.glass, false);
+        }
+    }
+
+    this._apocRoof(group, w, d, h + 0.25, 0.8);
+    this._apocLabel(group, cfg.label || 'FACILITY', cfg.labelColor || 0x62e8ff, 0, Math.min(h - 0.8, h * 0.76), d / 2 + 0.28, Math.min(7.6, w - 1.6), 0.7);
+
+    group.position.set(x, 0, z);
+    this.scene.add(group);
+
+    if (cfg.pad !== false) this._createPavedPad(x, z, w + 5, d + 5, 0x2d3337);
+    return group;
+};
+
+Renderer3D.buildGrandBase = function() {
+    const cx = this.worldCenterX, cz = this.worldCenterZ;
+    const mats = this._apocalypseMaterials();
+    console.log('🏰 Building modern post-apocalypse military complex...');
+
+    this._militaryBaseBounds = { minX: cx - 108, maxX: cx + 108, minZ: cz - 108, maxZ: cz + 108 };
+    this._militaryBuildingFunctions = {};
+
+    // Large compound slab and road grid.
+    this._createConcreteBase(cx, cz, 214);
+    this._createRoadSegment(cx, cz + 1, 206, 9, 'x');
+    this._createRoadSegment(cx, cz - 57, 198, 8, 'x');
+    this._createRoadSegment(cx, cz + 58, 198, 8, 'x');
+    this._createRoadSegment(cx - 55, cz, 8, 202, 'z');
+    this._createRoadSegment(cx + 55, cz, 8, 202, 'z');
+    this._createBasePlaza(cx, cz + 9);
+    this._createPerimeterLighting(cx, cz);
+    this._createPerimeterDefense(cx, cz, 103);
+
+    // Main HQ: use the supplied game-ready GLB as the centerpiece, replacing
+    // the old procedural HQ mesh. The existing HQ gameplay/interior systems
+    // remain active so interaction logic does not break.
+    this._loadMainHQAndTent(cx, cz);
+
+    // West residential / medical district.
+    this._createApocalypseBarracksArea(cx - 55, cz - 28);
+    this._createApocalypseBlock(cx - 38, cz + 36, { width: 18, height: 6.2, depth: 12, label: 'MEDICAL WING', labelColor: 0x69f0ae, bodyMat: mats.concreteLight, upperWidth: 10, upperOffsetX: 2 });
+    this._createMedicalBlock(cx - 38, cz + 36);
+
+    // East logistics / vehicle district.
+    this._createApocalypseSupplyDepot(cx + 53, cz - 30);
+    this._createFuelFarm(cx + 62, cz + 17);
+    this._createApocalypseMotorPool(cx + 49, cz + 57);
+
+    // North technical district.
+    this._createApocalypseBlock(cx - 49, cz - 73, { width: 23, height: 7, depth: 14, label: 'VEHICLE WORKSHOP', labelColor: 0xffc857, bodyMat: mats.military, upperWidth: 12, upperOffsetX: 3 });
+    this._createVehicleWorkshop(cx - 49, cz - 73);
+    this._createApocalypseResearchFacility(cx + 3, cz - 73);
+
+    // South combat/training district.
+    this._createApocalypseTrainingGround(cx - 42, cz + 70);
+    this._createApocalypseShootingRange(cx + 30, cz + 70);
+
+    // Long-range communications and surveillance silhouette.
+    this._createApocalypseRadarStation(cx + 86, cz - 78);
+    this._createApocalypseCommsTower(cx - 84, cz - 78);
+
+    // Guard towers, gatehouse, checkpoints and visual clutter.
+    [[-98,-98],[98,-98],[98,98],[-98,98],[-38,-101],[38,-101],[-38,101],[38,101]].forEach(([dx,dz]) => this._createApocalypseGuardTower(cx+dx, cz+dz));
+    this._createApocalypseMainGate(cx, cz + 104);
+    this._createApocalypseSecondaryGate(cx, cz - 104);
+    this._createApocalypseBaseProps(cx, cz);
+    this._createHQInterior(cx, cz - 9);
+    this._createAutomatedMachineGunNetwork(cx, cz);
+
+    this._registerApocalypseMilitaryInteractions(cx, cz);
+    console.log('✅ Modern post-apocalypse base complete');
+};
+
+Renderer3D._fitModelToGround = function(object, targetX, targetZ, rotationY, scale) {
+    object.scale.setScalar(scale);
+    object.rotation.y = rotationY || 0;
+    object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    const minY = box.min.y;
+
+    object.position.x += targetX - center.x;
+    object.position.z += targetZ - center.z;
+    object.position.y += -minY;
+    object.updateMatrixWorld(true);
+};
+
+Renderer3D._prepareExternalModel = function(root, options = {}) {
+    root.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = options.castShadow !== false;
+        child.receiveShadow = options.receiveShadow !== false;
+        if (child.material && child.material.map) child.material.map.anisotropy = 2;
+    });
+    return root;
+};
+
+Renderer3D._loadGLBAsset = function(url, key, options = {}) {
+    if (typeof THREE.GLTFLoader !== 'function') {
+        console.warn('⚠️ GLTFLoader chưa được nạp, bỏ qua asset:', key);
+        return Promise.resolve(null);
+    }
+
+    const loader = new THREE.GLTFLoader();
+    const promise = new Promise((resolve, reject) => {
+        loader.load(
+            url,
+            (gltf) => {
+                const root = this._prepareExternalModel(gltf.scene, options);
+                root.name = options.name || key;
+                this._externalModels[key] = root;
+                this.scene.add(root);
+                resolve(root);
+            },
+            undefined,
+            (error) => {
+                console.error('❌ Không tải được GLB:', key, error);
+                // Asset failure should not kill the whole game.
+                resolve(null);
+            }
+        );
+    });
+
+    this._assetPromises.push(promise);
+    return promise;
+};
+
+Renderer3D._loadMainHQAndTent = function(cx, cz) {
+    const mainHQPromise = this._loadGLBAsset('src/assets/models/model_game_ready.glb', 'mainHQModel', {
+        name: 'MainHQModel',
+        castShadow: true,
+        receiveShadow: true
+    }).then((root) => {
+        if (!root) return null;
+        // model_game_ready.glb is a wide, low-profile structure. This scale
+        // keeps it proportionate to the existing central compound.
+        this._fitModelToGround(root, cx, cz - 9, 0, 0.42);
+        this._createPavedPad(cx, cz - 9, 58, 24, 0x30363b);
+
+        // Keep the gameplay interaction point at the visual HQ center.
+        this._militaryBuildingFunctions.command = {
+            name: 'Command HQ',
+            function: 'Base upgrades + money production hub'
+        };
+        return root;
+    });
+
+    const tentPromise = this._loadGLBAsset('src/assets/models/base_hq.glb', 'militaryHutModel', {
+        name: 'MilitaryHutModel',
+        castShadow: true,
+        receiveShadow: true
+    }).then((root) => {
+        if (!root) return null;
+
+        // Place the hut in the south-west support area, away from the HQ and
+        // the main road lanes. It reads as a field command/survivor outpost.
+        const x = cx - 39;
+        const z = cz + 22;
+        this._fitModelToGround(root, x, z, 0, 0.62);
+        this._createPavedPad(x, z, 17, 25, 0x2a3034);
+
+        // Add a small beacon/light to integrate it into the base layout.
+        const beacon = new THREE.Mesh(
+            new THREE.SphereGeometry(0.18, 8, 8),
+            new THREE.MeshPhongMaterial({
+                color: 0xffc857,
+                emissive: 0xff9f1a,
+                emissiveIntensity: 0.75
+            })
+        );
+        beacon.position.set(x, 4.15, z - 8.0);
+        beacon.castShadow = false;
+        this.scene.add(beacon);
+        return root;
+    });
+
+    return Promise.all([mainHQPromise, tentPromise]);
+};
+
+Renderer3D._createApocalypseCommandCenter = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    const group = new THREE.Group();
+    const W = 42, D = 30, H = 4.25;
+    const towerW = 9, towerD = 13, towerH = 16.5;
+
+    // Wide lower podium.
+    this._apocBox(group, W, 1.2, D + 4, 0, 0.6, 0, mats.concreteDark, true);
+    this._apocBox(group, 35, 2.1, 25.5, 0, 1.6, 0, mats.concrete, true);
+
+    // Open central three-storey atrium: side masses frame the money-production hall.
+    this._apocBox(group, 8.5, H * 3, 23.5, -14.2, H * 1.5 + 2.0, 0, mats.concrete, true);
+    this._apocBox(group, 8.5, H * 3, 23.5, 14.2, H * 1.5 + 2.0, 0, mats.concrete, true);
+    this._apocBox(group, 28.3, 0.7, 23.7, 0, H * 3 + 2.0, 0, mats.concreteDark, true);
+
+    // Rear command core.
+    this._apocBox(group, 25, H * 2.25, 6.5, 0, H * 1.12 + 1.0, -8.2, mats.concreteLight, true);
+
+    // Two brutalist towers with observation slits, like the reference.
+    for (const side of [-1, 1]) {
+        const tx = side * 18;
+        this._apocBox(group, towerW, towerH, towerD, tx, towerH / 2 + 2.15, -1.3, mats.concreteLight, true);
+        // Tower cap and offset roof.
+        this._apocBox(group, towerW + 1.2, 0.55, towerD + 1.2, tx, towerH + 2.42, -1.3, mats.concreteDark, true);
+        this._apocBox(group, towerW + 2.1, 0.35, towerD + 2.0, tx, towerH + 2.8, -1.3, mats.concrete, true);
+
+        // Vertical cyan strip under tower cap.
+        this._apocStrip(group, tx, towerH - 0.2, -1.3, towerW - 1.5, 0.18, mats.cyan);
+
+        // Dark observation slots on front/rear and one side.
+        for (let y of [5.4, 9.0, 12.6, 16.0]) {
+            this._apocSlitWindow(group, tx, y, 5.37, 4.6, 0.62);
+        }
+        this._apocSlitWindow(group, tx + side * 4.58, 11.3, -1.3, 0.08, 3.9, 3.4);
+    }
+
+    // Central glass atrium and the huge entrance airlock.
+    for (let side of [-1, 1]) {
+        const glass = this._apocBox(group, 7.8, 10.2, 0.22, side * 8.2, H * 1.18 + 1.6, 12.75, mats.glass, false);
+        glass.castShadow = false;
+        const frame = this._apocBox(group, 8.6, 0.24, 0.35, side * 8.2, 8.3, 12.82, mats.cyanSoft, false);
+        frame.castShadow = false;
+    }
+    this._apocBox(group, 10.5, 5.1, 0.3, 0, 2.9, 15.25, mats.metal, false);
+    this._apocBox(group, 8.8, 4.2, 0.16, 0, 2.7, 15.47, mats.darkGlass, false);
+    this._apocStrip(group, 0, 5.2, 15.48, 8.4, 0.16, mats.cyan);
+
+    // Floors visible through atrium + bright edge strips.
+    for (let level = 0; level < 3; level++) {
+        const y = 0.7 + level * H;
+        this._apocBox(group, 25.5, 0.26, 23.2, 0, y, 0, mats.metal, false);
+        this._apocStrip(group, 0, y + 0.22, 11.9, 24.4, 0.12, level === 0 ? mats.amber : mats.cyan);
+    }
+
+    // First floor money machine lanes: 8 slots, open, clean and intentionally spacious.
+    const padMat = new THREE.MeshPhongMaterial({ color: 0x263136 });
+    const laneMat = new THREE.MeshPhongMaterial({ color: 0x39484f });
+    const edgeMat = new THREE.MeshPhongMaterial({ color: 0x48e0b2, emissive: 0x1c9a78, emissiveIntensity: 0.34 });
+    const starts = [-9.2, -3.05, 3.05, 9.2];
+    for (let row = 0; row < 2; row++) {
+        for (let col = 0; col < 4; col++) {
+            const x = starts[col], z = -7 + row * 9.2;
+            const pad = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.14, 6.1), padMat);
+            pad.position.set(x, 2.42, z);
+            pad.receiveShadow = true;
+            group.add(pad);
+            pad.userData = { buildZone: 'minter', slot: `${row}-${col}`, label: `MONEY MACHINE ${row*4+col+1}` };
+            const lane = new THREE.Mesh(new THREE.BoxGeometry(4.1, 0.06, 5.1), laneMat);
+            lane.position.set(x, 2.52, z);
+            group.add(lane);
+            lane.userData = { buildZone: 'minter', slot: `${row}-${col}` };
+            for (const [dx, dz, w, d] of [[-2.2,-2.8,4.4,0.10],[-2.2,2.8,4.4,0.10],[2.2,-2.8,4.4,0.10],[2.2,2.8,4.4,0.10],[-2.45,0,0.10,5.5],[2.45,0,0.10,5.5]]) {
+                const edge = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), edgeMat);
+                edge.position.set(x + dx, 2.57, z + dz);
+                group.add(edge);
+            }
+            const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), mats.cyan);
+            beacon.position.set(x - 1.9, 2.72, z - 2.4);
+            group.add(beacon);
+        }
+    }
+
+    // Upper floors: control rooms / operations windows visible from outside.
+    for (let level = 1; level <= 2; level++) {
+        const y = 4.1 + level * H;
+        for (let side = -1; side <= 1; side += 2) {
+            this._apocBox(group, 7.2, 2.0, 0.22, side * 8.6, y + 0.4, 12.74, mats.glass, false);
+            this._apocBox(group, 7.2, 0.16, 0.22, side * 8.6, y - 0.75, 12.9, mats.cyanSoft, false);
+        }
+    }
+
+    // Rooftop command deck, beacon mast and antenna cluster.
+    this._apocBox(group, 14, 0.55, 8.5, 0, H * 3 + 3.3, 0, mats.concreteDark, true);
+    this._apocBox(group, 11.5, 0.28, 6.0, 0, H * 3 + 3.72, 0, mats.steel, false);
+    this._apocStrip(group, 0, H * 3 + 4.0, 3.02, 9.8, 0.16, mats.cyan);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 8.0, 8), mats.steel);
+    mast.position.set(0, H * 3 + 7.8, 0);
+    mast.castShadow = true;
+    group.add(mast);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 10), mats.red);
+    beacon.position.set(0, H * 3 + 11.8, 0);
+    group.add(beacon);
+    for (let i = -2; i <= 2; i++) {
+        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.4, 6), mats.steel);
+        antenna.position.set(i * 1.7, H * 3 + 6.0, -2.3);
+        group.add(antenna);
+    }
+
+    // Side stairs / ramps.
+    for (let side of [-1, 1]) {
+        for (let i = 0; i < 8; i++) {
+            const step = this._apocBox(group, 4.4, 0.24, 0.85, side * 11.7, 2.5 + i * 0.32, -10 + i * 0.95, mats.steel, true);
+            step.rotation.y = side < 0 ? -0.06 : 0.06;
+        }
+    }
+
+    this._apocLabel(group, 'COMMAND HQ', 0x62e8ff, 0, 10.7, 15.62, 12.0, 1.25);
+    this._apocLabel(group, 'BASE OPERATIONS', 0xffc857, 0, 6.9, 15.64, 9.0, 0.9);
+    this._apocLabel(group, 'MONEY DECK • BUILD HERE', 0x42e8a1, 0, 2.15, 15.7, 14.0, 0.82);
+
+    // Strong architectural diagonals to emulate the carved/brutalist reference.
+    for (let side of [-1, 1]) {
+        const brace = this._apocBox(group, 1.05, 14.5, 1.05, side * 10.8, 9.0, 10.6, mats.concreteDark, true);
+        brace.rotation.z = side * -0.17;
+    }
+
+    group.position.set(cx, 0, cz);
+    this.scene.add(group);
+
+    this._createPavedPad(cx, cz + 1, W + 14, D + 16, 0x30363b);
+    this._militaryBuildingFunctions.command = { name: 'Command HQ', function: 'Base upgrades + money production hub' };
+};
+
+Renderer3D._createHQInterior = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    const g = new THREE.Group();
+    this._hqInterior = { cx, cz, floor1Y: 2.52, floor2Y: 6.77, floor3Y: 11.02 };
+
+    // Soft interior illumination — cool emergency strips + warm task lights.
+    const addPoint = (x,y,z,color,intensity,distance) => {
+        const light = new THREE.PointLight(color, intensity, distance);
+        light.position.set(x,y,z); g.add(light); return light;
+    };
+    [[0,3.0,5.2,0x62e8ff,1.7,16],[0,7.0,3.5,0x62e8ff,1.4,14],[-6,11.0,-4,0xffc857,1.3,13],[7,11.0,-4,0x62e8ff,1.2,12]].forEach(v=>addPoint(...v));
+
+    // Ground-floor security lobby and reception.
+    this._apocLabel(g, 'SECURITY / CHECK-IN', 0x62e8ff, 0, 3.0, 11.92, 11.2, 0.68);
+    this._apocBox(g, 8.5, 1.15, 2.1, 0, 3.05, 7.0, mats.metal, false);
+    this._apocBox(g, 7.6, 0.18, 1.7, 0, 3.64, 7.0, mats.darkGlass, false);
+    for (let x of [-2.6,0,2.6]) {
+        this._apocBox(g, 1.5, 1.6, 0.7, x, 3.95, 6.3, mats.concreteDark, false);
+        this._apocStrip(g, x, 4.45, 5.92, 0.85, 0.06, mats.cyan);
+    }
+    // Two CCTV screens.
+    for (let x of [-4.7,4.7]) {
+        this._apocBox(g, 3.2, 1.6, 0.12, x, 4.9, 7.9, mats.darkGlass, false);
+        this._apocStrip(g, x, 5.0, 7.83, 2.4, 0.08, mats.cyanSoft);
+    }
+
+    // Floor 1: money production hall / armory corridor.
+    this._apocLabel(g, 'MONEY PRODUCTION DECK', 0x42e8a1, 0, 5.28, 11.9, 12.6, 0.66);
+    this._apocBox(g, 0.18, 3.2, 21.0, -11.7, 4.2, -0.2, mats.steel, false);
+    this._apocBox(g, 0.18, 3.2, 21.0, 11.7, 4.2, -0.2, mats.steel, false);
+    // Armory glass cases / weapon racks on side corridors.
+    for (let side of [-1,1]) {
+        for (let i=0;i<5;i++) {
+            const x = side*10.5, z=-7.7+i*3.5;
+            this._apocBox(g, 2.1, 1.85, 0.35, x, 3.65, z, mats.darkGlass, false);
+            this._apocBox(g, 0.12, 1.5, 2.5, side*9.32, 3.6, z, mats.steel, false);
+            for(let k=0;k<3;k++) {
+                const rifle=this._apocBox(g, 0.12, 1.0, 0.12, side*10.5, 3.55+k*0.34, z-0.55+k*0.12, mats.cyanSoft, false);
+                rifle.rotation.z = side*0.1;
+            }
+        }
+    }
+
+    // Central staircase from lobby to upper operations deck.
+    this._createInteriorStair(g, -9.0, 4.95, 6.0, -3.0, 2.52, 4.95, mats);
+    this._createInteriorStair(g, 9.0, -2.0, -7.0, -9.0, 4.95, 6.77, mats);
+    this._createInteriorStair(g, -9.0, -7.0, 0.0, -14.0, 6.77, 11.02, mats);
+
+    // Floor 2 command / intelligence suite.
+    this._apocLabel(g, 'COMMAND & INTELLIGENCE', 0xffc857, 0, 9.55, 11.92, 13.5, 0.66);
+    this._apocBox(g, 13.5, 0.28, 5.2, 0, 6.98, 4.0, mats.steel, false);
+    for (let i=-2;i<=2;i++) {
+        this._apocBox(g, 3.4, 2.0, 0.18, i*3.2, 8.15, 3.4, mats.darkGlass, false);
+        this._apocStrip(g, i*3.2, 8.2, 3.30, 2.5, 0.08, i===0?mats.amber:mats.cyan);
+    }
+    // Central hologram / tactical table.
+    this._apocBox(g, 6.8, 0.9, 3.8, 0, 7.48, -1.5, mats.metal, false);
+    this._apocBox(g, 5.8, 0.15, 2.8, 0, 7.98, -1.5, mats.glass, false);
+    for(let i=-2;i<=2;i++) this._apocStrip(g, i*1.0, 8.08, -1.5, 0.46, 2.1, mats.cyanSoft, 0);
+    // Server cabinets.
+    for(let side of [-1,1]) {
+        for(let i=0;i<4;i++) {
+            const rack=this._apocBox(g, 1.3, 3.4, 1.0, side*9.2, 8.47, -5.9+i*2.1, mats.metal, false);
+            this._apocStrip(g, side*9.2, 8.5, -5.9+i*2.1+0.56, 0.85, 0.06, mats.cyan);
+        }
+    }
+
+    // Floor 3: commander suite / war room / rooftop access.
+    this._apocLabel(g, 'COMMAND DECK / WAR ROOM', 0x62e8ff, 0, 13.8, 11.92, 13.5, 0.66);
+    this._apocBox(g, 14.0, 0.42, 7.0, 0, 11.25, -3.0, mats.metal, false);
+    for(let i=-3;i<=3;i++) {
+        const chair=this._apocBox(g, 1.0, 0.8, 0.8, i*1.9, 11.75, 1.2, mats.military, false);
+        chair.rotation.y = Math.PI;
+    }
+    this._apocBox(g, 10.5, 0.18, 0.65, 0, 13.0, -7.7, mats.darkGlass, false);
+    this._apocStrip(g, 0, 13.12, -7.34, 8.8, 0.08, mats.amber);
+    this._apocLabel(g, 'ROOFTOP ACCESS', 0xffc857, 0, 11.45, -0.5, 9.5, 0.55);
+
+    // Elevator / lift shaft with animated-style door frame.
+    this._apocBox(g, 3.2, 12.3, 2.5, -6.1, 6.15, -10.0, mats.metal, false);
+    for(let floor=0;floor<3;floor++) {
+        const y=2.45+floor*4.25;
+        this._apocBox(g, 2.4, 3.35, 0.12, -6.1, y+1.45, -8.68, mats.darkGlass, false);
+        this._apocStrip(g, -6.1, y+2.8, -8.58, 1.8, 0.08, mats.cyan);
+    }
+    this._apocLabel(g, 'LIFT', 0x42e8a1, -6.1, 3.0, -8.5, 3.5, 0.45);
+
+    // Emergency lighting strips along every level.
+    [2.52,6.77,11.02].forEach((y,idx)=>{
+        this._apocStrip(g, 0, y+0.12, 11.82, 22, 0.07, idx===0?mats.amber:mats.cyan);
+    });
+
+    g.position.set(cx,0,cz);
+    this.scene.add(g);
+};
+
+Renderer3D._createInteriorStair = function(group, x, zStart, zEnd, x2, yStart, yEnd, mats) {
+    const steps=12;
+    for(let i=0;i<steps;i++) {
+        const t=i/(steps-1);
+        const xPos=x+(x2-x)*t;
+        const zPos=zStart+(zEnd-zStart)*t;
+        const y=yStart+(yEnd-yStart)*t;
+        const step=this._apocBox(group, 3.1, 0.22, 0.72, xPos, y, zPos, mats.steel, false);
+        step.rotation.y=Math.atan2(zEnd-zStart,x2-x);
+        const lamp=this._apocBox(group, 2.4, 0.06, 0.06, xPos, y+0.15, zPos-0.3, mats.cyanSoft, false);
+    }
+    const railL=this._apocBox(group, 0.10, 1.2, Math.hypot(x2-x,zEnd-zStart), x, yStart+0.72, (zStart+zEnd)/2, mats.steel, false);
+    railL.rotation.y=Math.atan2(zEnd-zStart,x2-x);
+};
+
+Renderer3D._createAutomatedMachineGunNetwork = function(cx, cz) {
+    this._autoDefenseTurrets = [];
+    const spots = [
+        [-92,92, 12], [92,92,-12], [-92,-92,18], [92,-92,-18],
+        [-70,5,0], [70,5,Math.PI], [0,99,0], [0,-99,Math.PI],
+        [-53,-30,0.4], [53,-30,Math.PI-0.4], [-84,-78,0.3], [86,-78,Math.PI-0.3]
+    ];
+    spots.forEach(([dx,dz,rot])=>this._createAutomatedMachineGun(cx+dx, cz+dz, rot));
+};
+
+Renderer3D._createAutomatedMachineGun = function(x,z,rotationY=0) {
+    const mats=this._apocalypseMaterials();
+    const g=new THREE.Group();
+    this._apocBox(g,2.2,0.55,2.2,0,0.28,0,mats.concreteDark,false);
+    const pedestal=this._apocBox(g,1.1,1.5,1.1,0,1.0,0,mats.steel,false);
+    const head=this._apocBox(g,1.35,0.65,1.15,0,1.95,0,mats.military,false);
+    const barrel=this._apocBox(g,0.32,0.28,2.8,0,1.95,-1.2,mats.metal,false);
+    const barrel2=this._apocBox(g,0.22,0.22,2.65,0.45,1.95,-1.2,mats.metal,false);
+    const sensor=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,8),mats.red);
+    sensor.position.set(0,2.35,0); g.add(sensor);
+    this._apocStrip(g,0,2.18,-0.61,0.9,0.08,mats.cyan);
+    g.position.set(x,0,z); g.rotation.y=rotationY; this.scene.add(g);
+    const turret={x,z,y:1.95,group:g,head,barrel,barrel2,range:29,fireRate:380,damage:8,lastShot:0,angle:rotationY,homeAngle:rotationY};
+    this._autoDefenseTurrets.push(turret);
+    return turret;
+};
+
+Renderer3D._updateAutomatedMachineGuns = function(deltaTime, zombies) {
+    if(!this._autoDefenseTurrets || !zombies) return;
+    const now=Date.now();
+    for(const turret of this._autoDefenseTurrets) {
+        let target=null, best=turret.range;
+        for(const z of zombies) {
+            const d=Math.hypot(z.x-turret.x,z.z-turret.z);
+            if(d<best){best=d;target=z;}
+        }
+        if(target) {
+            const desired=Math.atan2(target.x-turret.x,target.z-turret.z);
+            let diff=desired-turret.angle;
+            while(diff>Math.PI) diff-=Math.PI*2;
+            while(diff<-Math.PI) diff+=Math.PI*2;
+            turret.angle += Math.max(-0.08,Math.min(0.08,diff));
+            const local=turret.angle-turret.homeAngle;
+            turret.head.rotation.y=local;
+            turret.barrel.rotation.y=local;
+            turret.barrel2.rotation.y=local;
+            if(now-turret.lastShot>=turret.fireRate) {
+                if(typeof target.takeDamage==='function') target.takeDamage(turret.damage);
+                turret.lastShot=now;
+                this._createAutoTracer(turret,target);
+            }
+        }
+    }
+};
+
+Renderer3D._createAutoTracer = function(turret,target) {
+    const start=new THREE.Vector3(turret.x,2.0,turret.z);
+    const end=new THREE.Vector3(target.x,1.0,target.z);
+    const geometry=new THREE.BufferGeometry().setFromPoints([start,end]);
+    const material=new THREE.LineBasicMaterial({color:0xffd86b,transparent:true,opacity:0.9});
+    const line=new THREE.Line(geometry,material);
+    this.scene.add(line);
+    setTimeout(()=>{
+        if(line.parent) line.parent.remove(line);
+        geometry.dispose(); material.dispose();
+    },70);
+};
+
+Renderer3D.getPlayerFloorHeight = function(x,z) {
+    if(!this._hqInterior) return 0;
+    const dx=x-this._hqInterior.cx, dz=z-this._hqInterior.cz;
+    // Lobby-to-first-floor ramp.
+    if(Math.abs(dx)<=5.2 && dz>=8.0 && dz<=15.0) return 2.52*(15.0-dz)/7.0;
+    // First floor main hall.
+    if(Math.abs(dx)<=11.0 && dz>=-7.5 && dz<=8.0) return 2.52;
+    // Stair to level 2 on east side.
+    if(dx>=6.8 && dx<=10.9 && dz>=-9.0 && dz<=-1.8) return 2.52 + (6.77-2.52)*((-1.8-dz)/7.2);
+    // Level 2.
+    if(Math.abs(dx)<=10.8 && dz>=-9.0 && dz<=-1.8) return 6.77;
+    // Stair to level 3 on west side.
+    if(dx<=-6.8 && dx>=-10.9 && dz>=-14.0 && dz<=-7.0) return 6.77 + (11.02-6.77)*((-7.0-dz)/7.0);
+    // Level 3 war room.
+    if(Math.abs(dx)<=10.8 && dz>=-14.0 && dz<=-9.0) return 11.02;
+    return 0;
+};
+
+Renderer3D._createApocalypseBarracksArea = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.barracks = { name: 'Barracks', function: 'Troop housing / guard NPCs' };
+    [[0,0],[16,0],[0,15],[16,15]].forEach(([dx,dz], i) => {
+        this._createApocalypseBlock(cx+dx, cz+dz, {
+            width: 13, height: 5.4, depth: 9,
+            label: i === 0 ? 'BARRACKS' : 'QUARTERS',
+            labelColor: 0x9ee7b6,
+            bodyMat: i % 2 ? mats.military : mats.concrete,
+            upperWidth: 7,
+            upperOffsetX: i % 2 ? 2.0 : -1.5,
+            pad: true
+        });
+    });
+    // Covered walkway / lights.
+    const canopy = new THREE.Group();
+    this._apocBox(canopy, 31, 0.26, 2.6, 7.5, 4.3, 26.0, mats.metal, false);
+    for (let i = 0; i < 7; i++) {
+        const p = this._apocBox(canopy, 0.14, 4.0, 0.14, -7 + i * 4.8, 2.0, 24.8, mats.steel, false);
+        const l = this._apocBox(canopy, 0.28, 0.16, 1.4, -7 + i * 4.8, 4.12, 24.8, mats.cyan, false);
+        l.castShadow = false;
+    }
+    canopy.position.set(cx, 0, cz);
+    this.scene.add(canopy);
+};
+
+Renderer3D._createApocalypseSupplyDepot = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.supply = { name: 'Supply Depot', function: 'Ammo, weapons and logistics' };
+    this._createApocalypseBlock(cx, cz, { width: 23, height: 7, depth: 15, label: 'SUPPLY DEPOT', labelColor: 0xffc857, bodyMat: mats.concrete, upperWidth: 12, upperOffsetX: 4 });
+    // Container lanes and loading dock.
+    const colors = [0x57636a, 0x45545c, 0x6a4f3e, 0x3c5662];
+    for (let i = 0; i < 4; i++) {
+        const cont = new THREE.Mesh(new THREE.BoxGeometry(6, 2.4, 2.6), new THREE.MeshPhongMaterial({ color: colors[i] }));
+        cont.position.set(cx - 8.5 + i * 5.7, 1.2, cz + 11.0);
+        cont.rotation.y = i % 2 ? 0.02 : -0.01;
+        cont.castShadow = true; cont.receiveShadow = true;
+        this.scene.add(cont); this._addCollisionMesh(cont);
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.08, 0.16), mats.amber);
+        stripe.position.set(cont.position.x, 2.15, cont.position.z - 1.35);
+        this.scene.add(stripe);
+    }
+};
+
+Renderer3D._createApocalypseMotorPool = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.motorPool = { name: 'Motor Pool', function: 'Vehicle storage / spawning' };
+    this._createApocalypseBlock(cx, cz, { width: 28, height: 6.8, depth: 16, label: 'MOTOR POOL', labelColor: 0x62e8ff, bodyMat: mats.military, upperWidth: 14, upperOffsetX: -4 });
+    for (let i = -2; i <= 2; i++) {
+        const vehicle = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.15, 2.2), new THREE.MeshPhongMaterial({ color: i % 2 ? 0x536256 : 0x3e4b43 }));
+        vehicle.position.set(cx + i * 5.0, 0.85, cz + 11.0); vehicle.castShadow = true;
+        this.scene.add(vehicle);
+        for (const dx of [-1.35, 1.35]) {
+            const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,0.28,10), mats.metal);
+            wheel.rotation.z = Math.PI/2; wheel.position.set(cx + i*5 + dx, 0.45, cz + 11.0);
+            this.scene.add(wheel);
+        }
+    }
+};
+
+Renderer3D._createApocalypseResearchFacility = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.lab = { name: 'Research Lab', function: 'Zombie research / weapon upgrades' };
+    this._createApocalypseBlock(cx, cz, { width: 24, height: 7.2, depth: 15, label: 'RESEARCH LAB', labelColor: 0x65ecff, bodyMat: mats.concreteLight, upperWidth: 14, upperOffsetX: -3 });
+    // Containment tanks.
+    for (let i = -2; i <= 2; i++) {
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 4.0, 18), new THREE.MeshPhongMaterial({ color: 0x203037, transparent:true, opacity:0.95 }));
+        tank.position.set(cx + i * 3.2, 2.0, cz + 11.0); tank.castShadow = true;
+        this.scene.add(tank);
+        const fluid = new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.62,2.5,16), new THREE.MeshPhongMaterial({ color:0x52d7e8, emissive:0x1c7c89, emissiveIntensity:0.5, transparent:true, opacity:0.62 }));
+        fluid.position.set(cx + i*3.2, 1.55, cz + 11.0); this.scene.add(fluid);
+    }
+};
+
+Renderer3D._createApocalypseTrainingGround = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.training = { name: 'Training Ground', function: 'Weapon practice / aim training' };
+    this._createPavedPad(cx, cz, 38, 24, 0x2a3034);
+    this._createApocObstacleCourse(cx, cz);
+    for (let i = -2; i <= 2; i++) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.0, 0.16), mats.steel);
+        post.position.set(cx + i * 6.4, 1.5, cz + 8); this.scene.add(post);
+        const target = new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,0.18,18), mats.ambient || new THREE.MeshPhongMaterial({color:0xe0e5e7}));
+        target.rotation.x = Math.PI/2; target.position.set(cx+i*6.4,2.2,cz+8); this.scene.add(target);
+    }
+    this._apocLabel(this.scene, 'TRAINING GROUND', 0x9ee7b6, cx, 0.1, cz - 10.6, 9, 0.8);
+};
+
+Renderer3D._createApocalypseShootingRange = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.range = { name: 'Shooting Range', function: 'Weapon testing / target practice' };
+    this._createPavedPad(cx, cz, 42, 22, 0x252b2e);
+    for (let lane = -2; lane <= 2; lane++) {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 18), mats.steel);
+        line.position.set(cx + lane*7.5, 0.18, cz); this.scene.add(line);
+        const target = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.8, 0.20), mats.darkGlass);
+        target.position.set(cx + lane*7.5, 1.4, cz + 7.5); this.scene.add(target);
+        this._addCollisionMesh(target);
+        this._apocStrip(this.scene, cx + lane*7.5, 2.8, cz+7.66, 1.7, 0.10, mats.cyan);
+    }
+    this._apocLabel(this.scene, 'LIVE FIRE', 0xff6b6b, cx, 3.5, cz - 10.8, 7.0, 0.8);
+};
+
+Renderer3D._createApocObstacleCourse = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    for (let i = -2; i <= 2; i++) {
+        const block = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1 + Math.abs(i)*0.25, 1.2), mats.concreteDark);
+        block.position.set(cx + i*5.5, block.geometry.parameters.height/2, cz - 4); block.castShadow = true;
+        this.scene.add(block); this._addCollisionMesh(block);
+    }
+    for (let i = -2; i <= 2; i++) {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.10,2.4,6), mats.steel);
+        pole.position.set(cx + i*4.5, 1.2, cz - 8); this.scene.add(pole);
+        const rope = new THREE.Mesh(new THREE.BoxGeometry(3.8,0.05,0.05), mats.amber);
+        rope.position.set(cx + i*4.5, 2.25, cz - 8); this.scene.add(rope);
+    }
+};
+
+Renderer3D._createApocalypseRadarStation = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.radar = { name: 'Radar Station', function: 'Detect zombie waves / players' };
+    const base = this._apocBox(new THREE.Group(), 10, 0.6, 10, 0, 0.3, 0, mats.concreteDark, false);
+    const group = base.parent;
+    // Easier: create dedicated group after base helper side effect.
+    const g = new THREE.Group();
+    this._apocBox(g, 10, 0.6, 10, 0, 0.3, 0, mats.concreteDark, true);
+    this._apocBox(g, 2.0, 10, 2.0, 0, 5.3, 0, mats.steel, true);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(3.7, 20, 12, 0, Math.PI), new THREE.MeshPhongMaterial({ color: 0x7f8c8d, flatShading:true }));
+    dish.position.set(0,10.7,0); dish.rotation.x = -Math.PI/2.6; dish.castShadow = true; g.add(dish);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,8,8), mats.cyan);
+    beam.position.set(0,14.5,0); g.add(beam);
+    this._apocLabel(g,'RADAR',0x62e8ff,0,2.0,5.15,5.6,0.72);
+    g.position.set(cx,0,cz); this.scene.add(g);
+};
+
+Renderer3D._createApocalypseCommsTower = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.comms = { name: 'Comms Tower', function: 'Contracts / supply dispatch' };
+    const g = new THREE.Group();
+    const pts = [[-2,-2],[2,-2],[2,2],[-2,2]];
+    pts.forEach(([x,z])=>this._apocBox(g,0.18,18,0.18,x,9,z,mats.steel,true));
+    for (let y=3;y<=16;y+=3) {
+        this._apocBox(g,4.6,0.12,0.12,0,y,-2,mats.steel,false);
+        this._apocBox(g,4.6,0.12,0.12,0,y,2,mats.steel,false);
+    }
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.3,8,8), mats.red); beacon.position.set(0,18.4,0); g.add(beacon);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3,0.06,8,32), mats.cyan); ring.rotation.x=Math.PI/2; ring.position.set(0,13.4,0); g.add(ring);
+    this._apocLabel(g,'COMMS',0xffc857,0,2.0,4.9,6.0,0.72);
+    g.position.set(cx,0,cz); this.scene.add(g);
+};
+
+Renderer3D._createApocalypseGuardTower = function(x,z) {
+    const mats = this._apocalypseMaterials();
+    const g = new THREE.Group();
+    this._apocBox(g,4.2,7.8,4.2,0,3.9,0,mats.concrete,true);
+    this._apocBox(g,5.0,0.45,5.0,0,8.0,0,mats.concreteDark,true);
+    this._apocBox(g,3.8,1.6,3.8,0,8.85,0,mats.concreteLight,true);
+    for (let side of [-1,1]) {
+        this._apocSlitWindow(g,side*1.91,8.8,0,0.08,0.7,3.0);
+    }
+    this._apocStrip(g,0,8.02,0,4.2,0.16,mats.cyan);
+    const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.20,8,8),mats.amber);lamp.position.set(0,9.8,0);g.add(lamp);
+    g.position.set(x,0,z); this.scene.add(g);
+};
+
+Renderer3D._createApocalypseMainGate = function(cx,cz) {
+    const mats=this._apocalypseMaterials();
+    const g=new THREE.Group();
+    this._apocBox(g,12,8,5, -10,4,0,mats.concrete,true);
+    this._apocBox(g,12,8,5, 10,4,0,mats.concrete,true);
+    this._apocBox(g,8,1.2,5,0,7.2,0,mats.concreteDark,true);
+    this._apocBox(g,7.2,4.2,0.45,0,2.8,0,mats.metal,false);
+    this._apocBox(g,0.18,4.6,0.55,0,2.7,0,mats.cyanSoft,false);
+    this._apocLabel(g,'SECURITY GATE',0x62e8ff,0,6.25,0.28,10,0.8);
+    g.position.set(cx,0,cz); this.scene.add(g);
+};
+
+Renderer3D._createApocalypseSecondaryGate = function(cx,cz) {
+    const mats=this._apocalypseMaterials();
+    const g=new THREE.Group();
+    this._apocBox(g,7,6,4,-6,3,0,mats.concrete,true);
+    this._apocBox(g,7,6,4,6,3,0,mats.concrete,true);
+    this._apocBox(g,5.5,0.8,4,0,5.8,0,mats.concreteDark,true);
+    this._apocLabel(g,'SERVICE GATE',0xffc857,0,5.0,0.25,8,0.7);
+    g.position.set(cx,0,cz); this.scene.add(g);
+};
+
+Renderer3D._createApocalypseBaseProps = function(cx,cz) {
+    const mats=this._apocalypseMaterials();
+    // Containers, wrecked barriers, sandbags and pallets make the base feel inhabited.
+    for(let i=0;i<14;i++){
+        const side=i%2===0?-1:1;
+        const x=cx+side*(68+(i%4)*5.5);
+        const z=cz-48+Math.floor(i/4)*4.2;
+        const crate=new THREE.Mesh(new THREE.BoxGeometry(2.4,1.3,1.8), i%3===0?mats.olive:mats.military);
+        crate.position.set(x,0.65,z); crate.rotation.y=(i%5)*0.12; crate.castShadow=true; crate.receiveShadow=true; this.scene.add(crate); this._addCollisionMesh(crate);
+    }
+    const sand=mats.sand;
+    for(const [dx,dz] of [[-78,48],[76,48],[-72,-46],[72,-42],[-24,87],[28,87]]){
+        for(let j=-2;j<=2;j++){
+            const bag=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.55,0.75),sand);
+            bag.position.set(cx+dx+j*1.5,0.28,cz+dz+(j%2)*0.10); bag.rotation.y=j*0.05; bag.castShadow=true; this.scene.add(bag);
+        }
+    }
+    // Flood lights along major roads.
+    for(let i=-5;i<=5;i++){
+        for(const side of [-1,1]){
+            const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.11,5.8,6),mats.steel);
+            pole.position.set(cx+i*18,2.9,cz+side*45); this.scene.add(pole);
+            const lamp=new THREE.Mesh(new THREE.BoxGeometry(0.48,0.18,0.7),mats.cyan); lamp.position.set(cx+i*18,5.65,cz+side*45); this.scene.add(lamp);
+        }
+    }
+};
+
+Renderer3D._registerApocalypseMilitaryInteractions = function(cx,cz) {
+    this._militaryInteractions = [
+        { id:'hq', name:'COMMAND HQ', description:'Nâng cấp căn cứ và mở các máy kiếm tiền.', x:cx, z:cz-9, radius:14 },
+        { id:'barracks', name:'BARRACKS', description:'Tuyển lính gác và tăng phòng thủ.', x:cx-55, z:cz-28, radius:12 },
+        { id:'mess', name:'MESS HALL', description:'Hồi stamina và nhận buff.', x:cx-38, z:cz+36, radius:10 },
+        { id:'medical', name:'MEDICAL', description:'Sử dụng vật tư y tế.', x:cx-38, z:cz+36, radius:10 },
+        { id:'supply', name:'SUPPLY DEPOT', description:'Mua ammo và nâng cấp vũ khí.', x:cx+53, z:cz-30, radius:12 },
+        { id:'fuel', name:'FUEL FARM', description:'Quản lý nhiên liệu và income.', x:cx+62, z:cz+17, radius:10 },
+        { id:'motorPool', name:'MOTOR POOL', description:'Triệu hồi và nâng cấp vehicle.', x:cx+49, z:cz+57, radius:13 },
+        { id:'lab', name:'RESEARCH LAB', description:'Nghiên cứu zombie và weapon.', x:cx+3, z:cz-73, radius:13 },
+        { id:'workshop', name:'VEHICLE WORKSHOP', description:'Sửa và nâng cấp vehicle.', x:cx-49, z:cz-73, radius:12 },
+        { id:'training', name:'TRAINING GROUND', description:'Luyện weapon XP.', x:cx-42, z:cz+70, radius:15 },
+        { id:'range', name:'SHOOTING RANGE', description:'Test súng và accuracy.', x:cx+30, z:cz+70, radius:15 },
+        { id:'radar', name:'RADAR', description:'Phát hiện zombie wave và boss.', x:cx+86, z:cz-78, radius:10 },
+        { id:'comms', name:'COMMS', description:'Nhận supply contracts.', x:cx-84, z:cz-78, radius:10 }
+    ];
+};
+
+// Keep old gameplay functions but route visuals to the new architecture.
+Renderer3D._registerMilitaryInteractions = Renderer3D._registerApocalypseMilitaryInteractions;
+Renderer3D._createCommandCenter = Renderer3D._createApocalypseCommandCenter;
+Renderer3D._createLargeBarracksArea = Renderer3D._createApocalypseBarracksArea;
+Renderer3D._createLargeSupplyDepot = Renderer3D._createApocalypseSupplyDepot;
+Renderer3D._createResearchFacility = Renderer3D._createApocalypseResearchFacility;
+Renderer3D._createVehicleWorkshop = function(cx,cz) { return Renderer3D._createApocalypseBlock.call(this,cx,cz,{width:23,height:7,depth:14,label:'VEHICLE WORKSHOP',labelColor:0xffc857,bodyMat:this._apocalypseMaterials().military,upperWidth:12,upperOffsetX:3}); };
+Renderer3D._createTrainingGround = Renderer3D._createApocalypseTrainingGround;
+Renderer3D._createShootingRange = Renderer3D._createApocalypseShootingRange;
+Renderer3D._createGuardTower = Renderer3D._createApocalypseGuardTower;
+Renderer3D._createMainGate = Renderer3D._createApocalypseMainGate;
+Renderer3D._createSecondaryGate = Renderer3D._createApocalypseSecondaryGate;
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
