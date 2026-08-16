@@ -2324,9 +2324,6 @@ Renderer3D._prepareExternalModel = function(root, options = {}) {
     });
     return root;
 };
-    });
-    return root;
-};
 
 Renderer3D._normalizeImportedModel = function(root, targetHeight) {
     const box = new THREE.Box3().setFromObject(root);
