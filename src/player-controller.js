@@ -21,6 +21,7 @@ const PlayerController = {
     sprintMultiplier: 1.65,
     sprintDrainPerSecond: 22,
     isSprinting: false,
+    isCrouching: false,
 
     // Kích thước collision của nhân vật trên mặt phẳng XZ.
     playerRadius: 0.42,
@@ -57,33 +58,11 @@ const PlayerController = {
     isGrounded: true,
 
     // ==========================================
-    // --- HỆ THỐNG SÚNG VÀ BẮN ZOMBIE (BỔ SUNG) ---
+    // --- VU KHI (su dung WeaponSystem moi) ---
     // ==========================================
-    weapons: {
-        rifle: {
-            name: "Súng Trường (Assault Rifle)",
-            damage: 30,
-            fireRate: 0.12,       // Bắn nhanh
-            range: 120,
-            maxAmmo: 30,
-            currentAmmo: 30,
-            reloadTime: 2.0,
-            zoomDistance: 0.1     // FPS
-        },
-        sniper: {
-            name: "Súng Tỉa / Súng Ngắm (Sniper Rifle)",
-            damage: 150,          // Bắn 1 phát chết ngay
-            fireRate: 1.2,        // Bắn chậm
-            range: 300,           // Tầm xa cực lớn
-            maxAmmo: 5,
-            currentAmmo: 5,
-            reloadTime: 3.5,
-            zoomDistance: 0.1     // Tự zoom sát để ngắm
-        }
-    },
-    currentWeaponKey: 'rifle',   // Mặc định dùng súng trường
-    isReloading: false,
-    lastShootTime: 0,
+    // Weapon switching duoc xu ly boi WeaponSystem.equip()
+    // Cac bien cu (weapons, currentWeaponKey, isReloading...) da duoc thay the
+    // boi WeaponSystem._state[] va WeaponSystem.currentId
 
     _forwardVec: null,
     _rightVec: null,
@@ -125,14 +104,17 @@ const PlayerController = {
         this._onScreenClick = this._onScreenClick.bind(this);
         document.addEventListener('click', this._onScreenClick);
 
-        // --- LẮNG NGHE BẤM PHÍM CHUYỂN SÚNG VÀ NẠP ĐẠN ---
-        window.addEventListener('keydown', (e) => {
-            if (e.key === '1') this.switchWeapon('rifle');
-            if (e.key === '2') this.switchWeapon('sniper');
-            if (e.key.toLowerCase() === 'r') this.reloadWeapon();
-        });
+        // --- LANG NGHE PHIM CHUYEN VU KHI VA NAP DAN ---
+        // 1 = Sword (kiem), 2 = Pistol, 3 = AK/M4
+        this._onWeaponKeyDown = function(e) {
+            if (e.key === '1' && typeof WeaponSystem !== 'undefined') WeaponSystem.equip('sword');
+            if (e.key === '2' && typeof WeaponSystem !== 'undefined') WeaponSystem.equip('pistol');
+            if (e.key === '3' && typeof WeaponSystem !== 'undefined') WeaponSystem.equip('ak');
+            // R duoc WeaponSystem xu ly trong update()
+        };
+        window.addEventListener('keydown', this._onWeaponKeyDown);
 
-        console.log('✅ Player Controller khởi tạo xong');
+        console.log('Player Controller khoi tao xong');
     },
 
     /**
@@ -215,86 +197,41 @@ const PlayerController = {
     },
 
     // ==========================================
-    // --- LOGIC XỬ LÝ BẮN SÚNG / ĐỔI SÚNG / NẠP ĐẠN ---
+    // --- DA CHUYEN SANG WEAPONSYSTEM ---
+    // Ham nay giu lai de khong break dependency cu nhung logic da chuyen sang WeaponSystem
     // ==========================================
-    switchWeapon: function(weaponKey) {
-        if (this.weapons[weaponKey]) {
-            this.currentWeaponKey = weaponKey;
-            const gun = this.weapons[weaponKey];
-            console.log(`🔫 Đã chuyển sang: ${gun.name}`);
+    switchWeapon: function(weaponId) {
+        if (typeof WeaponSystem !== 'undefined') {
+            WeaponSystem.equip(weaponId);
         }
     },
 
     reloadWeapon: function() {
-        const gun = this.weapons[this.currentWeaponKey];
-        if (this.isReloading || gun.currentAmmo === gun.maxAmmo) return;
-
-        this.isReloading = true;
-        console.log(`🔄 Đang nạp đạn cho ${gun.name}...`);
-
-        setTimeout(() => {
-            gun.currentAmmo = gun.maxAmmo;
-            this.isReloading = false;
-            console.log(`✅ Nạp đạn xong! [${gun.currentAmmo}/${gun.maxAmmo}]`);
-        }, gun.reloadTime * 1000);
+        if (typeof WeaponSystem !== 'undefined') {
+            WeaponSystem.tryReload();
+        }
     },
 
     shootWeapon: function() {
-        const gun = this.weapons[this.currentWeaponKey];
-        const now = performance.now() / 1000;
-
-        if (this.isReloading) return;
-
-        if (gun.currentAmmo <= 0) {
-            console.log("❌ Hết đạn! Nhấn R để nạp đạn.");
-            this.reloadWeapon();
-            return;
-        }
-
-        if (now - this.lastShootTime < gun.fireRate) return;
-
-        this.lastShootTime = now;
-        gun.currentAmmo--;
-
-        console.log(`💥 BẮN [${gun.name}] - Đạn còn: ${gun.currentAmmo}/${gun.maxAmmo}`);
-
-        // Tia Raycast tiêu diệt Zombie
-        if (!Renderer3D || !Renderer3D.camera) return;
-
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), Renderer3D.camera);
-
-        const targets = (typeof GameState !== 'undefined' && GameState.zombies) 
-            ? GameState.zombies 
-            : (Renderer3D._collisionMeshes || []);
-
-        const intersects = raycaster.intersectObjects(targets, true);
-
-        if (intersects.length > 0) {
-            const hit = intersects[0];
-            let hitObj = hit.object;
-
-            // Tìm đối tượng Zombie bị trúng đạn
-            let targetEntity = hitObj.userData.takeDamage ? hitObj.userData : 
-                              (hitObj.parent && hitObj.parent.userData.takeDamage ? hitObj.parent.userData : null);
-
-            if (targetEntity && typeof targetEntity.takeDamage === 'function') {
-                targetEntity.takeDamage(gun.damage);
-                console.log(`🎯 Trúng Zombie! Gây ${gun.damage} sát thương.`);
-            }
-        }
+        // Legacy stub - WeaponSystem xu ly viec ban
+        // Giu lai de khong break code nao dang goi ham nay
     },
 
     update: function(deltaTime) {
         const deltaSec = deltaTime / 1000;
 
-        // Làm mượt (lerp) góc xoay camera trước khi dùng — quán tính Roblox-style
-        InputManager.update();
-
-        // --- Kiểm tra bấm giữ chuột trái để bắn súng ---
-        if (InputManager.isMouseDown || InputManager.isKeyPressed('mouse0')) {
-            this.shootWeapon();
+        // Lam muot (lerp) goc xoay camera truoc khi dung - quan tinh Roblox-style
+        // NOTE: InputManager.update() reset isMouseJustPressed/Released,
+        // nen WeaponSystem.update() PHAI duoc goi TRUOC InputManager.update().
+        if (typeof WeaponSystem !== 'undefined') {
+            WeaponSystem.update(deltaSec);
         }
+        if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
+            WeaponRenderer.update(deltaSec);
+        }
+
+        // Sau khi WeaponSystem doc xong mouse state, reset just-pressed flags
+        InputManager.update();
 
         const moveInput = InputManager.getMovementVector();
         const inputW = moveInput.y < -0.01;
@@ -311,10 +248,21 @@ const PlayerController = {
 
         this.hasMovementInput = this._moveVec.lengthSq() > 0.0001;
 
-        const wantsSprint = this.hasMovementInput && InputManager.isKeyPressed('shift');
+        // --- Cúi người (Crouch - phím C) ---
+        this.isCrouching = InputManager.isKeyPressed('c');
+
+        const wantsSprint = this.hasMovementInput && InputManager.isKeyPressed('shift') && !this.isCrouching;
         const canSprint = typeof GameState !== 'undefined' && GameState.stamina > 0;
         this.isSprinting = wantsSprint && canSprint;
-        this.speed = this.isSprinting ? this.normalSpeed * this.sprintMultiplier : this.normalSpeed;
+
+        if (this.isCrouching) {
+            this.speed = this.normalSpeed * 0.55;
+        } else if (this.isSprinting) {
+            this.speed = this.normalSpeed * this.sprintMultiplier;
+        } else {
+            this.speed = this.normalSpeed;
+        }
+
         if (this.isSprinting && typeof GameState !== 'undefined') {
             GameState.stamina = Math.max(0, GameState.stamina - this.sprintDrainPerSecond * deltaSec);
             if (GameState.stamina <= 0) this.isSprinting = false;
@@ -402,7 +350,8 @@ const PlayerController = {
             this.position.z,
             this.currentMoveAngle,
             this.hasMovementInput,
-            this.position.y
+            this.position.y,
+            this.isCrouching
         );
     },
 

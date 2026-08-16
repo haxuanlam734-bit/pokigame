@@ -23,7 +23,15 @@ const Game = {
             // 4. Khởi tạo Player Controller
             PlayerController.init();
             
-            // 5. Khởi tạo GameState
+            // 5. Khởi tạo Combat System (WeaponSystem + WeaponRenderer)
+            if (typeof WeaponSystem !== 'undefined') {
+                WeaponSystem.init();
+            }
+            if (typeof WeaponRenderer !== 'undefined') {
+                WeaponRenderer.init();
+            }
+            
+            // 6. Khởi tạo GameState
             GameState.init();
             
             // 6. Setup các nút bấm UI

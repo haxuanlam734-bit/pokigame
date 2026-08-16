@@ -149,11 +149,34 @@ const GameLoop = {
         if (bandageBtn) bandageBtn.classList.toggle('disabled', GameState.bandages <= 0 || GameState.playerMaxHP >= GameState.playerBaseMaxHP);
         if (medkitBtn) medkitBtn.classList.toggle('disabled', GameState.medkits <= 0);
 
-        // ---- Military stats ----
+        // ---- Combat / Weapon stats ----
         const ammoDisplay = document.getElementById('ammo-display');
-        if (ammoDisplay) ammoDisplay.textContent = `${Math.floor(GameState.ammo)}/${Math.floor(GameState.maxAmmo)}`;
         const weaponDisplay = document.getElementById('weapon-display');
-        if (weaponDisplay) weaponDisplay.textContent = `T${GameState.weaponTier} • ${GameState.weaponDamage} DMG`;
+        if (typeof WeaponSystem !== 'undefined') {
+            const def = WeaponSystem.getCurrentDef();
+            const state = WeaponSystem.getCurrentState();
+            if (def && state) {
+                if (ammoDisplay) {
+                    if (def.fireMode === 'MELEE') {
+                        ammoDisplay.textContent = 'MELEE';
+                    } else if (WeaponSystem.isReloading()) {
+                        ammoDisplay.textContent = 'RELOAD...';
+                    } else {
+                        ammoDisplay.textContent = `${state.currentAmmo}/${state.reserveAmmo}`;
+                    }
+                }
+                if (weaponDisplay) {
+                    const modeName = def.fireMode === 'SEMI_AUTO' ? 'SEMI'
+                                   : def.fireMode === 'FULL_AUTO' ? 'AUTO'
+                                   : def.fireMode === 'BURST'     ? 'BURST'
+                                   : 'MELEE';
+                    weaponDisplay.textContent = `${def.name} [${modeName}]`;
+                }
+            }
+        } else {
+            if (ammoDisplay) ammoDisplay.textContent = `${Math.floor(GameState.ammo)}/${Math.floor(GameState.maxAmmo)}`;
+            if (weaponDisplay) weaponDisplay.textContent = `T${GameState.weaponTier} • ${GameState.weaponDamage} DMG`;
+        }
 
         // ---- Update Buttons ----
         this.updateButtonStates();

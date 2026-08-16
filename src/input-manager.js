@@ -53,6 +53,14 @@ const InputManager = {
     mouseX: 0,
     mouseY: 0,
 
+    // --- Left Mouse Button State ---
+    // isMouseDown: true khi đang giữ nút trái (dùng cho FULL_AUTO)
+    // isMouseJustPressed: true CHỈ trong frame đầu tiên nhấn (dùng cho SEMI_AUTO)
+    // isMouseJustReleased: true CHỈ trong frame đầu tiên nhả
+    isMouseDown: false,
+    isMouseJustPressed: false,
+    isMouseJustReleased: false,
+
     // --- Camera xoay kiểu Roblox: Pointer Lock + Spherical Orbit ---
     // targetYaw/targetPitch = giá trị "thô" cộng dồn trực tiếp từ movementX/movementY.
     // cameraYaw/cameraPitch = giá trị đã làm mượt (lerp) mỗi frame, đây mới là giá trị
@@ -142,15 +150,19 @@ const InputManager = {
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
 
-            // Giữ chuột phải -> khóa con trỏ (Pointer Lock) đúng chuẩn Roblox:
-            // con trỏ biến mất và event.movementX/Y có thể xoay vô hạn mà
-            // không bao giờ "chạm mép" màn hình.
+            // Giữ chuột phải -> khóa con trỏ (Pointer Lock) đúng chuẩn Roblox
             if (document.body.requestPointerLock) {
                 document.body.requestPointerLock();
             }
 
             event.preventDefault();
             return;
+        }
+        // Nút trái chuột = tấn công / bắn
+        if (event.button === 0) {
+            this.isMouseDown = true;
+            this.isMouseJustPressed = true;
+            this.isMouseJustReleased = false;
         }
         this.onPointerDown(event);
     },
@@ -196,17 +208,24 @@ const InputManager = {
     update: function() {
         this.cameraYaw = this._lerp(this.cameraYaw, this.targetYaw, this.cameraRotateLerp);
         this.cameraPitch = this._lerp(this.cameraPitch, this.targetPitch, this.cameraRotateLerp);
+        // isMouseJustPressed và isMouseJustReleased chỉ sống 1 frame
+        // Chúng được reset ở cuối update() để frame sau không còn đọc thấy.
+        // WeaponSystem đọc chúng TRƯỚC khi update() được gọi (trong PlayerController.update)
+        // nên thứ tự: PlayerController.update() -> InputManager.update() là đúng.
+        this.isMouseJustPressed = false;
+        this.isMouseJustReleased = false;
     },
 
     onMouseUp: function(event) {
         if (event.button === 2) {
             this.isRightMouseDown = false;
-
-            // KHÔNG tự exitPointerLock() ở đây nữa: nếu người chơi đang ở FPS Mode
-            // (zoom sát), con trỏ vẫn cần khóa dù đã nhả chuột phải. Việc mở khóa
-            // được PlayerController quyết định mỗi frame dựa trên cả zoom lẫn
-            // trạng thái chuột phải (xem PlayerController._syncPointerLockWithZoom).
+            // KHÔNG tự exitPointerLock(): PlayerController quyết định mỗi frame
             return;
+        }
+        // Nhả nút trái
+        if (event.button === 0) {
+            this.isMouseDown = false;
+            this.isMouseJustReleased = true;
         }
         this.onPointerUp(event);
     },

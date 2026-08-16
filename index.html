@@ -207,6 +207,153 @@
             #right-panel { right:12px; top:12px; min-width:190px; }
         }
 
+        /* ===== COMBAT CROSSHAIR & HIT MARKER ===== */
+        #combat-crosshair {
+            --crosshair-gap: 8px;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 48px;
+            height: 48px;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 999;
+            transition: opacity 0.15s ease;
+        }
+        #combat-crosshair::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 4px;
+            height: 4px;
+            background: #00ffb4;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 6px #00ffb4;
+            transition: all 0.15s ease;
+        }
+        #combat-crosshair.melee-mode::before {
+            width: 6px;
+            height: 6px;
+            background: #ffcc00;
+            box-shadow: 0 0 8px #ffcc00;
+        }
+        #combat-crosshair.melee-mode .ch-line {
+            opacity: 0.25;
+            background: rgba(255, 204, 0, 0.4);
+        }
+        .ch-line {
+            position: absolute;
+            background: rgba(0, 255, 180, 0.9);
+            box-shadow: 0 0 4px rgba(0, 255, 180, 0.6);
+            border-radius: 1px;
+            transition: top 0.04s ease-out, left 0.04s ease-out;
+        }
+        .ch-top    { top: calc(50% - 9px - var(--crosshair-gap)); left: calc(50% - 1px); width: 2px; height: 9px; }
+        .ch-bottom { top: calc(50% + var(--crosshair-gap));      left: calc(50% - 1px); width: 2px; height: 9px; }
+        .ch-left   { top: calc(50% - 1px); left: calc(50% - 9px - var(--crosshair-gap)); width: 9px; height: 2px; }
+        .ch-right  { top: calc(50% - 1px); left: calc(50% + var(--crosshair-gap));      width: 9px; height: 2px; }
+
+        /* ===== HIT MARKER ===== */
+        #hit-marker {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 22px;
+            height: 22px;
+            pointer-events: none;
+            transform: translate(-50%, -50%) rotate(45deg);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.04s ease-out, transform 0.04s ease-out;
+        }
+        #hit-marker.active {
+            opacity: 1;
+            transform: translate(-50%, -50%) rotate(45deg) scale(1.2);
+        }
+        .hm-tick {
+            position: absolute;
+            background: #ffffff;
+            box-shadow: 0 0 4px #ffffff;
+            border-radius: 1px;
+        }
+        .hm-top    { top: 0; left: 9px; width: 4px; height: 3px; }
+        .hm-bottom { bottom: 0; left: 9px; width: 4px; height: 3px; }
+        .hm-left   { top: 9px; left: 0; width: 3px; height: 4px; }
+        .hm-right  { top: 9px; right: 0; width: 3px; height: 4px; }
+
+        #hit-marker.headshot .hm-tick {
+            background: #ff2a44 !important;
+            box-shadow: 0 0 8px #ff0022 !important;
+        }
+
+        /* ===== HEADSHOT TOAST ===== */
+        #headshot-toast {
+            position: absolute;
+            left: 50%;
+            top: calc(50% - 40px);
+            transform: translate(-50%, -50%) scale(0.8);
+            color: #ff2a44;
+            font-family: 'Orbitron', monospace;
+            font-weight: 900;
+            font-size: 13px;
+            letter-spacing: 1.5px;
+            text-shadow: 0 0 10px rgba(255, 0, 40, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            z-index: 1001;
+            transition: all 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #headshot-toast.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        /* ===== WEAPON HOTBAR ===== */
+        #weapon-hotbar {
+            position: absolute;
+            left: 50%;
+            bottom: 95px;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            pointer-events: auto;
+            z-index: 120;
+        }
+        .weapon-slot {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(10, 12, 20, 0.75);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: #ccc;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .weapon-slot .key-num {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .weapon-slot:hover {
+            border-color: rgba(0, 255, 180, 0.5);
+            color: #fff;
+        }
+        .weapon-slot.active {
+            border-color: #00ffb4;
+            background: rgba(0, 255, 180, 0.18);
+            color: #00ffb4;
+            box-shadow: 0 0 12px rgba(0, 255, 180, 0.25);
+        }
+
         /* ===== BOTTOM PANEL (Build Buttons) ===== */
         #bottom-panel {
             bottom: 24px;
@@ -669,6 +816,38 @@
                 <div class="toast-message"></div>
             </div>
 
+            <!-- COMBAT CROSSHAIR & HIT FEEDBACK -->
+            <div id="combat-crosshair">
+                <div class="ch-line ch-top"></div>
+                <div class="ch-line ch-bottom"></div>
+                <div class="ch-line ch-left"></div>
+                <div class="ch-line ch-right"></div>
+            </div>
+
+            <!-- HIT MARKER -->
+            <div id="hit-marker">
+                <div class="hm-tick hm-top"></div>
+                <div class="hm-tick hm-bottom"></div>
+                <div class="hm-tick hm-left"></div>
+                <div class="hm-tick hm-right"></div>
+            </div>
+
+            <!-- HEADSHOT TOAST -->
+            <div id="headshot-toast">💥 HEADSHOT!</div>
+
+            <!-- WEAPON HOTBAR -->
+            <div id="weapon-hotbar">
+                <div class="weapon-slot" id="slot-sword" onclick="if(typeof WeaponSystem!=='undefined')WeaponSystem.equip('sword')">
+                    <span class="key-num">1</span> 🗡️ Katana
+                </div>
+                <div class="weapon-slot active" id="slot-pistol" onclick="if(typeof WeaponSystem!=='undefined')WeaponSystem.equip('pistol')">
+                    <span class="key-num">2</span> 🔫 Desert Eagle
+                </div>
+                <div class="weapon-slot" id="slot-ak" onclick="if(typeof WeaponSystem!=='undefined')WeaponSystem.equip('ak')">
+                    <span class="key-num">3</span> 💥 M4A1
+                </div>
+            </div>
+
             <!-- JOYSTICK -->
             <div id="joystick-container">
                 <div id="joystick-thumb"></div>
@@ -690,6 +869,8 @@
     <script src="src/poki-manager.js"></script>
     <script src="src/input-manager.js"></script>
     <script src="src/rendering/renderer-3d.js"></script>
+    <script src="src/combat/weapon-system.js"></script>
+    <script src="src/combat/weapon-renderer.js"></script>
     <script src="src/player-controller.js"></script>
     <script src="src/entities/tower-3d.js"></script>
     <script src="src/entities/wall-3d.js"></script>

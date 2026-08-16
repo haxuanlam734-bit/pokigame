@@ -1547,16 +1547,21 @@ let Renderer3D = {
         console.log('🧍 Nhân vật player được tạo');
     },
 
-    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving, jumpY) {
+    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving, jumpY, isCrouching) {
         if (!this.player) return;
         this.player.position.x = playerX;
         this.player.position.z = playerZ;
         this.player.rotation.y = rotationY;
 
         const jumpOffset = jumpY || 0;
+        const targetScaleY = isCrouching ? 0.68 : 1.0;
+        if (typeof this.player._currentScaleY === 'undefined') this.player._currentScaleY = 1.0;
+        this.player._currentScaleY += (targetScaleY - this.player._currentScaleY) * 0.2;
+        this.player.scale.y = this.player._currentScaleY;
+
         if (isMoving) {
             const time = Date.now() * 0.01;
-            this.player.position.y = Math.abs(Math.sin(time)) * 0.08 + jumpOffset;
+            this.player.position.y = Math.abs(Math.sin(time)) * (isCrouching ? 0.04 : 0.08) + jumpOffset;
             this.player.body.rotation.x = Math.sin(time) * 0.1;
         } else {
             this.player.position.y = jumpOffset;
