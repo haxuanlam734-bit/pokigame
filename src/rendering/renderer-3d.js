@@ -3083,6 +3083,237 @@ Renderer3D._createGuardTower = Renderer3D._createApocalypseGuardTower;
 Renderer3D._createMainGate = Renderer3D._createApocalypseMainGate;
 Renderer3D._createSecondaryGate = Renderer3D._createApocalypseSecondaryGate;
 
+// ================================================================
+// EXTERNAL MODELS (base_hq.glb, Turel.fbx, minign.fbx) Loader
+// ================================================================
+Renderer3D.loadExternalModels = function() {
+    if (!this._externalModels) this._externalModels = {};
+    this._modelLoadStatus = { turel: false, minigun: false, hq: false };
+
+    const paths = {
+        hq:     'src/assets/models/base_hq.glb',
+        turel:  'src/assets/models/Turel.fbx',
+        minigun:'src/assets/models/minign.fbx'
+    };
+
+    if (typeof GLTFLoader !== 'undefined' && !this._gltfLoader) this._gltfLoader = new GLTFLoader();
+    if (typeof THREE.FBXLoader !== 'undefined' && !this._fbxLoader) this._fbxLoader = new THREE.FBXLoader();
+
+    // GLB -> base_hq
+    if (this._gltfLoader) {
+        try {
+            this._gltfLoader.load(paths.hq, (gltf) => {
+                const root = gltf.scene || gltf;
+                root.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }});
+                this._externalModels.hq = root;
+                this._modelLoadStatus.hq = true;
+                this._applyHQModelOverride(root);
+                console.log('🏛️ Đã load model base_hq.glb');
+            }, undefined, (err) => {
+                console.warn('⚠️ Không load được base_hq.glb, giữ HQ dựng bằng code:', err?.message || err);
+            });
+        } catch(e) { console.warn('GLTFLoader error', e); }
+    }
+
+    // FBX -> Turel & Minigun (tạo fallback geometry nếu FBXLoader chưa có)
+    const loadFBX = (key, path, onSuccess) => {
+        try {
+            if (this._fbxLoader) {
+                this._fbxLoader.load(path, (obj) => {
+                    obj.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }});
+                    this._externalModels[key] = obj;
+                    this._modelLoadStatus[key] = true;
+                    if (onSuccess) onSuccess(obj);
+                    console.log(`📦 Đã load FBX model ${key}`);
+                }, undefined, (err) => {
+                    console.warn(`⚠️ Không load được ${key} FBX, dùng mesh tạo bằng code thay thế.`);
+                    this._modelLoadStatus[key] = false;
+                });
+            } else {
+                this._modelLoadStatus[key] = false;
+            }
+        } catch(e) {
+            console.warn(`FBXLoader lỗi (${key}):`, e);
+            this._modelLoadStatus[key] = false;
+        }
+    };
+
+    loadFBX('turel', paths.turel);
+    loadFBX('minigun', paths.minigun);
+};
+
+Renderer3D._applyHQModelOverride = function(hqModel) {
+    const cx = 250, cz = 250 - 18;
+    try {
+        const model = hqModel.clone(true);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const scale = Math.min(30 / Math.max(size.x, 0.01), 14 / Math.max(size.y, 0.01), 25 / Math.max(size.z, 0.01));
+        model.scale.setScalar(scale);
+        const b2 = new THREE.Box3().setFromObject(model);
+        const center = new THREE.Vector3();
+        b2.getCenter(center);
+        model.position.set(cx - center.x, -b2.min.y, cz - center.z);
+        this.scene.add(model);
+        this._addCollisionMesh(model);
+        this._hqExternalModel = model;
+    } catch(e) {
+        console.warn('Lỗi áp dụng HQ model:', e);
+    }
+};
+
+Renderer3D.create3DTurel = function(x, z) {
+    const group = new THREE.Group();
+    if (this._externalModels && this._externalModels.turel) {
+        try {
+            const model = this._externalModels.turel.clone(true);
+            const box = new THREE.Box3().setFromObject(model);
+            const size = new THREE.Vector3(); box.getSize(size);
+            const scale = Math.min(3.5 / Math.max(size.x, 0.1), 6.5 / Math.max(size.y, 0.1), 3.5 / Math.max(size.z, 0.1));
+            model.scale.setScalar(scale);
+            const b2 = new THREE.Box3().setFromObject(model);
+            model.position.set(x, -b2.min.y, z);
+            model.traverse(c => { if (c.isMesh) c.castShadow = true; });
+            group.add(model);
+            let head = null;
+            model.traverse(c => { if (!head && c.isMesh && c.position.y > (size.y * 0.4)) head = c; });
+            if (!head) head = model;
+            group.turretHead = head;
+            this._addCollisionMesh(model);
+            group.position.set(0, 0, 0);
+            this.scene.add(group);
+            return group;
+        } catch(e) { console.warn('Turel model lỗi, fallback geometry', e); }
+    }
+
+    // Fallback: tạo Turel = base trụ + tháp xoay + ống phóng
+    const baseGeo = new THREE.CylinderGeometry(1.8, 2.2, 1.2, 16);
+    const baseMat = new THREE.MeshPhongMaterial({ color: 0x444d55 });
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.position.y = 0.6; base.castShadow = true; base.receiveShadow = true;
+    group.add(base); this._addCollisionMesh(base);
+
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 3.2, 16),
+        new THREE.MeshPhongMaterial({ color: 0x3b424a }));
+    pillar.position.y = 2.8; pillar.castShadow = true; pillar.receiveShadow = true;
+    group.add(pillar); this._addCollisionMesh(pillar);
+
+    const headGroup = new THREE.Group();
+    headGroup.position.y = 4.4;
+    const turretBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 1.8),
+        new THREE.MeshPhongMaterial({ color: 0x2e3438 }));
+    turretBody.castShadow = true; headGroup.add(turretBody);
+
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 3.4, 10),
+        new THREE.MeshPhongMaterial({ color: 0x171b1e }));
+    barrel.rotation.z = Math.PI / 2; barrel.position.x = 1.7;
+    barrel.castShadow = true; headGroup.add(barrel);
+
+    group.add(headGroup);
+    group.turretHead = headGroup;
+
+    group.position.set(x, 0, z);
+    this.scene.add(group);
+    return group;
+};
+
+Renderer3D.create3DMinigun = function(x, z) {
+    const group = new THREE.Group();
+    // Hộp (crate) đựng minigun
+    const crateW = 3.0, crateH = 1.35, crateD = 3.0;
+    const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(crateW, crateH, crateD),
+        new THREE.MeshPhongMaterial({ color: 0x6b4a2b }));
+    crate.position.y = crateH / 2;
+    crate.castShadow = true; crate.receiveShadow = true;
+    group.add(crate); this._addCollisionMesh(crate);
+
+    // Các dải kim loại trên hộp
+    const bandMat = new THREE.MeshPhongMaterial({ color: 0x2e2a25 });
+    for (const [dx, dz] of [[-0.6, 0], [0.6, 0], [0, -0.6], [0, 0.6]]) {
+        const g = dx !== 0 ? new THREE.BoxGeometry(0.08, crateH + 0.02, crateD)
+                            : new THREE.BoxGeometry(crateW, crateH + 0.02, 0.08);
+        const b = new THREE.Mesh(g, bandMat);
+        b.position.set(dx || 0, crateH / 2, dz || 0);
+        group.add(b);
+    }
+
+    if (this._externalModels && this._externalModels.minigun) {
+        try {
+            const model = this._externalModels.minigun.clone(true);
+            const box = new THREE.Box3().setFromObject(model);
+            const size = new THREE.Vector3(); box.getSize(size);
+            const scale = Math.min(2.2 / Math.max(size.x, 0.1), 1.8 / Math.max(size.y, 0.1), 2.2 / Math.max(size.z, 0.1));
+            model.scale.setScalar(scale);
+            const b2 = new THREE.Box3().setFromObject(model);
+            model.position.set(0, crateH - b2.min.y - 0.1, 0);
+            model.traverse(c => { if (c.isMesh) c.castShadow = true; });
+
+            const gunHead = new THREE.Group();
+            gunHead.add(model);
+            group.add(gunHead);
+
+            let barrel = null;
+            model.traverse(c => {
+                if (!barrel && c.isMesh) {
+                    const bb = new THREE.Box3().setFromObject(c);
+                    if ((bb.max.x - bb.min.x) > 0.5 || (bb.max.z - bb.min.z) > 0.5) barrel = c;
+                }
+            });
+            if (!barrel) barrel = model;
+            group.gunHead = gunHead;
+            group.barrel = barrel;
+            group.position.set(x, 0, z);
+            this.scene.add(group);
+            return group;
+        } catch(e) { console.warn('Minigun model lỗi, fallback geometry', e); }
+    }
+
+    // Fallback: Minigun dựng bằng code trên đỉnh hộp
+    const gunHead = new THREE.Group();
+    gunHead.position.y = crateH + 0.2;
+
+    const baseBlock = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.0),
+        new THREE.MeshPhongMaterial({ color: 0x202428 }));
+    baseBlock.castShadow = true; gunHead.add(baseBlock);
+
+    const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.9, 12),
+        new THREE.MeshPhongMaterial({ color: 0x181b1e }));
+    motor.rotation.z = Math.PI / 2; motor.position.x = 0.6; motor.castShadow = true;
+    gunHead.add(motor);
+
+    const barrel = new THREE.Group();
+    for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.3, 8),
+            new THREE.MeshPhongMaterial({ color: 0x111416 }));
+        t.position.set(Math.cos(a) * 0.17, Math.sin(a) * 0.17, 0);
+        t.rotation.z = Math.PI / 2;
+        barrel.add(t);
+    }
+    barrel.position.x = 1.6;
+    gunHead.add(barrel);
+    group.add(gunHead);
+
+    group.gunHead = gunHead;
+    group.barrel = barrel;
+
+    group.position.set(x, 0, z);
+    this.scene.add(group);
+    return group;
+};
+
+// Gọi loader trong init() của main sẽ làm cho scene tồn tại, ta nhúng vào cuối init
+// -> gọi loadExternalModels() ở cuối hàm init() (patch ngay dưới đây)
+(function() {
+    const origInit = Renderer3D.init.bind(Renderer3D);
+    Renderer3D.init = function() {
+        origInit();
+        try { Renderer3D.loadExternalModels(); } catch(e) { console.warn('loadExternalModels failed', e); }
+    };
+})();
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
 }

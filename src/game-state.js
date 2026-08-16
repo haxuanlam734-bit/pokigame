@@ -15,6 +15,24 @@ const GameState = {
     phaseTimeRemaining: CONFIG.DAY_DURATION,
 
     // =====================
+    // ADMIN MODE
+    // =====================
+    isAdmin: false,
+    ADMIN_PASSWORD: 'Lam15052010@1505',
+
+    /**
+     * Kích hoạt chế độ Admin với đặc quyền vô hạn tiền
+     */
+    activateAdmin: function() {
+        this.isAdmin = true;
+        this.money = 999999999;
+        this.playerHP = this.playerMaxHP;
+        this.stamina = this.maxStamina;
+        this.ammo = this.maxAmmo;
+        console.log('👑 CHẾ ĐỘ ADMIN ĐƯỢC KÍCH HOẠT! Vô hạn tiền, HP đầy, Stamina đầy, Ammo đầy.');
+    },
+
+    // =====================
     // RESOURCE & TYCOON PROGRESSION
     // =====================
     money: CONFIG.STARTING_MONEY,
@@ -22,21 +40,27 @@ const GameState = {
     unlockedBuildings: {
         wall: true,
         tower: false,
-        minter: false
+        minter: false,
+        turel: false,
+        minigun: false
     },
     builtBuildings: {
         wall: 0,
         tower: 0,
-        minter: 0
+        minter: 0,
+        turel: 0,
+        minigun: 0
     },
 
     // =====================
     // ENTITIES
     // =====================
-    towers: [],      // Danh sách tháp pháo
+    towers: [],      // Danh sách tháp pháo (thường)
+    turelList: [],   // Danh sách tháp pháo Turel (model 3D)
     walls: [],       // Danh sách tường rào
     zombies: [],     // Danh sách zombie
     minters: [],     // Danh sách máy in tiền
+    minigunList: [], // Danh sách máy súng Minigun (hộp)
     bullets: [],     // Danh sách đạn
 
     // =====================
@@ -112,7 +136,7 @@ const GameState = {
      * @param {string} type
      */
     placeBuilding: function(x, z, type) {
-        if (!this.canBuildBuilding(type)) {
+        if (!this.canBuildBuilding(type, x, z)) {
             console.log('❌ Không thể build:', type);
             return false;
         }
@@ -134,12 +158,19 @@ const GameState = {
         } else if (type === 'minter') {
             building = new Minter3D(x, z);
             this.minters.push(building);
+        } else if (type === 'turel') {
+            building = new Turel3D(x, z);
+            this.turelList.push(building);
+        } else if (type === 'minigun') {
+            building = new Minigun3D(x, z);
+            this.minigunList.push(building);
         }
 
         if (building) {
             this.builtBuildings[type]++;
             this.buildingsBuilt++;
-            this.totalScore += 50;
+            this.totalScore += (type === 'turel' || type === 'minigun') ? 250 : 50;
+            this.unlockChain(type);
             this.saveGame();
             console.log('✅ Đặt', type, 'tại', x.toFixed(0), z.toFixed(0));
             return true;
@@ -172,19 +203,25 @@ const GameState = {
         this.unlockedBuildings = {
             wall: true,
             tower: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.tower),
-            minter: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.minter)
+            minter: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.minter),
+            turel: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.turel),
+            minigun: !!(saved && saved.unlockedBuildings && saved.unlockedBuildings.minigun)
         };
         this.builtBuildings = {
             wall: 0,
             tower: 0,
-            minter: 0
+            minter: 0,
+            turel: 0,
+            minigun: 0
         };
 
         // Reset entities
         this.towers = [];
+        this.turelList = [];
         this.walls = [];
         this.zombies = [];
         this.minters = [];
+        this.minigunList = [];
         this.bullets = [];
 
         // Reset stats
@@ -265,6 +302,13 @@ const GameState = {
         
         // Cập nhật tháp pháo do người chơi xây
         this.updateTowers(deltaTime);
+
+        // Cập nhật Turel (tháp pháo model 3D)
+        this.updateTurelList(deltaTime);
+
+        // Cập nhật Minigun (hộp súng máy)
+        this.updateMinigunList(deltaTime);
+
         // Cập nhật mạng súng máy tự động của đại bản doanh
         if (typeof Renderer3D !== 'undefined' && Renderer3D.updateAutomatedDefenses) {
             Renderer3D.updateAutomatedDefenses(deltaTime, this.zombies);
@@ -295,6 +339,60 @@ const GameState = {
     },
 
     /**
+     * Lấy vùng placement cho một loại building (x1, y1, x2, y2). 
+     * Tọa độ world 2D/3D chung, y tương ứng z trong 3D.
+     */
+    getBuildingPlacementZone: function(type) {
+        switch (type) {
+            case 'wall': return CONFIG.WALL_PLACEMENT_ZONE;
+            case 'tower': return CONFIG.TOWER_PLACEMENT_ZONE;
+            case 'minter': return CONFIG.MINTER_PLACEMENT_ZONE;
+            case 'turel': return CONFIG.TUREL_PLACEMENT_ZONE;
+            case 'minigun': return CONFIG.MINIGUN_PLACEMENT_ZONE;
+            default: return null;
+        }
+    },
+
+    /**
+     * Kiểm tra tọa độ x, z có nằm trong placement zone không.
+     */
+    isInPlacementZone: function(type, x, z) {
+        if (this.isAdmin) return true;
+        const zc = this.getBuildingPlacementZone(type);
+        if (!zc) return true;
+        return x >= zc.x1 && x <= zc.x2 && z >= zc.y1 && z <= zc.y2;
+    },
+
+    /**
+     * Gọi sau khi place building thành công để mở khóa các building kế tiếp
+     */
+    unlockChain: function(type) {
+        const def = this.getBuildingDef(type);
+        if (!def || !def.unlocks || !def.unlocks.length) return;
+        for (const next of def.unlocks) {
+            if (!this.unlockedBuildings[next]) {
+                this.unlockedBuildings[next] = true;
+                console.log('🔓 Đã mở khóa:', next);
+            }
+        }
+    },
+
+    /**
+     * Nhận sát thương từ zombie (tấn công người chơi)
+     */
+    damagePlayerFromZombie: function(damage) {
+        if (this.isAdmin) return;
+        const now = Date.now();
+        if (now < this.playerBiteCooldownUntil) return;
+        this.playerBiteCooldownUntil = now + 500;
+        this.playerHP = Math.max(0, this.playerHP - damage);
+        if (this.playerHP <= 0) {
+            this.isGameOver = true;
+            console.log('💀 Người chơi chết do zombie cắn.');
+        }
+    },
+
+    /**
      * Kiểm tra công trình đã mở khóa chưa
      * @param {string} type
      * @returns {boolean}
@@ -308,15 +406,19 @@ const GameState = {
     /**
      * Kiểm tra có thể mua/build công trình hay không
      * @param {string} type
+     * @param {number} [x] - Tùy chọn: nếu có sẽ kiểm tra cả placement zone
+     * @param {number} [z]
      * @returns {boolean}
      */
-    canBuildBuilding: function(type) {
+    canBuildBuilding: function(type, x, z) {
         const def = this.getBuildingDef(type);
         if (!def) return false;
         if (!this.hasUnlockedBuilding(type)) return false;
         if (type === 'minter' && this.builtBuildings[type] >= this.maxMinterSlots) return false;
         if (this.builtBuildings[type] >= def.maxCount) return false;
         if (this.phase !== CONFIG.PHASE_DAY) return false;
+        if (typeof x === 'number' && typeof z === 'number' && !this.isInPlacementZone(type, x, z)) return false;
+        if (this.isAdmin) return true;
         return this.money >= def.cost;
     },
 
@@ -346,14 +448,16 @@ const GameState = {
      * Cập nhật sinh tiền tự động
      */
     updateMoneyRegen: function() {
+        if (this.isAdmin) {
+            this.money = 999999999;
+            this.stamina = this.maxStamina;
+            this.ammo = this.maxAmmo;
+            this.playerHP = Math.min(this.playerHP, this.playerMaxHP);
+        }
         const now = Date.now();
         if (now - this.lastMoneyRegenTime >= CONFIG.MONEY_REGEN_INTERVAL) {
-            // Tiền từ sinh ra
             let moneyPerSec = CONFIG.MONEY_REGEN * this.moneyMultiplier;
-            
-            // Tiền từ máy in
-            moneyPerSec += this.minters.length * 8.33 * this.productionMultiplier; // (25 / 3 giây)
-            
+            moneyPerSec += this.minters.length * 8.33 * this.productionMultiplier;
             this.addMoney(moneyPerSec);
             this.lastMoneyRegenTime = now;
         }
@@ -382,6 +486,18 @@ const GameState = {
     updateTowers: function(deltaTime) {
         this.towers.forEach(tower => {
             tower.update(deltaTime, this.zombies, this.bullets);
+        });
+    },
+
+    updateTurelList: function(deltaTime) {
+        this.turelList.forEach(turel => {
+            turel.update(deltaTime, this.zombies, this.bullets);
+        });
+    },
+
+    updateMinigunList: function(deltaTime) {
+        this.minigunList.forEach(minigun => {
+            minigun.update(deltaTime, this.zombies, this.bullets);
         });
     },
     
@@ -529,6 +645,9 @@ const GameState = {
      * @returns {boolean} Có đủ tiền?
      */
     spendMoney: function(amount) {
+        if (this.isAdmin) {
+            return true;
+        }
         if (this.money >= amount) {
             this.money -= amount;
             return true;

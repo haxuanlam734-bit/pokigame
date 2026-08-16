@@ -56,7 +56,7 @@ const CONFIG = {
             emoji: '🔫',
             maxCount: 10,
             required: ['wall'],
-            unlocks: ['minter'],
+            unlocks: ['minter', 'turel'],
             description: 'Bắn laser tự động vào zombie gần nhất.'
         },
         minter: {
@@ -68,6 +68,28 @@ const CONFIG = {
             required: ['tower'],
             unlocks: [],
             description: 'Sinh tiền đều đặn theo chu kỳ.'
+        },
+        turel: {
+            id: 'turel',
+            name: 'Tháp Pháo Turel',
+            cost: 250,
+            emoji: '🗼',
+            maxCount: 12,
+            required: ['tower'],
+            unlocks: ['minigun'],
+            restrictToBase: true,
+            description: 'Model 3D phức tạp, bắn xa và mạnh hơn tháp thường. Dùng trong phạm vi căn cứ.'
+        },
+        minigun: {
+            id: 'minigun',
+            name: 'Máy Súng Minigun',
+            cost: 600,
+            emoji: '⚙️',
+            maxCount: 16,
+            required: ['turel'],
+            unlocks: [],
+            cratePurchase: true,
+            description: 'Mua trong hộp, tốc độ bắn cực nhanh, sát thương cao.'
         }
     },
 
@@ -104,6 +126,45 @@ const CONFIG = {
         x2: 480,
         y2: 480
     },
+
+    // =====================
+    // TUREL (MODEL 3D) - Pháo đài model Turel.fbx
+    // =====================
+    TUREL_WIDTH: 4,
+    TUREL_HEIGHT: 6.5,
+    TUREL_RANGE: 38,
+    TUREL_FIRE_RATE: 320,
+    TUREL_DAMAGE: 22,
+    TUREL_ROTATION_SPEED: 0.18,
+    TUREL_PLACEMENT_ZONE: {
+        x1: 162,
+        y1: 162,
+        x2: 338,
+        y2: 338
+    },
+
+    // =====================
+    // MINIGUN (MODEL 3D) - Súng máy minign.fbx trong hộp
+    // =====================
+    MINIGUN_WIDTH: 2.5,
+    MINIGUN_HEIGHT: 3,
+    MINIGUN_RANGE: 32,
+    MINIGUN_FIRE_RATE: 90,
+    MINIGUN_DAMAGE: 8,
+    MINIGUN_ROTATION_SPEED: 0.3,
+    MINIGUN_PLACEMENT_ZONE: {
+        x1: 162,
+        y1: 162,
+        x2: 338,
+        y2: 338
+    },
+
+    // =====================
+    // ZOMBIE AI - Phạm vi phát hiện người chơi
+    // =====================
+    ZOMBIE_PLAYER_CHASE_RADIUS: 120,
+    ZOMBIE_PLAYER_ATTACK_RADIUS: 1.6,
+    ZOMBIE_PLAYER_DAMAGE: 12,
 
     // =====================
     // BULLET (ĐẠN) - 3D world scale (m/s)

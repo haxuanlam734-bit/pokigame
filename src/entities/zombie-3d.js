@@ -24,6 +24,10 @@ class Zombie3D {
         this.vx = 0;
         this.vz = 0;
 
+        // AI: mục tiêu hiện tại
+        this.chasingPlayer = false;
+        this.lastPlayerAttackTime = 0;
+
         // Máu
         this.hp = hp;
         this.maxHp = hp;
@@ -64,73 +68,101 @@ class Zombie3D {
     update(deltaTime) {
         const deltaSec = deltaTime / 1000;
 
-        // Tính hướng đến pháo đài
-        const dx = CONFIG.FORTRESS_X - this.x;
-        const dz = CONFIG.FORTRESS_Y - this.z;
+        // ============ AI CHỌN MỤC TIÊU ============
+        let tx = CONFIG.FORTRESS_X;
+        let tz = CONFIG.FORTRESS_Y;
+        let targetPriority = 0;
+        this.chasingPlayer = false;
+
+        if (typeof PlayerController !== 'undefined' && PlayerController.position) {
+            const px = PlayerController.position.x;
+            const pz = PlayerController.position.z;
+            const distToPlayer = Math.hypot(px - this.x, pz - this.z);
+            const chaseR = CONFIG.ZOMBIE_PLAYER_CHASE_RADIUS || 120;
+            if (distToPlayer <= chaseR) {
+                tx = px;
+                tz = pz;
+                this.chasingPlayer = true;
+                targetPriority = 1;
+            }
+        }
+
+        // Tính hướng đến mục tiêu
+        const dx = tx - this.x;
+        const dz = tz - this.z;
         const dist = Math.hypot(dx, dz);
 
         let moveX = 0, moveZ = 0;
-
         if (dist > 1) {
             moveX = (dx / dist) * this.speed;
             moveZ = (dz / dist) * this.speed;
         }
 
+        // ============ Tấn công người chơi nếu đủ gần ============
+        if (this.chasingPlayer) {
+            const attackR = CONFIG.ZOMBIE_PLAYER_ATTACK_RADIUS || 1.6;
+            const distP = Math.hypot((PlayerController.position.x - this.x), (PlayerController.position.z - this.z));
+            if (distP <= attackR) {
+                const now = Date.now();
+                if (now - this.lastPlayerAttackTime >= 1000) {
+                    this.lastPlayerAttackTime = now;
+                    if (typeof GameState !== 'undefined') {
+                        GameState.damagePlayerFromZombie(CONFIG.ZOMBIE_PLAYER_DAMAGE || 12);
+                    }
+                }
+            }
+        }
+
         // --- Steering behavior: tránh tường ---
         let avoidanceX = 0, avoidanceZ = 0;
-        
         if (GameState && GameState.walls && GameState.walls.length > 0) {
-            const avoidanceRadius = 3.5; // Khoảng cách phát hiện tường
-            
+            const avoidanceRadius = 3.5;
             for (let wall of GameState.walls) {
                 if (wall.isDestroyed()) continue;
-                
                 const wallDx = wall.x - this.x;
                 const wallDz = wall.z - this.z;
                 const wallDist = Math.hypot(wallDx, wallDz);
-                
                 if (wallDist < avoidanceRadius && wallDist > 0.1) {
-                    // Tương tác tránh: đẩy zombie ra xa khỏi tường
-                    const pushForce = 1.0 - (wallDist / avoidanceRadius); // 0-1
+                    const pushForce = 1.0 - (wallDist / avoidanceRadius);
                     const pushX = -(wallDx / wallDist) * pushForce;
                     const pushZ = -(wallDz / wallDist) * pushForce;
-                    
                     avoidanceX += pushX;
                     avoidanceZ += pushZ;
                 }
             }
         }
 
-        // Kết hợp chuyển động mục tiêu với tránh tường
-        const blendFactor = 0.7; // Ưu tiên di chuyển tới pháo đài (70%) hơn tránh tường (30%)
+        // Nếu đang đuổi player -> giảm weight tránh tường để zombie "dồn" vào player
+        const blendFactor = this.chasingPlayer ? 0.88 : 0.7;
         this.vx = moveX * blendFactor + avoidanceX * (1 - blendFactor);
         this.vz = moveZ * blendFactor + avoidanceZ * (1 - blendFactor);
 
-        // Di chuyển
         this.x += this.vx * deltaSec;
         this.z += this.vz * deltaSec;
 
-        // Cập nhật vị trí mesh 3D
         if (this.mesh3D) {
             this.mesh3D.position.x = this.x;
             this.mesh3D.position.z = this.z;
+            if ((this.vx * this.vx + this.vz * this.vz) > 0.01) {
+                this.mesh3D.rotation.y = Math.atan2(this.vx, this.vz);
+            }
         }
 
-        // Animation
         this.animationFrame += deltaTime / 100;
         if (this.animationFrame > 4) {
             this.animationFrame = 0;
         }
 
-        // Giảm flash time
         if (this.damageFlashTime > 0) {
             this.damageFlashTime -= deltaSec;
-            
             if (this.damageFlashTime <= 0) {
-                // Khôi phục màu
                 if (this.mesh3D && this.mesh3D.body) {
-                    this.mesh3D.body.material.color.setHex(0xff3333);
+                    this.mesh3D.body.material.color.setHex(this.chasingPlayer ? 0xff1111 : 0xff3333);
                 }
+            }
+        } else {
+            if (this.mesh3D && this.mesh3D.body && this.chasingPlayer) {
+                this.mesh3D.body.material.color.setHex(0xff1111);
             }
         }
     }

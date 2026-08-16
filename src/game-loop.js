@@ -166,7 +166,9 @@ const GameLoop = {
         const buttons = {
             'btn-wall': 'wall',
             'btn-turret': 'tower',
-            'btn-minter': 'minter'
+            'btn-minter': 'minter',
+            'btn-turel': 'turel',
+            'btn-minigun': 'minigun'
         };
 
         for (const [btnId, type] of Object.entries(buttons)) {

@@ -88,7 +88,9 @@ const Game = {
         const buttonMap = {
             'wall': document.getElementById('btn-wall'),
             'tower': document.getElementById('btn-turret'),
-            'minter': document.getElementById('btn-minter')
+            'minter': document.getElementById('btn-minter'),
+            'turel': document.getElementById('btn-turel'),
+            'minigun': document.getElementById('btn-minigun')
         };
 
         Object.entries(buttonMap).forEach(([type, button]) => {

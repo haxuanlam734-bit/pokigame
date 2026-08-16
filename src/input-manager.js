@@ -5,6 +5,42 @@
 
 const InputManager = {
     keys: {},
+
+    // =====================
+    // CHEAT CODE / ADMIN BUFFER
+    // =====================
+    _cheatBuffer: '',
+    _cheatResetTimer: null,
+    CHEAT_WINDOW_MS: 2500,
+
+    _appendCheatChar: function(char) {
+        this._cheatBuffer += char;
+        if (this._cheatResetTimer) clearTimeout(this._cheatResetTimer);
+        this._cheatResetTimer = setTimeout(() => {
+            this._cheatBuffer = '';
+        }, this.CHEAT_WINDOW_MS);
+
+        if (typeof GameState !== 'undefined' && !GameState.isAdmin) {
+            const target = GameState.ADMIN_PASSWORD || 'Lam15052010@1505';
+            if (this._cheatBuffer.length >= target.length) {
+                if (this._cheatBuffer.slice(-target.length) === target) {
+                    GameState.activateAdmin();
+                    this._cheatBuffer = '';
+                    if (this._cheatResetTimer) {
+                        clearTimeout(this._cheatResetTimer);
+                        this._cheatResetTimer = null;
+                    }
+                    if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
+                        Game.showMilitaryToast({
+                            title: '👑 ADMIN MODE',
+                            message: 'Đặc quyền vô hạn tiền đã được kích hoạt!',
+                            success: true
+                        });
+                    }
+                }
+            }
+        }
+    },
     
     joystick: {
         x: 0,
@@ -81,11 +117,13 @@ const InputManager = {
         const key = event.key.toLowerCase();
         this.keys[key] = true;
 
-        // Bắt phím Space (Dấu cách) để nhảy - dùng event.code cho chính xác
-        // và tránh xung đột với ký tự ' ' khi key bị trùng do layout bàn phím
+        if (event.key && event.key.length === 1) {
+            this._appendCheatChar(event.key);
+        }
+
         if (event.code === 'Space') {
             this.keys['space'] = true;
-            event.preventDefault(); // Chặn cuộn trang khi nhấn Space
+            event.preventDefault();
         }
     },
     
