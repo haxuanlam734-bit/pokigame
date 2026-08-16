@@ -204,6 +204,10 @@ const GameLoop = {
             const isDay = GameState.phase === CONFIG.PHASE_DAY;
             const canUse = unlocked && affordable && isDay;
 
+            if (type === 'turel') {
+                btn.textContent = `${def.emoji} ${def.name} ${GameState.builtBuildings.turel}/${def.maxCount} - ${Utils.formatMoney(def.cost)}`;
+            }
+
             // Xóa các class cũ
             btn.classList.remove('available', 'active', 'disabled');
             

@@ -71,14 +71,14 @@ const CONFIG = {
         },
         turel: {
             id: 'turel',
-            name: 'Tháp Pháo Turel',
+            name: 'Turret',
             cost: 250,
             emoji: '🗼',
-            maxCount: 12,
-            required: ['tower'],
+            maxCount: 20,
+            required: [],
             unlocks: ['minigun'],
             restrictToBase: true,
-            description: 'Model 3D phức tạp, bắn xa và mạnh hơn tháp thường. Dùng trong phạm vi căn cứ.'
+            description: 'Turret 3D đặt trong căn cứ. Mua khi đủ tiền; tối đa 20 turret/căn cứ.'
         },
         minigun: {
             id: 'minigun',
@@ -136,6 +136,9 @@ const CONFIG = {
     TUREL_FIRE_RATE: 320,
     TUREL_DAMAGE: 22,
     TUREL_ROTATION_SPEED: 0.18,
+    TUREL_MAX_LEVEL: 5,
+    TUREL_UPGRADE_BASE_COST: 180,
+    TUREL_SELL_REFUND: 0.65,
     TUREL_PLACEMENT_ZONE: {
         x1: 162,
         y1: 162,

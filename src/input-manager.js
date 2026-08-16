@@ -107,7 +107,10 @@ const InputManager = {
         document.addEventListener('touchmove', this.onPointerMove.bind(this));
         document.addEventListener('touchend', this.onPointerUp.bind(this));
         
-        if (Utils.isMobile()) {
+        const isMobile = (typeof Utils !== 'undefined' && Utils.isMobile) 
+            ? Utils.isMobile() 
+            : /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+        if (isMobile) {
             const joystickContainer = document.getElementById('joystick-container');
             if (joystickContainer) {
                 joystickContainer.style.display = 'block';

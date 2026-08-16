@@ -8,6 +8,7 @@ const WeaponRenderer = {
     _weaponHolder:    null,   // THREE.Group gan vao player group tai vi tri tay phai
     _currentModel:    null,   // Model hien tai dang hien thi
     _models:          {},     // Cache cac model da load
+    _loadPromises:    [],     // Used by the game loading screen to wait for GLB assets
 
     // Melee animation state
     _swingAnim:       false,
@@ -158,6 +159,7 @@ const WeaponRenderer = {
 
     _loadModel: function(loader, weaponId, def) {
         const self = this;
+        const loadPromise = new Promise(function(resolve) {
         loader.load(
             def.modelPath,
             function(gltf) {
@@ -169,7 +171,7 @@ const WeaponRenderer = {
                         if (!child.name) child.name = weaponId + '_mesh';
                     }
                 });
-                model.scale.setScalar(def.attach ? def.attach.scale : 1.0);
+                self._normalizeModel(model, def.attach);
                 model.visible = false;
                 self._models[weaponId] = model;
                 self._weaponHolder.add(model);
@@ -178,13 +180,43 @@ const WeaponRenderer = {
                 if (typeof WeaponSystem !== 'undefined' && WeaponSystem.currentId === weaponId) {
                     self._showModel(weaponId);
                 }
+                resolve(model);
             },
             undefined,
             function(err) {
                 console.error('Loi load model ' + weaponId + ' (' + def.modelPath + '):', err);
                 self._createFallbackModel(weaponId, def);
+                resolve(null);
             }
         );
+        });
+        this._loadPromises.push(loadPromise);
+    },
+
+    // Models in the supplied GLBs use different native unit systems.  Scale
+    // from the actual bounding box rather than a guessed number so a sword or
+    // gun cannot end up microscopic or off-screen when its source is replaced.
+    _normalizeModel: function(model, attach) {
+        const targetSize = attach && attach.targetSize;
+        if (!targetSize) return;
+
+        model.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+        const largestDimension = Math.max(size.x, size.y, size.z);
+        if (!Number.isFinite(largestDimension) || largestDimension <= 0.00001) return;
+
+        const scale = targetSize / largestDimension;
+        model.scale.setScalar(scale);
+        // Centre the source model at the grip/attachment point.  This also
+        // fixes GLBs whose geometry is exported far from their local origin.
+        model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+        model.traverse(function(child) {
+            if (child.isMesh) child.frustumCulled = false;
+        });
     },
 
     _createFallbackModel: function(weaponId, def) {
@@ -244,9 +276,10 @@ const WeaponRenderer = {
 
         const a = def.attach;
         if (a) {
-            model.position.set(0, 0, 0);
+            // The holder is the hand attachment point; keeping the normalized
+            // model at its own origin avoids double-applying offsets.
             model.rotation.set(a.rx || 0, a.ry || 0, a.rz || 0);
-            model.scale.setScalar(a.scale || 1.0);
+            this._weaponHolder.position.set(a.px || 0, a.py || 0, a.pz || 0);
         }
 
         if (weaponId !== 'sword' && this._muzzleFlashObj) {
@@ -362,11 +395,13 @@ const WeaponRenderer = {
         const isFPS = typeof PlayerController !== 'undefined' && PlayerController.isFirstPersonMode;
         const isCrouch = typeof PlayerController !== 'undefined' && PlayerController.isCrouching;
 
+        const def = (typeof WeaponSystem !== 'undefined' && WeaponSystem.getCurrentDef)
+            ? WeaponSystem.getCurrentDef() : null;
+        const a = def && def.attach ? def.attach : { px: 0.45, py: 0.60, pz: 0.15 };
         if (isFPS) {
             this._weaponHolder.position.set(0.32, -0.22, -0.32);
         } else {
-            const yOffset = isCrouch ? 0.42 : 0.60;
-            this._weaponHolder.position.set(0.45, yOffset, 0.15);
+            this._weaponHolder.position.set(a.px || 0, isCrouch ? (a.py || 0) - 0.18 : (a.py || 0), a.pz || 0);
         }
     }
 };

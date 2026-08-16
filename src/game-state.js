@@ -62,6 +62,7 @@ const GameState = {
     minters: [],     // Danh sách máy in tiền
     minigunList: [], // Danh sách máy súng Minigun (hộp)
     bullets: [],     // Danh sách đạn
+    relocatingTurret: null,
 
     // =====================
     // SCORE & STATS
@@ -118,6 +119,9 @@ const GameState = {
         
         this.buildingMode = true;
         this.buildingType = type;
+        if (type === 'turel' && typeof Renderer3D !== 'undefined' && Renderer3D.beginTurretPreview) {
+            Renderer3D.beginTurretPreview();
+        }
         console.log('🔨 Chế độ build 3D bắt đầu:', type);
     },
 
@@ -125,8 +129,13 @@ const GameState = {
      * Kết thúc chế độ build
      */
     endBuildMode: function() {
+        if (this.buildingType === 'turel' && typeof Renderer3D !== 'undefined' && Renderer3D.endTurretPreview) {
+            Renderer3D.endTurretPreview();
+        }
         this.buildingMode = false;
         this.buildingType = null;
+        if (this.relocatingTurret && this.relocatingTurret.mesh3D) this.relocatingTurret.mesh3D.visible = true;
+        this.relocatingTurret = null;
     },
 
     /**
@@ -268,6 +277,8 @@ const GameState = {
                 if (item.type === 'wall') this.builtBuildings.wall = item.count || 0;
                 if (item.type === 'tower') this.builtBuildings.tower = item.count || 0;
                 if (item.type === 'minter') this.builtBuildings.minter = item.count || 0;
+                if (item.type === 'turel') this.builtBuildings.turel = Math.min(item.count || 0, CONFIG.BUILDING_DEFS.turel.maxCount);
+                if (item.type === 'minigun') this.builtBuildings.minigun = item.count || 0;
             });
         }
 
@@ -552,8 +563,9 @@ const GameState = {
             const bullet = this.bullets[i];
             bullet.update(deltaTime);
             
-            // Xóa đạn nếu ra khỏi màn hình
-            if (bullet.x < 0 || bullet.x > CONFIG.CANVAS_WIDTH) {
+            // 3D world uses X/Z; the old 2D Y check meant turret bullets
+            // never collided with zombies and could accumulate indefinitely.
+            if (bullet.traveled >= bullet.maxDistance || bullet.x < 0 || bullet.x > 500 || bullet.z < 0 || bullet.z > 500) {
                 this.bullets.splice(i, 1);
             }
         }
@@ -569,13 +581,10 @@ const GameState = {
             for (let j = this.zombies.length - 1; j >= 0; j--) {
                 const zombie = this.zombies[j];
                 
-                // Kiểm tra va chạm hình tròn
-                if (Utils.circleCollision(
-                    bullet.x, bullet.y, CONFIG.BULLET_RADIUS,
-                    zombie.x, zombie.y, CONFIG.ZOMBIE_WIDTH / 2
-                )) {
+                const hitRadius = CONFIG.BULLET_RADIUS + CONFIG.ZOMBIE_WIDTH / 2;
+                if (Math.hypot(bullet.x - zombie.x, bullet.z - zombie.z) <= hitRadius) {
                     // Zombie bị trúng đạn
-                    zombie.takeDamage(CONFIG.TOWER_DAMAGE);
+                    zombie.takeDamage(bullet.damage || CONFIG.TOWER_DAMAGE);
                     
                     // Xóa đạn
                     this.bullets.splice(i, 1);
@@ -583,6 +592,56 @@ const GameState = {
                 }
             }
         }
+    },
+
+    findNearbyTurret: function(x, z, radius = 5.5) {
+        let closest = null;
+        let closestDistance = radius;
+        this.turelList.forEach(turret => {
+            const distance = Math.hypot(turret.x - x, turret.z - z);
+            if (distance <= closestDistance) {
+                closest = turret;
+                closestDistance = distance;
+            }
+        });
+        return closest ? { turret: closest, distance: closestDistance } : null;
+    },
+
+    upgradeTurret: function(turret) {
+        if (!turret || turret.level >= (CONFIG.TUREL_MAX_LEVEL || 5)) return { success: false, title: 'TURRET', message: 'Turret đã đạt cấp tối đa.' };
+        const cost = turret.getUpgradeCost();
+        if (!this.spendMoney(cost)) return { success: false, title: 'TURRET', message: `Cần ${cost}💰 để nâng cấp.` };
+        turret.upgrade();
+        return { success: true, title: 'TURRET UPGRADED', message: `Lv.${turret.level}: ${turret.damage} damage, tầm ${turret.range}m.` };
+    },
+
+    sellTurret: function(turret) {
+        const index = this.turelList.indexOf(turret);
+        if (index < 0) return { success: false, title: 'TURRET', message: 'Không tìm thấy turret.' };
+        const refund = Math.floor(CONFIG.BUILDING_DEFS.turel.cost * (CONFIG.TUREL_SELL_REFUND || 0.65) + turret.upgradeSpent * 0.5);
+        turret.dispose();
+        this.turelList.splice(index, 1);
+        this.builtBuildings.turel = Math.max(0, this.builtBuildings.turel - 1);
+        this.addMoney(refund);
+        return { success: true, title: 'TURRET SOLD', message: `Đã bán turret, nhận ${refund}💰.` };
+    },
+
+    startTurretRelocation: function(turret) {
+        if (!turret) return false;
+        this.endBuildMode();
+        this.relocatingTurret = turret;
+        this.buildingMode = true;
+        this.buildingType = 'turel-relocate';
+        if (turret.mesh3D) turret.mesh3D.visible = false;
+        if (Renderer3D && Renderer3D.beginTurretPreview) Renderer3D.beginTurretPreview();
+        return true;
+    },
+
+    relocateTurret: function(x, z) {
+        const turret = this.relocatingTurret;
+        if (!turret || !this.isInPlacementZone('turel', x, z)) return false;
+        turret.setPosition(x, z);
+        return true;
     },
     
     /**
@@ -1008,7 +1067,9 @@ const GameState = {
             buildings: [
                 { type: 'wall', count: this.builtBuildings.wall },
                 { type: 'tower', count: this.builtBuildings.tower },
-                { type: 'minter', count: this.builtBuildings.minter }
+                { type: 'minter', count: this.builtBuildings.minter },
+                { type: 'turel', count: this.builtBuildings.turel },
+                { type: 'minigun', count: this.builtBuildings.minigun }
             ],
             timestamp: Date.now()
         };
@@ -1037,6 +1098,8 @@ const GameState = {
                     if (item.type === 'wall') this.builtBuildings.wall = item.count || 0;
                     if (item.type === 'tower') this.builtBuildings.tower = item.count || 0;
                     if (item.type === 'minter') this.builtBuildings.minter = item.count || 0;
+                    if (item.type === 'turel') this.builtBuildings.turel = Math.min(item.count || 0, CONFIG.BUILDING_DEFS.turel.maxCount);
+                    if (item.type === 'minigun') this.builtBuildings.minigun = item.count || 0;
                 });
             }
             return saveData;

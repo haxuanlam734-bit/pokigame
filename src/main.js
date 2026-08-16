@@ -10,6 +10,7 @@ const Game = {
     init: async function() {
         console.log('%c🎮 PHÁO ĐÀI CHỐNG ZOMBIE - Khởi tạo...', 'color: #00ff00; font-size: 16px; font-weight: bold;');
         
+        const startedAt = performance.now();
         try {
             // 1. Khởi tạo Poki SDK
             PokiManager.init();
@@ -44,7 +45,7 @@ const Game = {
             this.setupBuildModeInput();
             
             // 9. Báo cho Poki rằng game tải xong
-            await this.waitForAssets();
+            await this.waitForAssets(startedAt);
             PokiManager.gameLoadingFinished();
             
             // 10. Ẩn màn hình loading
@@ -55,6 +56,9 @@ const Game = {
             
             // 12. Khởi động game loop
             GameLoop.start();
+            // The original turret FBX is a visual enhancement, not a startup
+            // dependency. Start its download only after gameplay is live.
+            setTimeout(() => Renderer3D.loadTurretModelDeferred && Renderer3D.loadTurretModelDeferred(), 600);
             
             console.log('%c✅ Game khởi tạo thành công!', 'color: #00ff00; font-size: 14px;');
         } catch (error) {
@@ -67,14 +71,14 @@ const Game = {
      * Chờ tài nguyên tải xong
      * @returns {Promise} Promise hoàn tất
      */
-    waitForAssets: async function() {
-        // Chờ các GLB external assets trong Renderer3D được tải xong.
-        // Nếu một asset lỗi, Renderer3D đã xử lý mềm và resolve(null), nên game
-        // vẫn có thể khởi động thay vì bị kẹt loading.
-        if (typeof Renderer3D !== 'undefined' && Array.isArray(Renderer3D._assetPromises)) {
-            await Promise.allSettled(Renderer3D._assetPromises);
+    waitForAssets: async function(startedAt) {
+        // Web builds start with the procedural scene and light weapons. Never
+        // hold first play for optional, heavyweight model downloads.
+        const minimumLoadingMs = 2000;
+        const elapsed = performance.now() - startedAt;
+        if (elapsed < minimumLoadingMs) {
+            await new Promise(resolve => setTimeout(resolve, minimumLoadingMs - elapsed));
         }
-        return new Promise(resolve => setTimeout(resolve, 50));
     },
     
     /**
@@ -170,6 +174,31 @@ const Game = {
             return;
         }
 
+        let previewFrameRequested = false;
+        let pendingPointerEvent = null;
+        const updateTurretPreview = () => {
+            previewFrameRequested = false;
+            const event = pendingPointerEvent;
+            if (!event || !GameState.buildingMode || !['turel', 'turel-relocate'].includes(GameState.buildingType)) return;
+            const point = Renderer3D.getGroundIntersection(Renderer3D.getRaycaster(event.clientX, event.clientY));
+            if (!point) return;
+            const valid = GameState.buildingType === 'turel-relocate'
+                ? GameState.isInPlacementZone('turel', point.x, point.z)
+                : GameState.canBuildBuilding('turel', point.x, point.z);
+            Renderer3D.updateTurretPreview(point.x, point.z, valid);
+        };
+
+        canvas.addEventListener('pointermove', (event) => {
+            if (!GameState.buildingMode || !['turel', 'turel-relocate'].includes(GameState.buildingType)) return;
+            // One ground raycast at most per rendered frame keeps placement
+            // smooth even on high polling-rate mice and touch devices.
+            pendingPointerEvent = event;
+            if (!previewFrameRequested) {
+                previewFrameRequested = true;
+                requestAnimationFrame(updateTurretPreview);
+            }
+        }, { passive: true });
+
         canvas.addEventListener('click', (event) => {
             // Chỉ xử lý khi đang ở chế độ xây dựng
             if (!GameState.buildingMode || !GameState.buildingType) return;
@@ -185,51 +214,152 @@ const Game = {
                 return;
             }
 
-            const placed = GameState.placeBuilding(point.x, point.z, type);
+            const placed = type === 'turel-relocate'
+                ? GameState.relocateTurret(point.x, point.z)
+                : GameState.placeBuilding(point.x, point.z, type);
             if (placed) {
                 GameState.saveGame();
                 console.log('✅ Đã đặt ' + type + ' tại (' + point.x.toFixed(0) + ', ' + point.z.toFixed(0) + ')');
+                GameState.endBuildMode();
             }
-
-            // Thoát chế độ xây dựng sau khi đặt (hoặc thử đặt) xong
-            GameState.endBuildMode();
         });
 
-        // Nhấn ESC để hủy chế độ xây dựng
+        // Nhấn ESC để hủy chế độ xây dựng hoặc đóng modal
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && GameState.buildingMode) {
-                GameState.endBuildMode();
-                console.log('✅ Đã hủy chế độ xây dựng');
+            if (event.key === 'Escape') {
+                if (GameState.buildingMode) {
+                    GameState.endBuildMode();
+                    console.log('✅ Đã hủy chế độ xây dựng');
+                }
+                Game.closeTurretModal();
             }
         });
 
         console.log('✅ Build Mode Input đã sẵn sàng');
     },
-    
+
     updateMilitaryInteraction: function() {
         const prompt = document.getElementById('military-interaction');
         const title = document.getElementById('military-interaction-title');
         const desc = document.getElementById('military-interaction-desc');
         const action = document.getElementById('military-interaction-action');
-        if (!prompt || typeof Renderer3D === 'undefined' || !Renderer3D.getNearbyMilitaryInteraction) return;
+        if (!prompt || typeof Renderer3D === 'undefined' || typeof PlayerController === 'undefined') return;
 
-        const near = Renderer3D.getNearbyMilitaryInteraction(PlayerController.position.x, PlayerController.position.z);
+        // Ưu tiên kiểm tra Tháp Pháo / Turret gần người chơi
+        const nearTurretObj = GameState.findNearbyTurret ? GameState.findNearbyTurret(PlayerController.position.x, PlayerController.position.z, 4.8) : null;
+        if (nearTurretObj && nearTurretObj.turret && !GameState.isGameOver && !GameState.buildingMode) {
+            const turret = nearTurretObj.turret;
+            this.nearTurret = turret;
+            this.nearMilitaryInteraction = null;
+
+            title.textContent = `🗼 THÁP PHÁO TUREL (CẤP ${turret.level || 1})`;
+            desc.textContent = `Sát thương: ${turret.damage} DMG | Tầm: ${turret.range}m | Nhấn E để quản lý`;
+            action.textContent = 'E · QUẢN LÝ THÁP';
+            prompt.classList.add('visible');
+            return;
+        }
+
+        this.nearTurret = null;
+
+        // Sau đó kiểm tra khu căn cứ quân sự HQ
+        const near = Renderer3D.getNearbyMilitaryInteraction ? Renderer3D.getNearbyMilitaryInteraction(PlayerController.position.x, PlayerController.position.z) : null;
         this.nearMilitaryInteraction = near;
-        if (!near || GameState.isGameOver) {
+        if (!near || GameState.isGameOver || GameState.buildingMode) {
             prompt.classList.remove('visible');
             return;
         }
 
         title.textContent = near.name;
         desc.textContent = near.description;
-        action.textContent = 'E  ·  VÀO KHU';
+        action.textContent = 'E · VÀO KHU';
         prompt.classList.add('visible');
     },
 
     interactWithNearbyMilitaryBuilding: function() {
+        // Nếu gần Turret -> Mở bảng quản lý Turret
+        if (this.nearTurret) {
+            this.openTurretModal(this.nearTurret);
+            return;
+        }
+
         const near = this.nearMilitaryInteraction;
         if (!near) return;
         const result = GameState.interactWithMilitaryBuilding(near.id);
+        this.showMilitaryToast(result);
+    },
+
+    openTurretModal: function(turret) {
+        if (!turret) return;
+        this.selectedTurret = turret;
+
+        const modal = document.getElementById('turret-modal');
+        if (!modal) return;
+
+        const titleEl = document.getElementById('tm-title');
+        const damageEl = document.getElementById('tm-stat-damage');
+        const speedEl = document.getElementById('tm-stat-speed');
+        const rangeEl = document.getElementById('tm-stat-range');
+        const costEl = document.getElementById('tm-upgrade-cost');
+        const refundEl = document.getElementById('tm-sell-refund');
+        const upgradeBtn = document.getElementById('tm-btn-upgrade');
+
+        const level = turret.level || 1;
+        const maxLevel = CONFIG.TUREL_MAX_LEVEL || 5;
+
+        if (titleEl) titleEl.textContent = `🗼 THÁP PHÁO TUREL (CẤP ${level}/${maxLevel})`;
+        if (damageEl) damageEl.textContent = `${turret.damage} DMG`;
+        if (speedEl) speedEl.textContent = `${(1000 / turret.fireRate).toFixed(1)}/s`;
+        if (rangeEl) rangeEl.textContent = `${turret.range}m`;
+
+        const cost = turret.getUpgradeCost ? turret.getUpgradeCost() : 160;
+        const refund = Math.floor(CONFIG.BUILDING_DEFS.turel.cost * (CONFIG.TUREL_SELL_REFUND || 0.65) + (turret.upgradeSpent || 0) * 0.5);
+
+        if (costEl) costEl.textContent = level >= maxLevel ? 'TỐI ĐA' : `${cost}💰`;
+        if (refundEl) refundEl.textContent = `+${refund}💰`;
+
+        if (upgradeBtn) {
+            if (level >= maxLevel) {
+                upgradeBtn.style.opacity = '0.5';
+                upgradeBtn.style.pointerEvents = 'none';
+            } else {
+                upgradeBtn.style.opacity = '1';
+                upgradeBtn.style.pointerEvents = 'auto';
+            }
+        }
+
+        modal.classList.add('visible');
+    },
+
+    closeTurretModal: function() {
+        const modal = document.getElementById('turret-modal');
+        if (modal) modal.classList.remove('visible');
+        this.selectedTurret = null;
+    },
+
+    upgradeCurrentTurret: function() {
+        if (!this.selectedTurret) return;
+        const result = GameState.upgradeTurret(this.selectedTurret);
+        this.showMilitaryToast(result);
+        if (result.success) {
+            this.openTurretModal(this.selectedTurret);
+        }
+    },
+
+    relocateCurrentTurret: function() {
+        if (!this.selectedTurret) return;
+        const turret = this.selectedTurret;
+        this.closeTurretModal();
+        GameState.startTurretRelocation(turret);
+        this.showMilitaryToast({
+            title: 'DI CHUYỂN TURRET',
+            message: 'Di chuyển chuột và click vị trí mới trong căn cứ để đặt lại.'
+        });
+    },
+
+    sellCurrentTurret: function() {
+        if (!this.selectedTurret) return;
+        const result = GameState.sellTurret(this.selectedTurret);
+        this.closeTurretModal();
         this.showMilitaryToast(result);
     },
 
@@ -242,7 +372,6 @@ const Game = {
         clearTimeout(this._militaryToastTimer);
         this._militaryToastTimer = setTimeout(() => toast.classList.remove('visible'), 2600);
     },
-
     /**
      * Hiển thị quảng cáo có phần thưởng
      */

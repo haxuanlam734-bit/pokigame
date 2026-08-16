@@ -1,6 +1,6 @@
 /**
- * RENDERER-3D.JS - Xử lý render 3D dùng Three.js
- * Tạo scene 3D, camera, lighting, và vẽ các entity
+ * RENDERER-3D.JS - XÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½ render 3D dÃƒÆ’Ã‚Â¹ng Three.js
+ * TÃƒÂ¡Ã‚ÂºÃ‚Â¡o scene 3D, camera, lighting, vÃƒÆ’Ã‚Â  vÃƒÂ¡Ã‚ÂºÃ‚Â½ cÃƒÆ’Ã‚Â¡c entity
  */
 
 let Renderer3D = {
@@ -20,6 +20,11 @@ let Renderer3D = {
     // External GLB assets loaded from src/assets/models.
     _assetPromises: [],
     _externalModels: {},
+    // Poki runs in a browser, so the first playable frame matters more than
+    // loading cinematic source assets (the turret FBX alone is ~84 MB).
+    webPerformanceMode: true,
+    turretPreview: null,
+    _turretAssets: null,
 
     cameraDistance: 20,
     cameraHeightOffset: 8,
@@ -45,7 +50,7 @@ let Renderer3D = {
     _smoothedLookAtY: 0,
     _smoothedLookAtZ: 0,
 
-    // ---- Danh sách mesh chặn camera (cho collision) ----
+    // ---- Danh sÃƒÆ’Ã‚Â¡ch mesh chÃƒÂ¡Ã‚ÂºÃ‚Â·n camera (cho collision) ----
     _collisionMeshes: [],
     _autoDefenseTurrets: [],
     _autoDefenseTracers: [],
@@ -54,7 +59,7 @@ let Renderer3D = {
     _gltfLoader: null,
 
     init: function() {
-        console.log('🎨 Khởi tạo Renderer 3D (Three.js)...');
+        console.log('ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â¨ KhÃƒÂ¡Ã‚Â»Ã…Â¸i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o Renderer 3D (Three.js)...');
         this.canvas = document.getElementById('gameCanvas');
         if (!this.canvas) {
             this.canvas = document.createElement('canvas');
@@ -72,13 +77,18 @@ let Renderer3D = {
         this.camera.position.set(250, 10, 290);
         this.camera.lookAt(250, 1, 280);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, canvas: this.canvas });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: false,
+            powerPreference: 'high-performance',
+            canvas: this.canvas
+        });
         this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.type = THREE.PCFShadowMap;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 
-        // Khởi tạo mảng collision
+        // KhÃƒÂ¡Ã‚Â»Ã…Â¸i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o mÃƒÂ¡Ã‚ÂºÃ‚Â£ng collision
         this._collisionMeshes = [];
         this._autoDefenseTurrets = [];
         this._autoDefenseTracers = [];
@@ -89,7 +99,7 @@ let Renderer3D = {
         this.createBoundaryMountains();
         this.createRiver();
 
-        // ---- ĐẠI BẢN DOANH QUÂN SỰ ----
+        // ---- Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚ÂºÃ‚Â I BÃƒÂ¡Ã‚ÂºÃ‚Â¢N DOANH QUÃƒÆ’Ã¢â‚¬Å¡N SÃƒÂ¡Ã‚Â»Ã‚Â° ----
         this.buildGrandBase();
 
         this.createPlayer3D();
@@ -101,10 +111,10 @@ let Renderer3D = {
         const verticalOffset = this.cameraDistance * Math.sin(defaultPitch) + this.cameraHeightOffset;
         const offsetX = horizontalDist * Math.sin(defaultYaw);
         const offsetZ = horizontalDist * Math.cos(defaultYaw);
-        // Dùng đúng toạ độ spawn của player (250, 280) làm điểm neo camera ban
-        // đầu — spawn đã được dời ra sân trước HQ để có khoảng trống, nếu vẫn
-        // hardcode 250 ở đây thì camera lúc khởi động sẽ lại chĩa ngược vào
-        // xuyên tường nhà chính GLB trước khi frame update đầu tiên chạy.
+        // DÃƒÆ’Ã‚Â¹ng Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Âºng toÃƒÂ¡Ã‚ÂºÃ‚Â¡ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ spawn cÃƒÂ¡Ã‚Â»Ã‚Â§a player (250, 280) lÃƒÆ’Ã‚Â m Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m neo camera ban
+        // Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â spawn Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c dÃƒÂ¡Ã‚Â»Ã‚Âi ra sÃƒÆ’Ã‚Â¢n trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc HQ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÆ’Ã‚Â³ khoÃƒÂ¡Ã‚ÂºÃ‚Â£ng trÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng, nÃƒÂ¡Ã‚ÂºÃ‚Â¿u vÃƒÂ¡Ã‚ÂºÃ‚Â«n
+        // hardcode 250 ÃƒÂ¡Ã‚Â»Ã…Â¸ Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y thÃƒÆ’Ã‚Â¬ camera lÃƒÆ’Ã‚Âºc khÃƒÂ¡Ã‚Â»Ã…Â¸i Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng sÃƒÂ¡Ã‚ÂºÃ‚Â½ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i chÃƒâ€žÃ‚Â©a ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c vÃƒÆ’Ã‚Â o
+        // xuyÃƒÆ’Ã‚Âªn tÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng nhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi frame update Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u tiÃƒÆ’Ã‚Âªn chÃƒÂ¡Ã‚ÂºÃ‚Â¡y.
         this.camera.position.set(250 - offsetX, verticalOffset, 280 - offsetZ);
         this.camera.lookAt(250, this.cameraLookAtHeight, 280);
 
@@ -116,7 +126,7 @@ let Renderer3D = {
         this._smoothedLookAtZ = 280;
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
-        console.log('✅ Renderer 3D khởi tạo xong');
+        console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Renderer 3D khÃƒÂ¡Ã‚Â»Ã…Â¸i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o xong');
     },
 
     setupLighting: function() {
@@ -128,8 +138,8 @@ let Renderer3D = {
         directionalLight.target.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(directionalLight.target);
         directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
         directionalLight.shadow.camera.far = 700;
         directionalLight.shadow.camera.left = -320;
         directionalLight.shadow.camera.right = 320;
@@ -203,7 +213,7 @@ let Renderer3D = {
             addMountain(cx + min, cz + pos);
             addMountain(cx + max, cz + pos);
         }
-        console.log('⛰️ Dãy núi biên map được tạo:', this.mountains.length, 'ngọn núi');
+        console.log('ÃƒÂ¢Ã¢â‚¬ÂºÃ‚Â°ÃƒÂ¯Ã‚Â¸Ã‚Â DÃƒÆ’Ã‚Â£y nÃƒÆ’Ã‚Âºi biÃƒÆ’Ã‚Âªn map Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o:', this.mountains.length, 'ngÃƒÂ¡Ã‚Â»Ã‚Ân nÃƒÆ’Ã‚Âºi');
     },
 
     createRiver: function() {
@@ -264,55 +274,55 @@ let Renderer3D = {
         this.river = new THREE.Mesh(geometry, material);
         this.river.receiveShadow = true;
         this.scene.add(this.river);
-        console.log('🌊 Dòng sông được tạo');
+        console.log('ÃƒÂ°Ã…Â¸Ã…â€™Ã…Â  DÃƒÆ’Ã‚Â²ng sÃƒÆ’Ã‚Â´ng Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o');
     },
 
     // ================================================================
-    // 🏗️ ĐẠI BẢN DOANH QUÂN SỰ (GRAND MILITARY BASE)
+    // ÃƒÂ°Ã…Â¸Ã‚ÂÃ¢â‚¬â€ÃƒÂ¯Ã‚Â¸Ã‚Â Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚ÂºÃ‚Â I BÃƒÂ¡Ã‚ÂºÃ‚Â¢N DOANH QUÃƒÆ’Ã¢â‚¬Å¡N SÃƒÂ¡Ã‚Â»Ã‚Â° (GRAND MILITARY BASE)
     // ================================================================
 
     buildGrandBase: function() {
         const cx = 250, cz = 250;
-        console.log('🏰 Xây dựng Military Complex mở rộng...');
+        console.log('ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â° XÃƒÆ’Ã‚Â¢y dÃƒÂ¡Ã‚Â»Ã‚Â±ng Military Complex mÃƒÂ¡Ã‚Â»Ã…Â¸ rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng...');
 
-        // Bố cục tổng thể ~180x180, đủ rộng để người chơi cảm nhận đây là
-        // một khu căn cứ thật sự thay vì một "tycoon plot".
+        // BÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ cÃƒÂ¡Ã‚Â»Ã‚Â¥c tÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢ng thÃƒÂ¡Ã‚Â»Ã†â€™ ~180x180, Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â§ rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i cÃƒÂ¡Ã‚ÂºÃ‚Â£m nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y lÃƒÆ’Ã‚Â 
+        // mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t khu cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â© thÃƒÂ¡Ã‚ÂºÃ‚Â­t sÃƒÂ¡Ã‚Â»Ã‚Â± thay vÃƒÆ’Ã‚Â¬ mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t "tycoon plot".
         this._militaryBaseBounds = { minX: cx - 88, maxX: cx + 88, minZ: cz - 88, maxZ: cz + 88 };
 
-        // 1. Nền căn cứ + sân bê tông theo từng phân khu
+        // 1. NÃƒÂ¡Ã‚Â»Ã‚Ân cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â© + sÃƒÆ’Ã‚Â¢n bÃƒÆ’Ã‚Âª tÃƒÆ’Ã‚Â´ng theo tÃƒÂ¡Ã‚Â»Ã‚Â«ng phÃƒÆ’Ã‚Â¢n khu
         this._createConcreteBase(cx, cz, 176);
         this._createBaseRoadNetwork(cx, cz);
         this._createPerimeterLighting(cx, cz);
         this._createPerimeterDefense(cx, cz, 86);
 
-        // 2. Khu trung tâm: Command HQ + quảng trường + cột cờ
+        // 2. Khu trung tÃƒÆ’Ã‚Â¢m: Command HQ + quÃƒÂ¡Ã‚ÂºÃ‚Â£ng trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng + cÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t cÃƒÂ¡Ã‚Â»Ã‚Â
         this._createCommandCenter(cx, cz - 18);
         this._createFlagpole(cx, cz - 3);
         this._createBasePlaza(cx, cz + 3);
 
-        // 3. Khu quân nhân phía tây
+        // 3. Khu quÃƒÆ’Ã‚Â¢n nhÃƒÆ’Ã‚Â¢n phÃƒÆ’Ã‚Â­a tÃƒÆ’Ã‚Â¢y
         this._createLargeBarracksArea(cx - 51, cz - 20);
         this._createMessHall(cx - 54, cz + 25);
         this._createMedicalBlock(cx - 25, cz + 27);
 
-        // 4. Khu hậu cần / kho bãi phía đông
+        // 4. Khu hÃƒÂ¡Ã‚ÂºÃ‚Â­u cÃƒÂ¡Ã‚ÂºÃ‚Â§n / kho bÃƒÆ’Ã‚Â£i phÃƒÆ’Ã‚Â­a Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â´ng
         this._createLargeSupplyDepot(cx + 50, cz - 18);
         this._createFuelFarm(cx + 51, cz + 28);
         this._createMotorPool(cx + 50, cz + 55);
 
-        // 5. Khu kỹ thuật / nghiên cứu phía bắc
+        // 5. Khu kÃƒÂ¡Ã‚Â»Ã‚Â¹ thuÃƒÂ¡Ã‚ÂºÃ‚Â­t / nghiÃƒÆ’Ã‚Âªn cÃƒÂ¡Ã‚Â»Ã‚Â©u phÃƒÆ’Ã‚Â­a bÃƒÂ¡Ã‚ÂºÃ‚Â¯c
         this._createResearchFacility(cx + 3, cz - 59);
         this._createVehicleWorkshop(cx - 42, cz - 58);
 
-        // 6. Sân huấn luyện phía nam
+        // 6. SÃƒÆ’Ã‚Â¢n huÃƒÂ¡Ã‚ÂºÃ‚Â¥n luyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n phÃƒÆ’Ã‚Â­a nam
         this._createTrainingGround(cx - 42, cz + 58);
         this._createShootingRange(cx + 8, cz + 59);
 
-        // 7. Radar + relay tower ở góc cao, tạo silhouette rõ khi nhìn xa
+        // 7. Radar + relay tower ÃƒÂ¡Ã‚Â»Ã…Â¸ gÃƒÆ’Ã‚Â³c cao, tÃƒÂ¡Ã‚ÂºÃ‚Â¡o silhouette rÃƒÆ’Ã‚Âµ khi nhÃƒÆ’Ã‚Â¬n xa
         this._createRadarStation(cx + 72, cz - 70);
         this._createCommsTower(cx - 72, cz - 70);
 
-        // 8. 4 tháp canh lớn và các chốt phụ
+        // 8. 4 thÃƒÆ’Ã‚Â¡p canh lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºn vÃƒÆ’Ã‚Â  cÃƒÆ’Ã‚Â¡c chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœt phÃƒÂ¡Ã‚Â»Ã‚Â¥
         const towerOffsets = [
             [-78, -78], [78, -78], [78, 78], [-78, 78],
             [0, -84], [0, 84]
@@ -321,32 +331,32 @@ let Renderer3D = {
             this._createGuardTower(cx + dx, cz + dz);
         });
 
-        // 9. Cổng chính 2 lớp + nhà kiểm soát
+        // 9. CÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢ng chÃƒÆ’Ã‚Â­nh 2 lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp + nhÃƒÆ’Ã‚Â  kiÃƒÂ¡Ã‚Â»Ã†â€™m soÃƒÆ’Ã‚Â¡t
         this._createMainGate(cx, cz + 86);
         this._createSecondaryGate(cx, cz - 86);
 
-        // 10. Cảnh quan quân sự nhỏ: sandbag, xe quân sự, pallet, container
+        // 10. CÃƒÂ¡Ã‚ÂºÃ‚Â£nh quan quÃƒÆ’Ã‚Â¢n sÃƒÂ¡Ã‚Â»Ã‚Â± nhÃƒÂ¡Ã‚Â»Ã‚Â: sandbag, xe quÃƒÆ’Ã‚Â¢n sÃƒÂ¡Ã‚Â»Ã‚Â±, pallet, container
         this._createBaseProps(cx, cz);
         this._registerMilitaryInteractions(cx, cz);
 
-        console.log('✅ Military Complex hoàn tất!');
+        console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Military Complex hoÃƒÆ’Ã‚Â n tÃƒÂ¡Ã‚ÂºÃ‚Â¥t!');
     },
 
     _registerMilitaryInteractions: function(cx, cz) {
         this._militaryInteractions = [
-            { id: 'hq', name: 'COMMAND HQ', description: 'Nâng cấp căn cứ và mở thêm công suất kiếm tiền.', x: cx, z: cz - 18, radius: 11 },
-            { id: 'barracks', name: 'BARRACKS', description: 'Tuyển lính gác và tăng khả năng phòng thủ căn cứ.', x: cx - 51 + 6, z: cz - 20 + 6, radius: 10 },
-            { id: 'mess', name: 'MESS HALL', description: 'Ăn uống, hồi stamina và nhận buff di chuyển.', x: cx - 54, z: cz + 25, radius: 9 },
-            { id: 'medical', name: 'MEDICAL', description: 'Hồi đầy HP và nhận lá chắn y tế tạm thời.', x: cx - 25, z: cz + 27, radius: 9 },
-            { id: 'supply', name: 'SUPPLY DEPOT', description: 'Mua ammo và nâng cấp vũ khí hiện tại.', x: cx + 50, z: cz - 18, radius: 10 },
-            { id: 'fuel', name: 'FUEL FARM', description: 'Đổi nhiên liệu thành tiền và tăng thu nhập thụ động.', x: cx + 51, z: cz + 28, radius: 9 },
-            { id: 'motorPool', name: 'MOTOR POOL', description: 'Triệu hồi xe và nâng tốc độ di chuyển.', x: cx + 50, z: cz + 55, radius: 10 },
-            { id: 'lab', name: 'RESEARCH LAB', description: 'Nghiên cứu nâng damage và hiệu suất máy in.', x: cx + 3, z: cz - 59, radius: 11 },
-            { id: 'workshop', name: 'VEHICLE WORKSHOP', description: 'Sửa xe và tăng tốc độ/giảm cooldown phương tiện.', x: cx - 42, z: cz - 58, radius: 10 },
-            { id: 'training', name: 'TRAINING GROUND', description: 'Luyện tập để tăng weapon XP và damage.', x: cx - 42, z: cz + 58, radius: 13 },
-            { id: 'range', name: 'SHOOTING RANGE', description: 'Test súng, hồi ammo và nhận buff accuracy.', x: cx + 8, z: cz + 59, radius: 13 },
-            { id: 'radar', name: 'RADAR STATION', description: 'Quét sóng zombie và phát hiện boss sớm.', x: cx + 72, z: cz - 70, radius: 9 },
-            { id: 'comms', name: 'COMMS TOWER', description: 'Nhận hợp đồng tiếp tế và phần thưởng tiền.', x: cx - 72, z: cz - 70, radius: 9 }
+            { id: 'hq', name: 'COMMAND HQ', description: 'NÃƒÆ’Ã‚Â¢ng cÃƒÂ¡Ã‚ÂºÃ‚Â¥p cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â© vÃƒÆ’Ã‚Â  mÃƒÂ¡Ã‚Â»Ã…Â¸ thÃƒÆ’Ã‚Âªm cÃƒÆ’Ã‚Â´ng suÃƒÂ¡Ã‚ÂºÃ‚Â¥t kiÃƒÂ¡Ã‚ÂºÃ‚Â¿m tiÃƒÂ¡Ã‚Â»Ã‚Ân.', x: cx, z: cz - 18, radius: 11 },
+            { id: 'barracks', name: 'BARRACKS', description: 'TuyÃƒÂ¡Ã‚Â»Ã†â€™n lÃƒÆ’Ã‚Â­nh gÃƒÆ’Ã‚Â¡c vÃƒÆ’Ã‚Â  tÃƒâ€žÃ†â€™ng khÃƒÂ¡Ã‚ÂºÃ‚Â£ nÃƒâ€žÃ†â€™ng phÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â§ cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â©.', x: cx - 51 + 6, z: cz - 20 + 6, radius: 10 },
+            { id: 'mess', name: 'MESS HALL', description: 'Ãƒâ€žÃ¢â‚¬Å¡n uÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng, hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i stamina vÃƒÆ’Ã‚Â  nhÃƒÂ¡Ã‚ÂºÃ‚Â­n buff di chuyÃƒÂ¡Ã‚Â»Ã†â€™n.', x: cx - 54, z: cz + 25, radius: 9 },
+            { id: 'medical', name: 'MEDICAL', description: 'HÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§y HP vÃƒÆ’Ã‚Â  nhÃƒÂ¡Ã‚ÂºÃ‚Â­n lÃƒÆ’Ã‚Â¡ chÃƒÂ¡Ã‚ÂºÃ‚Â¯n y tÃƒÂ¡Ã‚ÂºÃ‚Â¿ tÃƒÂ¡Ã‚ÂºÃ‚Â¡m thÃƒÂ¡Ã‚Â»Ã‚Âi.', x: cx - 25, z: cz + 27, radius: 9 },
+            { id: 'supply', name: 'SUPPLY DEPOT', description: 'Mua ammo vÃƒÆ’Ã‚Â  nÃƒÆ’Ã‚Â¢ng cÃƒÂ¡Ã‚ÂºÃ‚Â¥p vÃƒâ€¦Ã‚Â© khÃƒÆ’Ã‚Â­ hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i.', x: cx + 50, z: cz - 18, radius: 10 },
+            { id: 'fuel', name: 'FUEL FARM', description: 'Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢i nhiÃƒÆ’Ã‚Âªn liÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u thÃƒÆ’Ã‚Â nh tiÃƒÂ¡Ã‚Â»Ã‚Ân vÃƒÆ’Ã‚Â  tÃƒâ€žÃ†â€™ng thu nhÃƒÂ¡Ã‚ÂºÃ‚Â­p thÃƒÂ¡Ã‚Â»Ã‚Â¥ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng.', x: cx + 51, z: cz + 28, radius: 9 },
+            { id: 'motorPool', name: 'MOTOR POOL', description: 'TriÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i xe vÃƒÆ’Ã‚Â  nÃƒÆ’Ã‚Â¢ng tÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœc Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ di chuyÃƒÂ¡Ã‚Â»Ã†â€™n.', x: cx + 50, z: cz + 55, radius: 10 },
+            { id: 'lab', name: 'RESEARCH LAB', description: 'NghiÃƒÆ’Ã‚Âªn cÃƒÂ¡Ã‚Â»Ã‚Â©u nÃƒÆ’Ã‚Â¢ng damage vÃƒÆ’Ã‚Â  hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u suÃƒÂ¡Ã‚ÂºÃ‚Â¥t mÃƒÆ’Ã‚Â¡y in.', x: cx + 3, z: cz - 59, radius: 11 },
+            { id: 'workshop', name: 'VEHICLE WORKSHOP', description: 'SÃƒÂ¡Ã‚Â»Ã‚Â­a xe vÃƒÆ’Ã‚Â  tÃƒâ€žÃ†â€™ng tÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœc Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢/giÃƒÂ¡Ã‚ÂºÃ‚Â£m cooldown phÃƒâ€ Ã‚Â°Ãƒâ€ Ã‚Â¡ng tiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n.', x: cx - 42, z: cz - 58, radius: 10 },
+            { id: 'training', name: 'TRAINING GROUND', description: 'LuyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â­p Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ tÃƒâ€žÃ†â€™ng weapon XP vÃƒÆ’Ã‚Â  damage.', x: cx - 42, z: cz + 58, radius: 13 },
+            { id: 'range', name: 'SHOOTING RANGE', description: 'Test sÃƒÆ’Ã‚Âºng, hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i ammo vÃƒÆ’Ã‚Â  nhÃƒÂ¡Ã‚ÂºÃ‚Â­n buff accuracy.', x: cx + 8, z: cz + 59, radius: 13 },
+            { id: 'radar', name: 'RADAR STATION', description: 'QuÃƒÆ’Ã‚Â©t sÃƒÆ’Ã‚Â³ng zombie vÃƒÆ’Ã‚Â  phÃƒÆ’Ã‚Â¡t hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n boss sÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºm.', x: cx + 72, z: cz - 70, radius: 9 },
+            { id: 'comms', name: 'COMMS TOWER', description: 'NhÃƒÂ¡Ã‚ÂºÃ‚Â­n hÃƒÂ¡Ã‚Â»Ã‚Â£p Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ng tiÃƒÂ¡Ã‚ÂºÃ‚Â¿p tÃƒÂ¡Ã‚ÂºÃ‚Â¿ vÃƒÆ’Ã‚Â  phÃƒÂ¡Ã‚ÂºÃ‚Â§n thÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã…Â¸ng tiÃƒÂ¡Ã‚Â»Ã‚Ân.', x: cx - 72, z: cz - 70, radius: 9 }
         ];
     },
 
@@ -368,7 +378,7 @@ let Renderer3D = {
         return best;
     },
 
-    // --- Helper để thêm mesh vào danh sách collision ---
+    // --- Helper Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ thÃƒÆ’Ã‚Âªm mesh vÃƒÆ’Ã‚Â o danh sÃƒÆ’Ã‚Â¡ch collision ---
     _addCollisionMesh: function(mesh) {
         if (mesh && mesh.isMesh) {
             this._collisionMeshes.push(mesh);
@@ -441,10 +451,10 @@ let Renderer3D = {
     _createCommandCenter: function(cx, cz) {
         const group = new THREE.Group();
 
-        // Tòa trung tâm lớn hơn hẳn các khu còn lại: 3 tầng, sân trong rộng,
-        // tầng 1 để build minter/conveyor, tầng 2 là command floor, tầng 3 là
-        // operations / VIP floor. Các tầng trên mang tính trình diễn nhưng
-        // vẫn có cầu thang để sau này mở rộng gameplay.
+        // TÃƒÆ’Ã‚Â²a trung tÃƒÆ’Ã‚Â¢m lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºn hÃƒâ€ Ã‚Â¡n hÃƒÂ¡Ã‚ÂºÃ‚Â³n cÃƒÆ’Ã‚Â¡c khu cÃƒÆ’Ã‚Â²n lÃƒÂ¡Ã‚ÂºÃ‚Â¡i: 3 tÃƒÂ¡Ã‚ÂºÃ‚Â§ng, sÃƒÆ’Ã‚Â¢n trong rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng,
+        // tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1 Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ build minter/conveyor, tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 2 lÃƒÆ’Ã‚Â  command floor, tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 3 lÃƒÆ’Ã‚Â 
+        // operations / VIP floor. CÃƒÆ’Ã‚Â¡c tÃƒÂ¡Ã‚ÂºÃ‚Â§ng trÃƒÆ’Ã‚Âªn mang tÃƒÆ’Ã‚Â­nh trÃƒÆ’Ã‚Â¬nh diÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¦n nhÃƒâ€ Ã‚Â°ng
+        // vÃƒÂ¡Ã‚ÂºÃ‚Â«n cÃƒÆ’Ã‚Â³ cÃƒÂ¡Ã‚ÂºÃ‚Â§u thang Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ sau nÃƒÆ’Ã‚Â y mÃƒÂ¡Ã‚Â»Ã…Â¸ rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng gameplay.
         const W = 30;
         const D = 22;
         const floorH = 3.8;
@@ -471,19 +481,19 @@ let Renderer3D = {
             return mesh;
         };
 
-        // Sàn 3 tầng (tầng 1 chừa hẳn không gian build).
+        // SÃƒÆ’Ã‚Â n 3 tÃƒÂ¡Ã‚ÂºÃ‚Â§ng (tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1 chÃƒÂ¡Ã‚Â»Ã‚Â«a hÃƒÂ¡Ã‚ÂºÃ‚Â³n khÃƒÆ’Ã‚Â´ng gian build).
         [0.16, floorH + 0.12, floorH * 2 + 0.12].forEach(y => {
             addBox(new THREE.BoxGeometry(W, 0.28, D), floorMat, 0, y, 0, false);
         });
 
-        // Tường tầng 1: mặt trước có cửa lớn 7m, phần còn lại tạo cảm giác
-        // đại sảnh mở để đặt máy in tiền/conveyor.
+        // TÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1: mÃƒÂ¡Ã‚ÂºÃ‚Â·t trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc cÃƒÆ’Ã‚Â³ cÃƒÂ¡Ã‚Â»Ã‚Â­a lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºn 7m, phÃƒÂ¡Ã‚ÂºÃ‚Â§n cÃƒÆ’Ã‚Â²n lÃƒÂ¡Ã‚ÂºÃ‚Â¡i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o cÃƒÂ¡Ã‚ÂºÃ‚Â£m giÃƒÆ’Ã‚Â¡c
+        // Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¡i sÃƒÂ¡Ã‚ÂºÃ‚Â£nh mÃƒÂ¡Ã‚Â»Ã…Â¸ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t mÃƒÆ’Ã‚Â¡y in tiÃƒÂ¡Ã‚Â»Ã‚Ân/conveyor.
         const frontSide = (yBase, h) => {
             const gap = 7.0;
             const sideW = (W - gap) / 2;
             addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, -(gap + sideW) / 2, yBase + h / 2, D / 2, true);
             addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, (gap + sideW) / 2, yBase + h / 2, D / 2, true);
-            // header phía trên cửa
+            // header phÃƒÆ’Ã‚Â­a trÃƒÆ’Ã‚Âªn cÃƒÂ¡Ã‚Â»Ã‚Â­a
             addBox(new THREE.BoxGeometry(gap, 0.9, wallT), wallMat, 0, yBase + h - 0.45, D / 2, true);
         };
         const fullWall = (x, yBase, z, w, h, d, mat = wallMat) => {
@@ -495,7 +505,7 @@ let Renderer3D = {
         fullWall(-W / 2, 0.28, 0, wallT, floorH - 0.2, D);
         fullWall(W / 2, 0.28, 0, wallT, floorH - 0.2, D);
 
-        // Tầng 2 + tầng 3 khép kín hơn, làm silhouette thật của HQ.
+        // TÃƒÂ¡Ã‚ÂºÃ‚Â§ng 2 + tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 3 khÃƒÆ’Ã‚Â©p kÃƒÆ’Ã‚Â­n hÃƒâ€ Ã‚Â¡n, lÃƒÆ’Ã‚Â m silhouette thÃƒÂ¡Ã‚ÂºÃ‚Â­t cÃƒÂ¡Ã‚Â»Ã‚Â§a HQ.
         for (let level = 1; level <= 2; level++) {
             const yBase = level * floorH + 0.28;
             frontSide(yBase, floorH - 0.2);
@@ -504,12 +514,12 @@ let Renderer3D = {
             fullWall(W / 2, yBase, 0, wallT, floorH - 0.2, D);
         }
 
-        // Dải cửa kính cho cả 3 tầng.
+        // DÃƒÂ¡Ã‚ÂºÃ‚Â£i cÃƒÂ¡Ã‚Â»Ã‚Â­a kÃƒÆ’Ã‚Â­nh cho cÃƒÂ¡Ã‚ÂºÃ‚Â£ 3 tÃƒÂ¡Ã‚ÂºÃ‚Â§ng.
         for (let level = 0; level < 3; level++) {
             const y = 1.75 + level * floorH;
             const frontZ = D / 2 + 0.02;
             for (let i = -2; i <= 2; i++) {
-                if (level === 0 && i === 0) continue; // cửa chính tầng 1
+                if (level === 0 && i === 0) continue; // cÃƒÂ¡Ã‚Â»Ã‚Â­a chÃƒÆ’Ã‚Â­nh tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1
                 const win = addBox(new THREE.BoxGeometry(3.2, 1.2, 0.12), glassMat,
                     i * 4.7, y, frontZ, false);
                 win.castShadow = false;
@@ -523,7 +533,7 @@ let Renderer3D = {
             }
         }
 
-        // Cửa chính kiểu military airlock.
+        // CÃƒÂ¡Ã‚Â»Ã‚Â­a chÃƒÆ’Ã‚Â­nh kiÃƒÂ¡Ã‚Â»Ã†â€™u military airlock.
         const doorOuter = addBox(new THREE.BoxGeometry(6.4, 3.0, 0.18), darkMat, 0, 1.62, D / 2 + 0.18, false);
         doorOuter.castShadow = false;
         const doorGlow = addBox(new THREE.BoxGeometry(5.2, 2.35, 0.08),
@@ -531,12 +541,12 @@ let Renderer3D = {
             0, 1.55, D / 2 + 0.29, false);
         doorGlow.castShadow = false;
 
-        // Mái đua + tầng mái, làm công trình nổi bật từ xa.
+        // MÃƒÆ’Ã‚Â¡i Ãƒâ€žÃ¢â‚¬Ëœua + tÃƒÂ¡Ã‚ÂºÃ‚Â§ng mÃƒÆ’Ã‚Â¡i, lÃƒÆ’Ã‚Â m cÃƒÆ’Ã‚Â´ng trÃƒÆ’Ã‚Â¬nh nÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢i bÃƒÂ¡Ã‚ÂºÃ‚Â­t tÃƒÂ¡Ã‚Â»Ã‚Â« xa.
         addBox(new THREE.BoxGeometry(W + 1.8, 0.38, D + 1.8), darkMat, 0, floorH * 3 + 0.35, 0, true);
         addBox(new THREE.BoxGeometry(18, 1.0, 9), new THREE.MeshPhongMaterial({ color: 0x30373c }), 0, floorH * 3 + 1.0, -0.5, true);
         addBox(new THREE.BoxGeometry(20, 0.28, 11), trimMat, 0, floorH * 3 + 1.48, -0.5, true);
 
-        // Cờ hiệu + logo HQ trên mặt tiền.
+        // CÃƒÂ¡Ã‚Â»Ã‚Â hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u + logo HQ trÃƒÆ’Ã‚Âªn mÃƒÂ¡Ã‚ÂºÃ‚Â·t tiÃƒÂ¡Ã‚Â»Ã‚Ân.
         const sign = this._createBuildingSign('COMMAND HQ', 0x74e7ff, 8.5, 1.8);
         sign.position.set(0, 5.9, D / 2 + 0.42);
         group.add(sign);
@@ -545,7 +555,7 @@ let Renderer3D = {
         subSign.position.set(0, 2.8, D / 2 + 0.42);
         group.add(subSign);
 
-        // Nội thất tầng 1: các khu build minter cố định, rộng và thoáng.
+        // NÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢i thÃƒÂ¡Ã‚ÂºÃ‚Â¥t tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1: cÃƒÆ’Ã‚Â¡c khu build minter cÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹nh, rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng vÃƒÆ’Ã‚Â  thoÃƒÆ’Ã‚Â¡ng.
         const interiorPadMat = new THREE.MeshPhongMaterial({ color: 0x263238 });
         const laneMat = new THREE.MeshPhongMaterial({ color: 0x40545b });
         const mintGlowMat = new THREE.MeshPhongMaterial({ color: 0x7bed9f, emissive: 0x2ecc71, emissiveIntensity: 0.3 });
@@ -560,9 +570,9 @@ let Renderer3D = {
                 const inner = addBox(new THREE.BoxGeometry(5.7, 0.05, 3.8), laneMat, x, 0.48, z, false);
                 inner.userData = { buildZone: 'minter' };
 
-                // Viền slot màu xanh + điểm sáng, báo cho player đây là khu build tiền.
+                // ViÃƒÂ¡Ã‚Â»Ã‚Ân slot mÃƒÆ’Ã‚Â u xanh + Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m sÃƒÆ’Ã‚Â¡ng, bÃƒÆ’Ã‚Â¡o cho player Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y lÃƒÆ’Ã‚Â  khu build tiÃƒÂ¡Ã‚Â»Ã‚Ân.
                 for (const edge of [[5.9,0.06,0.08,0],[5.9,0.06,0.08,Math.PI], [0.08,0.06,3.9,0],[0.08,0.06,3.9,0]]) {
-                    // Khung nhẹ; không collision để player đi qua.
+                    // Khung nhÃƒÂ¡Ã‚ÂºÃ‚Â¹; khÃƒÆ’Ã‚Â´ng collision Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ player Ãƒâ€žÃ¢â‚¬Ëœi qua.
                 }
                 const marker = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.22), mintGlowMat);
                 marker.position.set(x - 2.65, 0.58, z - 1.8);
@@ -571,11 +581,11 @@ let Renderer3D = {
             }
         }
 
-        // Trục giao thông trong sảnh.
+        // TrÃƒÂ¡Ã‚Â»Ã‚Â¥c giao thÃƒÆ’Ã‚Â´ng trong sÃƒÂ¡Ã‚ÂºÃ‚Â£nh.
         addBox(new THREE.BoxGeometry(1.0, 0.05, D - 2.0),
             new THREE.MeshPhongMaterial({ color: 0x92a1a8 }), 0, 0.55, 1.6, false);
 
-        // Cầu thang bên hông nối lên tầng 2/3 (đẹp và có thể mở gameplay sau).
+        // CÃƒÂ¡Ã‚ÂºÃ‚Â§u thang bÃƒÆ’Ã‚Âªn hÃƒÆ’Ã‚Â´ng nÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi lÃƒÆ’Ã‚Âªn tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 2/3 (Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¹p vÃƒÆ’Ã‚Â  cÃƒÆ’Ã‚Â³ thÃƒÂ¡Ã‚Â»Ã†â€™ mÃƒÂ¡Ã‚Â»Ã…Â¸ gameplay sau).
         const stairMat = new THREE.MeshPhongMaterial({ color: 0x59666d });
         for (let level = 0; level < 2; level++) {
             for (let i = 0; i < 9; i++) {
@@ -585,11 +595,11 @@ let Renderer3D = {
             }
         }
 
-        // Hai terminal chức năng ở sảnh.
+        // Hai terminal chÃƒÂ¡Ã‚Â»Ã‚Â©c nÃƒâ€žÃ†â€™ng ÃƒÂ¡Ã‚Â»Ã…Â¸ sÃƒÂ¡Ã‚ÂºÃ‚Â£nh.
         this._createTerminalKiosk(group, -11.0, 1.2, 5.0, 0x54a0ff, 'BASE UPGRADES');
         this._createTerminalKiosk(group, 11.0, 1.2, 5.0, 0xffc857, 'MONEY CONTROL');
 
-        // Đèn/strips dưới mái.
+        // Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â¨n/strips dÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi mÃƒÆ’Ã‚Â¡i.
         for (let side of [-1, 1]) {
             const strip = addBox(new THREE.BoxGeometry(W + 0.4, 0.18, 0.18),
                 new THREE.MeshPhongMaterial({ color: 0x64dff0, emissive: 0x33c7df, emissiveIntensity: 0.35 }),
@@ -665,7 +675,7 @@ let Renderer3D = {
         const wallThick = 0.5;
         const segments = 48;
 
-        // Vòng ngoài
+        // VÃƒÆ’Ã‚Â²ng ngoÃƒÆ’Ã‚Â i
         for (let i = 0; i < segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
             const nextAngle = ((i + 1) / segments) * Math.PI * 2;
@@ -686,7 +696,7 @@ let Renderer3D = {
             this._addCollisionMesh(wall);
         }
 
-        // Hàng rào thép bên trong (không chặn camera vì là lưới thép mỏng, nhưng vẫn thêm để an toàn)
+        // HÃƒÆ’Ã‚Â ng rÃƒÆ’Ã‚Â o thÃƒÆ’Ã‚Â©p bÃƒÆ’Ã‚Âªn trong (khÃƒÆ’Ã‚Â´ng chÃƒÂ¡Ã‚ÂºÃ‚Â·n camera vÃƒÆ’Ã‚Â¬ lÃƒÆ’Ã‚Â  lÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi thÃƒÆ’Ã‚Â©p mÃƒÂ¡Ã‚Â»Ã‚Âng, nhÃƒâ€ Ã‚Â°ng vÃƒÂ¡Ã‚ÂºÃ‚Â«n thÃƒÆ’Ã‚Âªm Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ an toÃƒÆ’Ã‚Â n)
         const innerRadius = radius - 1.2;
         const fenceMat = new THREE.MeshPhongMaterial({ color: 0xa4b0be });
         for (let i = 0; i < segments; i++) {
@@ -722,7 +732,7 @@ let Renderer3D = {
             }
         }
 
-        // Chướng ngại vật (hedgehog + barrier)
+        // ChÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºng ngÃƒÂ¡Ã‚ÂºÃ‚Â¡i vÃƒÂ¡Ã‚ÂºÃ‚Â­t (hedgehog + barrier)
         const hedgehogMat = new THREE.MeshPhongMaterial({ color: 0x6b6b6b });
         const barrierMat = new THREE.MeshPhongMaterial({ color: 0x8e8e8e });
         for (let i = 0; i < 20; i++) {
@@ -1014,7 +1024,7 @@ let Renderer3D = {
         ctx.font = 'bold 50px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('★', 64, 44);
+        ctx.fillText('ÃƒÂ¢Ã‹Å“Ã¢â‚¬Â¦', 64, 44);
         const flagTexture = new THREE.CanvasTexture(flagCanvas);
         const flagMat = new THREE.MeshPhongMaterial({ map: flagTexture, side: THREE.DoubleSide, transparent: true });
         const flag = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.0), flagMat);
@@ -1439,7 +1449,7 @@ let Renderer3D = {
             }
         }
 
-        // Hàng rào dây thép phía trong tạo cảm giác "2 lớp phòng thủ"
+        // HÃƒÆ’Ã‚Â ng rÃƒÆ’Ã‚Â o dÃƒÆ’Ã‚Â¢y thÃƒÆ’Ã‚Â©p phÃƒÆ’Ã‚Â­a trong tÃƒÂ¡Ã‚ÂºÃ‚Â¡o cÃƒÂ¡Ã‚ÂºÃ‚Â£m giÃƒÆ’Ã‚Â¡c "2 lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp phÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â§"
         const inner = radius - 3.5;
         for (let i = 0; i < segments; i += 2) {
             const angle = (i / segments) * Math.PI * 2;
@@ -1505,7 +1515,7 @@ let Renderer3D = {
     },
 
     // ================================================================
-    // PHẦN CŨ: PLAYER, FOREST, VÀ CÁC HÀM KHÁC
+    // PHÃƒÂ¡Ã‚ÂºÃ‚Â¦N CÃƒâ€¦Ã‚Â¨: PLAYER, FOREST, VÃƒÆ’Ã¢â€šÂ¬ CÃƒÆ’Ã‚ÂC HÃƒÆ’Ã¢â€šÂ¬M KHÃƒÆ’Ã‚ÂC
     // ================================================================
 
     createPlayer3D: function() {
@@ -1544,7 +1554,7 @@ let Renderer3D = {
         this.scene.add(group);
 
         this.player = group;
-        console.log('🧍 Nhân vật player được tạo');
+        console.log('ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â NhÃƒÆ’Ã‚Â¢n vÃƒÂ¡Ã‚ÂºÃ‚Â­t player Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o');
     },
 
     updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving, jumpY, isCrouching) {
@@ -1667,7 +1677,7 @@ let Renderer3D = {
         return group;
     },
 
-    // Hàm tạo cây, đá (không chặn camera vì không nên chặn)
+    // HÃƒÆ’Ã‚Â m tÃƒÂ¡Ã‚ÂºÃ‚Â¡o cÃƒÆ’Ã‚Â¢y, Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¡ (khÃƒÆ’Ã‚Â´ng chÃƒÂ¡Ã‚ÂºÃ‚Â·n camera vÃƒÆ’Ã‚Â¬ khÃƒÆ’Ã‚Â´ng nÃƒÆ’Ã‚Âªn chÃƒÂ¡Ã‚ÂºÃ‚Â·n)
     createLowPolyTree: function(x, z) {
         const scale = 0.7 + Math.random() * 0.8;
         const trunkHeight = (1.5 + Math.random() * 1.2) * scale;
@@ -1883,8 +1893,10 @@ let Renderer3D = {
         const spanX = maxX - minX;
         const spanZ = maxZ - minZ;
 
-        const treeCount = 110;
-        const rockCount = 40;
+        // Keep the environment readable without spending the opening frames
+        // generating hundreds of individual draw calls on mobile browsers.
+        const treeCount = this.webPerformanceMode ? 60 : 110;
+        const rockCount = this.webPerformanceMode ? 20 : 40;
         let placed = 0;
         let attempts = 0;
         const maxAttempts = treeCount * 60;
@@ -1952,12 +1964,12 @@ let Renderer3D = {
             }
         }
 
-        console.log('🌲 Môi trường rừng rậm rạp được tạo:', this.trees.length, 'cây/bụi/gỗ,', this.rocks.length, 'đá');
+        console.log('ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â² MÃƒÆ’Ã‚Â´i trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng rÃƒÂ¡Ã‚Â»Ã‚Â«ng rÃƒÂ¡Ã‚ÂºÃ‚Â­m rÃƒÂ¡Ã‚ÂºÃ‚Â¡p Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o:', this.trees.length, 'cÃƒÆ’Ã‚Â¢y/bÃƒÂ¡Ã‚Â»Ã‚Â¥i/gÃƒÂ¡Ã‚Â»Ã¢â‚¬â€,', this.rocks.length, 'Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¡');
     },
 
     /**
-     * Hàm xử lý camera collision với vật thể và mặt đất
-     * Trả về vị trí camera hợp lệ
+     * HÃƒÆ’Ã‚Â m xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½ camera collision vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi vÃƒÂ¡Ã‚ÂºÃ‚Â­t thÃƒÂ¡Ã‚Â»Ã†â€™ vÃƒÆ’Ã‚Â  mÃƒÂ¡Ã‚ÂºÃ‚Â·t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥t
+     * TrÃƒÂ¡Ã‚ÂºÃ‚Â£ vÃƒÂ¡Ã‚Â»Ã‚Â vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ camera hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡
      */
     _getSafeCameraPosition: function(fromPos, toPos, lookAtPos) {
         const direction = new THREE.Vector3().copy(toPos).sub(fromPos);
@@ -1966,25 +1978,25 @@ let Renderer3D = {
 
         direction.normalize();
 
-        // Tạo ray từ nhân vật đến vị trí camera mong muốn
+        // TÃƒÂ¡Ã‚ÂºÃ‚Â¡o ray tÃƒÂ¡Ã‚Â»Ã‚Â« nhÃƒÆ’Ã‚Â¢n vÃƒÂ¡Ã‚ÂºÃ‚Â­t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ camera mong muÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœn
         const raycaster = new THREE.Raycaster(fromPos, direction, 0.1, distance);
 
-        // Kiểm tra va chạm với các mesh trong danh sách
+        // KiÃƒÂ¡Ã‚Â»Ã†â€™m tra va chÃƒÂ¡Ã‚ÂºÃ‚Â¡m vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi cÃƒÆ’Ã‚Â¡c mesh trong danh sÃƒÆ’Ã‚Â¡ch
         const intersects = raycaster.intersectObjects(this._collisionMeshes);
 
         let safePos = toPos.clone();
 
         if (intersects.length > 0) {
-            // Lấy điểm va chạm gần nhất
+            // LÃƒÂ¡Ã‚ÂºÃ‚Â¥y Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m va chÃƒÂ¡Ã‚ÂºÃ‚Â¡m gÃƒÂ¡Ã‚ÂºÃ‚Â§n nhÃƒÂ¡Ã‚ÂºÃ‚Â¥t
             const hit = intersects[0];
             const hitDistance = hit.distance;
-            // Lùi lại một chút để camera không bị dính vào tường
+            // LÃƒÆ’Ã‚Â¹i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t chÃƒÆ’Ã‚Âºt Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ camera khÃƒÆ’Ã‚Â´ng bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ dÃƒÆ’Ã‚Â­nh vÃƒÆ’Ã‚Â o tÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng
             const offset = 0.3;
             const safeDistance = Math.max(0.1, hitDistance - offset);
             safePos.copy(fromPos).add(direction.clone().multiplyScalar(safeDistance));
         }
 
-        // Chặn camera không xuống dưới mặt đất (Y > 0.3)
+        // ChÃƒÂ¡Ã‚ÂºÃ‚Â·n camera khÃƒÆ’Ã‚Â´ng xuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng dÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi mÃƒÂ¡Ã‚ÂºÃ‚Â·t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥t (Y > 0.3)
         if (safePos.y < 0.3) {
             safePos.y = 0.3;
         }
@@ -2005,6 +2017,7 @@ let Renderer3D = {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
     },
 
     getRaycaster: function(mouseX, mouseY) {
@@ -2060,16 +2073,16 @@ let Renderer3D = {
             const offsetX = horizontalDist * sinYaw;
             const offsetZ = horizontalDist * cosYaw;
 
-            // Vị trí camera mong muốn
+            // VÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ camera mong muÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœn
             let rawCamX = playerX - offsetX;
             let rawCamY = verticalOffset;
             let rawCamZ = playerZ - offsetZ;
 
-            // Điểm từ nhân vật đến camera
+            // Ãƒâ€žÃ‚ÂiÃƒÂ¡Ã‚Â»Ã†â€™m tÃƒÂ¡Ã‚Â»Ã‚Â« nhÃƒÆ’Ã‚Â¢n vÃƒÂ¡Ã‚ÂºÃ‚Â­t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n camera
             const fromPos = new THREE.Vector3(playerX, py + 0.5, playerZ);
             const toPos = new THREE.Vector3(rawCamX, rawCamY, rawCamZ);
 
-            // Áp dụng collision để có vị trí an toàn
+            // ÃƒÆ’Ã‚Âp dÃƒÂ¡Ã‚Â»Ã‚Â¥ng collision Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÆ’Ã‚Â³ vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ an toÃƒÆ’Ã‚Â n
             const safePos = this._getSafeCameraPosition(fromPos, toPos, new THREE.Vector3(playerX, this.cameraLookAtHeight, playerZ));
             targetCamX = safePos.x;
             targetCamY = safePos.y;
@@ -2108,7 +2121,7 @@ let Renderer3D = {
 
 
 /* ============================================================================
- * APOCALYPSE MILITARY COMPLEX — VISUAL OVERHAUL
+ * APOCALYPSE MILITARY COMPLEX ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â VISUAL OVERHAUL
  * Inspired by the user's references: brutalist concrete, asymmetrical towers,
  * cyan emergency lighting, rooftop control decks, dense functional districts.
  * ========================================================================== */
@@ -2231,7 +2244,7 @@ Renderer3D._createApocalypseBlock = function(x, z, cfg = {}) {
 Renderer3D.buildGrandBase = function() {
     const cx = this.worldCenterX, cz = this.worldCenterZ;
     const mats = this._apocalypseMaterials();
-    console.log('🏰 Building modern post-apocalypse military complex...');
+    console.log('ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â° Building modern post-apocalypse military complex...');
 
     this._militaryBaseBounds = { minX: cx - 108, maxX: cx + 108, minZ: cz - 108, maxZ: cz + 108 };
     this._militaryBuildingFunctions = {};
@@ -2247,10 +2260,10 @@ Renderer3D.buildGrandBase = function() {
     this._createPerimeterLighting(cx, cz);
     this._createPerimeterDefense(cx, cz, 103);
 
-    // Main HQ: use the supplied game-ready GLB as the centerpiece, replacing
-    // the old procedural HQ mesh. The existing HQ gameplay/interior systems
-    // remain active so interaction logic does not break.
-    this._loadMainHQAndTent(cx, cz);
+    // Imported HQ assets are optional visual upgrades. Do not request them in
+    // the web build: their 40+ MB download would keep Poki players on the
+    // loading screen long after the procedural base is ready.
+    if (!this.webPerformanceMode) this._loadMainHQAndTent(cx, cz);
 
     // West residential / medical district.
     this._createApocalypseBarracksArea(cx - 55, cz - 28);
@@ -2284,7 +2297,7 @@ Renderer3D.buildGrandBase = function() {
     this._createAutomatedMachineGunNetwork(cx, cz);
 
     this._registerApocalypseMilitaryInteractions(cx, cz);
-    console.log('✅ Modern post-apocalypse base complete');
+    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Modern post-apocalypse base complete');
 };
 
 Renderer3D._prepareImportedModel = function(root, options = {}) {
@@ -2359,16 +2372,16 @@ Renderer3D._addModelCollisionBox = function(centerX, centerZ, width, height, dep
     return box;
 };
 
-// Tạo collision box KHÍT với kích thước thật (world-space) của model đã
-// load, thay vì dùng số liệu đoán cứng — tránh trường hợp box quá to
-// (chặn nhầm cả khu vực trống, hoặc "nuốt" luôn điểm spawn của người chơi).
+// TÃƒÂ¡Ã‚ÂºÃ‚Â¡o collision box KHÃƒÆ’Ã‚ÂT vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi kÃƒÆ’Ã‚Â­ch thÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc thÃƒÂ¡Ã‚ÂºÃ‚Â­t (world-space) cÃƒÂ¡Ã‚Â»Ã‚Â§a model Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£
+// load, thay vÃƒÆ’Ã‚Â¬ dÃƒÆ’Ã‚Â¹ng sÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ liÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u Ãƒâ€žÃ¢â‚¬ËœoÃƒÆ’Ã‚Â¡n cÃƒÂ¡Ã‚Â»Ã‚Â©ng ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â trÃƒÆ’Ã‚Â¡nh trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng hÃƒÂ¡Ã‚Â»Ã‚Â£p box quÃƒÆ’Ã‚Â¡ to
+// (chÃƒÂ¡Ã‚ÂºÃ‚Â·n nhÃƒÂ¡Ã‚ÂºÃ‚Â§m cÃƒÂ¡Ã‚ÂºÃ‚Â£ khu vÃƒÂ¡Ã‚Â»Ã‚Â±c trÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng, hoÃƒÂ¡Ã‚ÂºÃ‚Â·c "nuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœt" luÃƒÆ’Ã‚Â´n Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m spawn cÃƒÂ¡Ã‚Â»Ã‚Â§a ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i).
 Renderer3D._addModelCollisionBoxFromObject = function(root, centerX, centerZ, opts = {}) {
-    const margin = opts.margin != null ? opts.margin : 1.0; // hệ số nới nhẹ, 1.0 = khít
+    const margin = opts.margin != null ? opts.margin : 1.0; // hÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡ sÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ nÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi nhÃƒÂ¡Ã‚ÂºÃ‚Â¹, 1.0 = khÃƒÆ’Ã‚Â­t
     const minWidth = opts.minWidth || 2;
     const minDepth = opts.minDepth || 2;
     const box3 = new THREE.Box3().setFromObject(root);
     if (box3.isEmpty()) {
-        console.warn('Model rỗng, bỏ qua tạo collision box:', root.name);
+        console.warn('Model rÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ng, bÃƒÂ¡Ã‚Â»Ã‚Â qua tÃƒÂ¡Ã‚ÂºÃ‚Â¡o collision box:', root.name);
         return null;
     }
     const size = box3.getSize(new THREE.Vector3());
@@ -2380,12 +2393,12 @@ Renderer3D._addModelCollisionBoxFromObject = function(root, centerX, centerZ, op
 
 Renderer3D._loadMainHQModel = function(cx, cz) {
     if (typeof THREE.GLTFLoader === 'undefined') {
-        console.error('GLTFLoader chưa được tải; không thể load model_game_ready.glb');
+        console.error('GLTFLoader chÃƒâ€ Ã‚Â°a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â£i; khÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ load model_game_ready.glb');
         return;
     }
     this._gltfLoader = this._gltfLoader || new THREE.GLTFLoader();
     const url = 'src/assets/models/model_game_ready.glb';
-    console.log('Đang tải nhà chính GLB:', url);
+    console.log('Ãƒâ€žÃ‚Âang tÃƒÂ¡Ã‚ÂºÃ‚Â£i nhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB:', url);
     this._gltfLoader.load(url, (gltf) => {
         const root = this._prepareImportedModel(gltf.scene, { castShadow: true, receiveShadow: true });
         this._normalizeImportedModel(root, 25);
@@ -2393,24 +2406,24 @@ Renderer3D._loadMainHQModel = function(cx, cz) {
         root.name = 'MainHQImportedGLB';
         this.scene.add(root);
         this._externalModels.push(root);
-        // Collision box khớp đúng kích thước thật sau khi scale/normalize,
-        // tránh chặn nhầm điểm spawn của người chơi (250,250) ở gần đó.
+        // Collision box khÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Âºng kÃƒÆ’Ã‚Â­ch thÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc thÃƒÂ¡Ã‚ÂºÃ‚Â­t sau khi scale/normalize,
+        // trÃƒÆ’Ã‚Â¡nh chÃƒÂ¡Ã‚ÂºÃ‚Â·n nhÃƒÂ¡Ã‚ÂºÃ‚Â§m Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m spawn cÃƒÂ¡Ã‚Â»Ã‚Â§a ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i (250,250) ÃƒÂ¡Ã‚Â»Ã…Â¸ gÃƒÂ¡Ã‚ÂºÃ‚Â§n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â³.
         this._addModelCollisionBoxFromObject(root, cx, cz, { margin: 1.02, minWidth: 20, minDepth: 10 });
         if (this._militaryBuildingFunctions) this._militaryBuildingFunctions.command = { name: 'Command HQ', function: 'Base upgrades + money production hub', x: cx, z: cz - 9, radius: 20 };
-        console.log('Nhà chính GLB đã đặt tại trung tâm');
+        console.log('NhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t tÃƒÂ¡Ã‚ÂºÃ‚Â¡i trung tÃƒÆ’Ã‚Â¢m');
     }, undefined, (err) => {
-        console.error('Không tải được nhà chính GLB:', url, err);
+        console.error('KhÃƒÆ’Ã‚Â´ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c nhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB:', url, err);
     });
 };
 
 Renderer3D._loadTentModel = function(x, z) {
     if (typeof THREE.GLTFLoader === 'undefined') {
-        console.error('GLTFLoader chưa được tải; không thể load base_hq.glb');
+        console.error('GLTFLoader chÃƒâ€ Ã‚Â°a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â£i; khÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ load base_hq.glb');
         return;
     }
     this._gltfLoader = this._gltfLoader || new THREE.GLTFLoader();
     const url = 'src/assets/models/base_hq.glb';
-    console.log('Đang tải lều/outpost GLB:', url);
+    console.log('Ãƒâ€žÃ‚Âang tÃƒÂ¡Ã‚ÂºÃ‚Â£i lÃƒÂ¡Ã‚Â»Ã‚Âu/outpost GLB:', url);
     this._gltfLoader.load(url, (gltf) => {
         const root = this._prepareImportedModel(gltf.scene, { castShadow: true, receiveShadow: true });
         this._normalizeImportedModel(root, 9);
@@ -2419,18 +2432,18 @@ Renderer3D._loadTentModel = function(x, z) {
         root.name = 'TentOutpostImportedGLB';
         this.scene.add(root);
         this._externalModels.push(root);
-        // Vì lều xoay 90°, chiều rộng/sâu thực tế trên trục X/Z bị hoán đổi so
-        // với bbox gốc — tính lại collision box SAU khi đã xoay để khớp thật.
+        // VÃƒÆ’Ã‚Â¬ lÃƒÂ¡Ã‚Â»Ã‚Âu xoay 90Ãƒâ€šÃ‚Â°, chiÃƒÂ¡Ã‚Â»Ã‚Âu rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng/sÃƒÆ’Ã‚Â¢u thÃƒÂ¡Ã‚Â»Ã‚Â±c tÃƒÂ¡Ã‚ÂºÃ‚Â¿ trÃƒÆ’Ã‚Âªn trÃƒÂ¡Ã‚Â»Ã‚Â¥c X/Z bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ hoÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢i so
+        // vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi bbox gÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœc ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tÃƒÆ’Ã‚Â­nh lÃƒÂ¡Ã‚ÂºÃ‚Â¡i collision box SAU khi Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ xoay Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ khÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp thÃƒÂ¡Ã‚ÂºÃ‚Â­t.
         this._addModelCollisionBoxFromObject(root, x, z, { margin: 1.02, minWidth: 6, minDepth: 6 });
-        console.log('Lều/outpost GLB đã đặt tại:', x, z);
+        console.log('LÃƒÂ¡Ã‚Â»Ã‚Âu/outpost GLB Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t tÃƒÂ¡Ã‚ÂºÃ‚Â¡i:', x, z);
     }, undefined, (err) => {
-        console.error('Không tải được lều/outpost GLB:', url, err);
+        console.error('KhÃƒÆ’Ã‚Â´ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c lÃƒÂ¡Ã‚Â»Ã‚Âu/outpost GLB:', url, err);
     });
 };
 
 Renderer3D._loadGLBAsset = function(url, key, options = {}) {
     if (typeof THREE.GLTFLoader !== 'function') {
-        console.warn('⚠️ GLTFLoader chưa được nạp, bỏ qua asset:', key);
+        console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â GLTFLoader chÃƒâ€ Ã‚Â°a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c nÃƒÂ¡Ã‚ÂºÃ‚Â¡p, bÃƒÂ¡Ã‚Â»Ã‚Â qua asset:', key);
         return Promise.resolve(null);
     }
 
@@ -2447,7 +2460,7 @@ Renderer3D._loadGLBAsset = function(url, key, options = {}) {
             },
             undefined,
             (error) => {
-                console.error('❌ Không tải được GLB:', key, error);
+                console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ KhÃƒÆ’Ã‚Â´ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c GLB:', key, error);
                 // Asset failure should not kill the whole game.
                 resolve(null);
             }
@@ -2628,7 +2641,7 @@ Renderer3D._createApocalypseCommandCenter = function(cx, cz) {
 
     this._apocLabel(group, 'COMMAND HQ', 0x62e8ff, 0, 10.7, 15.62, 12.0, 1.25);
     this._apocLabel(group, 'BASE OPERATIONS', 0xffc857, 0, 6.9, 15.64, 9.0, 0.9);
-    this._apocLabel(group, 'MONEY DECK • BUILD HERE', 0x42e8a1, 0, 2.15, 15.7, 14.0, 0.82);
+    this._apocLabel(group, 'MONEY DECK ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ BUILD HERE', 0x42e8a1, 0, 2.15, 15.7, 14.0, 0.82);
 
     // Strong architectural diagonals to emulate the carved/brutalist reference.
     for (let side of [-1, 1]) {
@@ -2648,7 +2661,7 @@ Renderer3D._createHQInterior = function(cx, cz) {
     const g = new THREE.Group();
     this._hqInterior = { cx, cz, floor1Y: 2.52, floor2Y: 6.77, floor3Y: 11.02 };
 
-    // Soft interior illumination — cool emergency strips + warm task lights.
+    // Soft interior illumination ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cool emergency strips + warm task lights.
     const addPoint = (x,y,z,color,intensity,distance) => {
         const light = new THREE.PointLight(color, intensity, distance);
         light.position.set(x,y,z); g.add(light); return light;
@@ -2782,34 +2795,34 @@ Renderer3D._createAutomatedMachineGun = function(x,z,rotationY=0) {
 };
 
 Renderer3D._updateAutomatedMachineGuns = function(deltaTime, zombies) {
-    if(!this._autoDefenseTurrets || !zombies) return;
-    const now=Date.now();
-    for(const turret of this._autoDefenseTurrets) {
-        let target=null, best=turret.range;
-        for(const z of zombies) {
-            const d=Math.hypot(z.x-turret.x,z.z-turret.z);
-            if(d<best){best=d;target=z;}
+    if (!this._autoDefenseTurrets || !zombies) return;
+    const now = Date.now();
+    for (const turret of this._autoDefenseTurrets) {
+        let target = null, best = turret.range;
+        for (const z of zombies) {
+            const d = Math.hypot(z.x - turret.x, z.z - turret.z);
+            if (d < best) { best = d; target = z; }
         }
-        if(target) {
-            const desired=Math.atan2(target.x-turret.x,target.z-turret.z);
-            let diff=desired-turret.angle;
-            while(diff>Math.PI) diff-=Math.PI*2;
-            while(diff<-Math.PI) diff+=Math.PI*2;
-            turret.angle += Math.max(-0.08,Math.min(0.08,diff));
-            const local=turret.angle-turret.homeAngle;
-            turret.head.rotation.y=local;
-            turret.barrel.rotation.y=local;
-            turret.barrel2.rotation.y=local;
-            if(now-turret.lastShot>=turret.fireRate) {
-                if(typeof target.takeDamage==='function') target.takeDamage(turret.damage);
-                turret.lastShot=now;
-                this._createAutoTracer(turret,target);
+        if (target) {
+            const desired = Math.atan2(target.x - turret.x, target.z - turret.z);
+            let diff = desired - turret.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            turret.angle += Math.max(-0.08, Math.min(0.08, diff));
+            const local = turret.angle - turret.homeAngle;
+            turret.head.rotation.y = local;
+            turret.barrel.rotation.y = local;
+            turret.barrel2.rotation.y = local;
+            if (now - turret.lastShot >= turret.fireRate) {
+                if (typeof target.takeDamage === 'function') target.takeDamage(turret.damage);
+                turret.lastShot = now;
+                this._createAutoTracer(turret, target);
             }
         }
     }
 };
 
-Renderer3D._createAutoTracer = function(turret,target) {
+Renderer3D._createAutoTracer = function(turret, target) {
     const start=new THREE.Vector3(turret.x,2.0,turret.z);
     const end=new THREE.Vector3(target.x,1.0,target.z);
     const geometry=new THREE.BufferGeometry().setFromPoints([start,end]);
@@ -2822,132 +2835,75 @@ Renderer3D._createAutoTracer = function(turret,target) {
     },70);
 };
 
-Renderer3D.getPlayerFloorHeight = function(x,z) {
-    if(!this._hqInterior) return 0;
-    const dx=x-this._hqInterior.cx, dz=z-this._hqInterior.cz;
-    // Lobby-to-first-floor ramp.
-    if(Math.abs(dx)<=5.2 && dz>=8.0 && dz<=15.0) return 2.52*(15.0-dz)/7.0;
-    // First floor main hall.
-    if(Math.abs(dx)<=11.0 && dz>=-7.5 && dz<=8.0) return 2.52;
-    // Stair to level 2 on east side.
-    if(dx>=6.8 && dx<=10.9 && dz>=-9.0 && dz<=-1.8) return 2.52 + (6.77-2.52)*((-1.8-dz)/7.2);
-    // Level 2.
-    if(Math.abs(dx)<=10.8 && dz>=-9.0 && dz<=-1.8) return 6.77;
-    // Stair to level 3 on west side.
-    if(dx<=-6.8 && dx>=-10.9 && dz>=-14.0 && dz<=-7.0) return 6.77 + (11.02-6.77)*((-7.0-dz)/7.0);
-    // Level 3 war room.
-    if(Math.abs(dx)<=10.8 && dz>=-14.0 && dz<=-9.0) return 11.02;
-    return 0;
-};
-
 Renderer3D._createApocalypseBarracksArea = function(cx, cz) {
     const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.barracks = { name: 'Barracks', function: 'Troop housing / guard NPCs' };
+    this._militaryBuildingFunctions.barracks = { name: 'Barracks', function: 'Troop housing' };
     [[0,0],[16,0],[0,15],[16,15]].forEach(([dx,dz], i) => {
         this._createApocalypseBlock(cx+dx, cz+dz, {
             width: 13, height: 5.4, depth: 9,
             label: i === 0 ? 'BARRACKS' : 'QUARTERS',
             labelColor: 0x9ee7b6,
             bodyMat: i % 2 ? mats.military : mats.concrete,
-            upperWidth: 7,
-            upperOffsetX: i % 2 ? 2.0 : -1.5,
-            pad: true
+            upperWidth: 7, upperOffsetX: i % 2 ? 2.0 : -1.5, pad: true
         });
     });
-    // Covered walkway / lights.
     const canopy = new THREE.Group();
     this._apocBox(canopy, 31, 0.26, 2.6, 7.5, 4.3, 26.0, mats.metal, false);
     for (let i = 0; i < 7; i++) {
-        const p = this._apocBox(canopy, 0.14, 4.0, 0.14, -7 + i * 4.8, 2.0, 24.8, mats.steel, false);
+        this._apocBox(canopy, 0.14, 4.0, 0.14, -7 + i * 4.8, 2.0, 24.8, mats.steel, false);
         const l = this._apocBox(canopy, 0.28, 0.16, 1.4, -7 + i * 4.8, 4.12, 24.8, mats.cyan, false);
         l.castShadow = false;
     }
-    canopy.position.set(cx, 0, cz);
-    this.scene.add(canopy);
+    canopy.position.set(cx, 0, cz); this.scene.add(canopy);
 };
 
 Renderer3D._createApocalypseSupplyDepot = function(cx, cz) {
     const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.supply = { name: 'Supply Depot', function: 'Ammo, weapons and logistics' };
+    this._militaryBuildingFunctions.supply = { name: 'Supply Depot', function: 'Ammo and logistics' };
     this._createApocalypseBlock(cx, cz, { width: 23, height: 7, depth: 15, label: 'SUPPLY DEPOT', labelColor: 0xffc857, bodyMat: mats.concrete, upperWidth: 12, upperOffsetX: 4 });
-    // Container lanes and loading dock.
     const colors = [0x57636a, 0x45545c, 0x6a4f3e, 0x3c5662];
     for (let i = 0; i < 4; i++) {
         const cont = new THREE.Mesh(new THREE.BoxGeometry(6, 2.4, 2.6), new THREE.MeshPhongMaterial({ color: colors[i] }));
         cont.position.set(cx - 8.5 + i * 5.7, 1.2, cz + 11.0);
-        cont.rotation.y = i % 2 ? 0.02 : -0.01;
-        cont.castShadow = true; cont.receiveShadow = true;
+        cont.rotation.y = i % 2 ? 0.02 : -0.01; cont.castShadow = true; cont.receiveShadow = true;
         this.scene.add(cont); this._addCollisionMesh(cont);
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.08, 0.16), mats.amber);
-        stripe.position.set(cont.position.x, 2.15, cont.position.z - 1.35);
-        this.scene.add(stripe);
+        stripe.position.set(cont.position.x, 2.15, cont.position.z - 1.35); this.scene.add(stripe);
     }
 };
 
 Renderer3D._createApocalypseMotorPool = function(cx, cz) {
     const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.motorPool = { name: 'Motor Pool', function: 'Vehicle storage / spawning' };
+    this._militaryBuildingFunctions.motorPool = { name: 'Motor Pool', function: 'Vehicle storage' };
     this._createApocalypseBlock(cx, cz, { width: 28, height: 6.8, depth: 16, label: 'MOTOR POOL', labelColor: 0x62e8ff, bodyMat: mats.military, upperWidth: 14, upperOffsetX: -4 });
     for (let i = -2; i <= 2; i++) {
-        const vehicle = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.15, 2.2), new THREE.MeshPhongMaterial({ color: i % 2 ? 0x536256 : 0x3e4b43 }));
-        vehicle.position.set(cx + i * 5.0, 0.85, cz + 11.0); vehicle.castShadow = true;
-        this.scene.add(vehicle);
+        const vehicle = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.15, 2.2), new THREE.MeshPhongMaterial({ color: i%2 ? 0x536256 : 0x3e4b43 }));
+        vehicle.position.set(cx + i*5.0, 0.85, cz + 11.0); vehicle.castShadow = true; this.scene.add(vehicle);
         for (const dx of [-1.35, 1.35]) {
             const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,0.28,10), mats.metal);
-            wheel.rotation.z = Math.PI/2; wheel.position.set(cx + i*5 + dx, 0.45, cz + 11.0);
-            this.scene.add(wheel);
+            wheel.rotation.z = Math.PI/2; wheel.position.set(cx + i*5 + dx, 0.45, cz + 11.0); this.scene.add(wheel);
         }
     }
 };
 
 Renderer3D._createApocalypseResearchFacility = function(cx, cz) {
     const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.lab = { name: 'Research Lab', function: 'Zombie research / weapon upgrades' };
+    this._militaryBuildingFunctions.lab = { name: 'Research Lab', function: 'Zombie research' };
     this._createApocalypseBlock(cx, cz, { width: 24, height: 7.2, depth: 15, label: 'RESEARCH LAB', labelColor: 0x65ecff, bodyMat: mats.concreteLight, upperWidth: 14, upperOffsetX: -3 });
-    // Containment tanks.
     for (let i = -2; i <= 2; i++) {
-        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 4.0, 18), new THREE.MeshPhongMaterial({ color: 0x203037, transparent:true, opacity:0.95 }));
-        tank.position.set(cx + i * 3.2, 2.0, cz + 11.0); tank.castShadow = true;
-        this.scene.add(tank);
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.92,0.92,4.0,18), new THREE.MeshPhongMaterial({ color:0x203037, transparent:true, opacity:0.95 }));
+        tank.position.set(cx + i*3.2, 2.0, cz + 11.0); tank.castShadow = true; this.scene.add(tank);
         const fluid = new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.62,2.5,16), new THREE.MeshPhongMaterial({ color:0x52d7e8, emissive:0x1c7c89, emissiveIntensity:0.5, transparent:true, opacity:0.62 }));
         fluid.position.set(cx + i*3.2, 1.55, cz + 11.0); this.scene.add(fluid);
     }
 };
 
-Renderer3D._createApocalypseTrainingGround = function(cx, cz) {
-    const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.training = { name: 'Training Ground', function: 'Weapon practice / aim training' };
-    this._createPavedPad(cx, cz, 38, 24, 0x2a3034);
-    this._createApocObstacleCourse(cx, cz);
-    for (let i = -2; i <= 2; i++) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.0, 0.16), mats.steel);
-        post.position.set(cx + i * 6.4, 1.5, cz + 8); this.scene.add(post);
-        const target = new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,0.18,18), mats.ambient || new THREE.MeshPhongMaterial({color:0xe0e5e7}));
-        target.rotation.x = Math.PI/2; target.position.set(cx+i*6.4,2.2,cz+8); this.scene.add(target);
-    }
-    this._apocLabel(this.scene, 'TRAINING GROUND', 0x9ee7b6, cx, 0.1, cz - 10.6, 9, 0.8);
-};
-
-Renderer3D._createApocalypseShootingRange = function(cx, cz) {
-    const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.range = { name: 'Shooting Range', function: 'Weapon testing / target practice' };
-    this._createPavedPad(cx, cz, 42, 22, 0x252b2e);
-    for (let lane = -2; lane <= 2; lane++) {
-        const line = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 18), mats.steel);
-        line.position.set(cx + lane*7.5, 0.18, cz); this.scene.add(line);
-        const target = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.8, 0.20), mats.darkGlass);
-        target.position.set(cx + lane*7.5, 1.4, cz + 7.5); this.scene.add(target);
-        this._addCollisionMesh(target);
-        this._apocStrip(this.scene, cx + lane*7.5, 2.8, cz+7.66, 1.7, 0.10, mats.cyan);
-    }
-    this._apocLabel(this.scene, 'LIVE FIRE', 0xff6b6b, cx, 3.5, cz - 10.8, 7.0, 0.8);
-};
-
 Renderer3D._createApocObstacleCourse = function(cx, cz) {
     const mats = this._apocalypseMaterials();
     for (let i = -2; i <= 2; i++) {
-        const block = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1 + Math.abs(i)*0.25, 1.2), mats.concreteDark);
-        block.position.set(cx + i*5.5, block.geometry.parameters.height/2, cz - 4); block.castShadow = true;
+        const h = 1.1 + Math.abs(i)*0.25;
+        const block = new THREE.Mesh(new THREE.BoxGeometry(2.2, h, 1.2), mats.concreteDark);
+        block.position.set(cx + i*5.5, h/2, cz - 4); block.castShadow = true;
         this.scene.add(block); this._addCollisionMesh(block);
     }
     for (let i = -2; i <= 2; i++) {
@@ -2958,16 +2914,42 @@ Renderer3D._createApocObstacleCourse = function(cx, cz) {
     }
 };
 
+Renderer3D._createApocalypseTrainingGround = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.training = { name: 'Training Ground', function: 'Weapon practice' };
+    this._createPavedPad(cx, cz, 38, 24, 0x2a3034);
+    this._createApocObstacleCourse(cx, cz);
+    for (let i = -2; i <= 2; i++) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16,3.0,0.16), mats.steel);
+        post.position.set(cx + i*6.4, 1.5, cz + 8); this.scene.add(post);
+        const target = new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,0.18,18), new THREE.MeshPhongMaterial({color:0xe0e5e7}));
+        target.rotation.x = Math.PI/2; target.position.set(cx+i*6.4, 2.2, cz+8); this.scene.add(target);
+    }
+    this._apocLabel(this.scene, 'TRAINING GROUND', 0x9ee7b6, cx, 0.1, cz - 10.6, 9, 0.8);
+};
+
+Renderer3D._createApocalypseShootingRange = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    this._militaryBuildingFunctions.range = { name: 'Shooting Range', function: 'Weapon testing' };
+    this._createPavedPad(cx, cz, 42, 22, 0x252b2e);
+    for (let lane = -2; lane <= 2; lane++) {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(0.10,0.03,18), mats.steel);
+        line.position.set(cx + lane*7.5, 0.18, cz); this.scene.add(line);
+        const target = new THREE.Mesh(new THREE.BoxGeometry(2.2,2.8,0.20), mats.darkGlass);
+        target.position.set(cx + lane*7.5, 1.4, cz + 7.5); this.scene.add(target);
+        this._addCollisionMesh(target);
+        this._apocStrip(this.scene, cx + lane*7.5, 2.8, cz+7.66, 1.7, 0.10, mats.cyan);
+    }
+    this._apocLabel(this.scene, 'LIVE FIRE', 0xff6b6b, cx, 3.5, cz - 10.8, 7.0, 0.8);
+};
+
 Renderer3D._createApocalypseRadarStation = function(cx, cz) {
     const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.radar = { name: 'Radar Station', function: 'Detect zombie waves / players' };
-    const base = this._apocBox(new THREE.Group(), 10, 0.6, 10, 0, 0.3, 0, mats.concreteDark, false);
-    const group = base.parent;
-    // Easier: create dedicated group after base helper side effect.
+    this._militaryBuildingFunctions.radar = { name: 'Radar Station', function: 'Detect waves' };
     const g = new THREE.Group();
     this._apocBox(g, 10, 0.6, 10, 0, 0.3, 0, mats.concreteDark, true);
     this._apocBox(g, 2.0, 10, 2.0, 0, 5.3, 0, mats.steel, true);
-    const dish = new THREE.Mesh(new THREE.SphereGeometry(3.7, 20, 12, 0, Math.PI), new THREE.MeshPhongMaterial({ color: 0x7f8c8d, flatShading:true }));
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(3.7,20,12,0,Math.PI), new THREE.MeshPhongMaterial({ color:0x7f8c8d, flatShading:true }));
     dish.position.set(0,10.7,0); dish.rotation.x = -Math.PI/2.6; dish.castShadow = true; g.add(dish);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,8,8), mats.cyan);
     beam.position.set(0,14.5,0); g.add(beam);
@@ -2977,13 +2959,12 @@ Renderer3D._createApocalypseRadarStation = function(cx, cz) {
 
 Renderer3D._createApocalypseCommsTower = function(cx, cz) {
     const mats = this._apocalypseMaterials();
-    this._militaryBuildingFunctions.comms = { name: 'Comms Tower', function: 'Contracts / supply dispatch' };
+    this._militaryBuildingFunctions.comms = { name: 'Comms Tower', function: 'Contracts' };
     const g = new THREE.Group();
-    const pts = [[-2,-2],[2,-2],[2,2],[-2,2]];
-    pts.forEach(([x,z])=>this._apocBox(g,0.18,18,0.18,x,9,z,mats.steel,true));
-    for (let y=3;y<=16;y+=3) {
+    [[-2,-2],[2,-2],[2,2],[-2,2]].forEach(([x,z]) => this._apocBox(g,0.18,18,0.18,x,9,z,mats.steel,true));
+    for (let y=3; y<=16; y+=3) {
         this._apocBox(g,4.6,0.12,0.12,0,y,-2,mats.steel,false);
-        this._apocBox(g,4.6,0.12,0.12,0,y,2,mats.steel,false);
+        this._apocBox(g,4.6,0.12,0.12,0,y, 2,mats.steel,false);
     }
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.3,8,8), mats.red); beacon.position.set(0,18.4,0); g.add(beacon);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3,0.06,8,32), mats.cyan); ring.rotation.x=Math.PI/2; ring.position.set(0,13.4,0); g.add(ring);
@@ -2991,18 +2972,43 @@ Renderer3D._createApocalypseCommsTower = function(cx, cz) {
     g.position.set(cx,0,cz); this.scene.add(g);
 };
 
-Renderer3D._createApocalypseGuardTower = function(x,z) {
+Renderer3D._createApocalypseGuardTower = function(x, z) {
     const mats = this._apocalypseMaterials();
     const g = new THREE.Group();
     this._apocBox(g,4.2,7.8,4.2,0,3.9,0,mats.concrete,true);
     this._apocBox(g,5.0,0.45,5.0,0,8.0,0,mats.concreteDark,true);
     this._apocBox(g,3.8,1.6,3.8,0,8.85,0,mats.concreteLight,true);
-    for (let side of [-1,1]) {
-        this._apocSlitWindow(g,side*1.91,8.8,0,0.08,0.7,3.0);
-    }
+    for (const side of [-1,1]) { this._apocSlitWindow(g,side*1.91,8.8,0,0.08,0.7,3.0); }
     this._apocStrip(g,0,8.02,0,4.2,0.16,mats.cyan);
-    const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.20,8,8),mats.amber);lamp.position.set(0,9.8,0);g.add(lamp);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.20,8,8), mats.amber); lamp.position.set(0,9.8,0); g.add(lamp);
     g.position.set(x,0,z); this.scene.add(g);
+};
+
+Renderer3D._createApocalypseBaseProps = function(cx, cz) {
+    const mats = this._apocalypseMaterials();
+    for (let i = 0; i < 14; i++) {
+        const side = i%2===0 ? -1 : 1;
+        const x = cx + side*(68 + (i%4)*5.5);
+        const z = cz - 48 + Math.floor(i/4)*4.2;
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(2.4,1.3,1.8), i%3===0 ? mats.olive : mats.military);
+        crate.position.set(x,0.65,z); crate.rotation.y=(i%5)*0.12; crate.castShadow=true; crate.receiveShadow=true;
+        this.scene.add(crate); this._addCollisionMesh(crate);
+    }
+    const sand = mats.sand;
+    for (const [dx,dz] of [[-78,48],[76,48],[-72,-46],[72,-42],[-24,87],[28,87]]) {
+        for (let j=-2; j<=2; j++) {
+            const bag = new THREE.Mesh(new THREE.BoxGeometry(1.9,0.55,0.75), sand);
+            bag.position.set(cx+dx+j*1.5, 0.28, cz+dz+(j%2)*0.10); bag.rotation.y=j*0.05; bag.castShadow=true; this.scene.add(bag);
+        }
+    }
+    for (let i=-5; i<=5; i++) {
+        for (const side of [-1,1]) {
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.11,5.8,6), mats.steel);
+            pole.position.set(cx+i*18, 2.9, cz+side*45); this.scene.add(pole);
+            const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.48,0.18,0.7), mats.cyan);
+            lamp.position.set(cx+i*18, 5.65, cz+side*45); this.scene.add(lamp);
+        }
+    }
 };
 
 Renderer3D._createApocalypseMainGate = function(cx,cz) {
@@ -3027,52 +3033,24 @@ Renderer3D._createApocalypseSecondaryGate = function(cx,cz) {
     g.position.set(cx,0,cz); this.scene.add(g);
 };
 
-Renderer3D._createApocalypseBaseProps = function(cx,cz) {
-    const mats=this._apocalypseMaterials();
-    // Containers, wrecked barriers, sandbags and pallets make the base feel inhabited.
-    for(let i=0;i<14;i++){
-        const side=i%2===0?-1:1;
-        const x=cx+side*(68+(i%4)*5.5);
-        const z=cz-48+Math.floor(i/4)*4.2;
-        const crate=new THREE.Mesh(new THREE.BoxGeometry(2.4,1.3,1.8), i%3===0?mats.olive:mats.military);
-        crate.position.set(x,0.65,z); crate.rotation.y=(i%5)*0.12; crate.castShadow=true; crate.receiveShadow=true; this.scene.add(crate); this._addCollisionMesh(crate);
-    }
-    const sand=mats.sand;
-    for(const [dx,dz] of [[-78,48],[76,48],[-72,-46],[72,-42],[-24,87],[28,87]]){
-        for(let j=-2;j<=2;j++){
-            const bag=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.55,0.75),sand);
-            bag.position.set(cx+dx+j*1.5,0.28,cz+dz+(j%2)*0.10); bag.rotation.y=j*0.05; bag.castShadow=true; this.scene.add(bag);
-        }
-    }
-    // Flood lights along major roads.
-    for(let i=-5;i<=5;i++){
-        for(const side of [-1,1]){
-            const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.11,5.8,6),mats.steel);
-            pole.position.set(cx+i*18,2.9,cz+side*45); this.scene.add(pole);
-            const lamp=new THREE.Mesh(new THREE.BoxGeometry(0.48,0.18,0.7),mats.cyan); lamp.position.set(cx+i*18,5.65,cz+side*45); this.scene.add(lamp);
-        }
-    }
-};
-
 Renderer3D._registerApocalypseMilitaryInteractions = function(cx,cz) {
     this._militaryInteractions = [
-        { id:'hq', name:'COMMAND HQ', description:'Nâng cấp căn cứ và mở các máy kiếm tiền.', x:cx, z:cz-9, radius:14 },
-        { id:'barracks', name:'BARRACKS', description:'Tuyển lính gác và tăng phòng thủ.', x:cx-55, z:cz-28, radius:12 },
-        { id:'mess', name:'MESS HALL', description:'Hồi stamina và nhận buff.', x:cx-38, z:cz+36, radius:10 },
-        { id:'medical', name:'MEDICAL', description:'Sử dụng vật tư y tế.', x:cx-38, z:cz+36, radius:10 },
-        { id:'supply', name:'SUPPLY DEPOT', description:'Mua ammo và nâng cấp vũ khí.', x:cx+53, z:cz-30, radius:12 },
-        { id:'fuel', name:'FUEL FARM', description:'Quản lý nhiên liệu và income.', x:cx+62, z:cz+17, radius:10 },
-        { id:'motorPool', name:'MOTOR POOL', description:'Triệu hồi và nâng cấp vehicle.', x:cx+49, z:cz+57, radius:13 },
-        { id:'lab', name:'RESEARCH LAB', description:'Nghiên cứu zombie và weapon.', x:cx+3, z:cz-73, radius:13 },
-        { id:'workshop', name:'VEHICLE WORKSHOP', description:'Sửa và nâng cấp vehicle.', x:cx-49, z:cz-73, radius:12 },
-        { id:'training', name:'TRAINING GROUND', description:'Luyện weapon XP.', x:cx-42, z:cz+70, radius:15 },
-        { id:'range', name:'SHOOTING RANGE', description:'Test súng và accuracy.', x:cx+30, z:cz+70, radius:15 },
-        { id:'radar', name:'RADAR', description:'Phát hiện zombie wave và boss.', x:cx+86, z:cz-78, radius:10 },
-        { id:'comms', name:'COMMS', description:'Nhận supply contracts.', x:cx-84, z:cz-78, radius:10 }
+        { id:'hq', name:'COMMAND HQ', description:'NÃ¢ng cáº¥p cÄƒn cá»© vÃ  má»Ÿ cÃ¡c mÃ¡y kiáº¿m tiá»n.', x:cx, z:cz-9, radius:14 },
+        { id:'barracks', name:'BARRACKS', description:'Tuyá»ƒn lÃ­nh gÃ¡c vÃ  tÄƒng phÃ²ng thá»§.', x:cx-55, z:cz-28, radius:12 },
+        { id:'mess', name:'MESS HALL', description:'Há»“i stamina vÃ  nháº­n buff.', x:cx-38, z:cz+36, radius:10 },
+        { id:'medical', name:'MEDICAL', description:'Sá»­ dá»¥ng váº­t tÆ° y táº¿.', x:cx-38, z:cz+36, radius:10 },
+        { id:'supply', name:'SUPPLY DEPOT', description:'Mua ammo vÃ  nÃ¢ng cáº¥p vÅ© khÃ­.', x:cx+53, z:cz-30, radius:12 },
+        { id:'fuel', name:'FUEL FARM', description:'Quáº£n lÃ½ nhiÃªn liá»‡u vÃ  income.', x:cx+62, z:cz+17, radius:10 },
+        { id:'motorPool', name:'MOTOR POOL', description:'Triá»‡u há»“i vÃ  nÃ¢ng cáº¥p vehicle.', x:cx+49, z:cz+57, radius:13 },
+        { id:'lab', name:'RESEARCH LAB', description:'NghiÃªn cá»©u zombie vÃ  weapon.', x:cx+3, z:cz-73, radius:13 },
+        { id:'workshop', name:'VEHICLE WORKSHOP', description:'Sá»­a vÃ  nÃ¢ng cáº¥p vehicle.', x:cx-49, z:cz-73, radius:12 },
+        { id:'training', name:'TRAINING GROUND', description:'Luyá»‡n weapon XP.', x:cx-42, z:cz+70, radius:15 },
+        { id:'range', name:'SHOOTING RANGE', description:'Test sÃºng vÃ  accuracy.', x:cx+30, z:cz+70, radius:15 },
+        { id:'radar', name:'RADAR', description:'PhÃ¡t hiá»‡n zombie wave vÃ  boss.', x:cx+86, z:cz-78, radius:10 },
+        { id:'comms', name:'COMMS', description:'Nháº­n supply contracts.', x:cx-84, z:cz-78, radius:10 }
     ];
 };
 
-// Keep old gameplay functions but route visuals to the new architecture.
 Renderer3D._registerMilitaryInteractions = Renderer3D._registerApocalypseMilitaryInteractions;
 Renderer3D._createCommandCenter = Renderer3D._createApocalypseCommandCenter;
 Renderer3D._createLargeBarracksArea = Renderer3D._createApocalypseBarracksArea;
@@ -3110,14 +3088,14 @@ Renderer3D.loadExternalModels = function() {
                 this._externalModels.hq = root;
                 this._modelLoadStatus.hq = true;
                 this._applyHQModelOverride(root);
-                console.log('🏛️ Đã load model base_hq.glb');
+                console.log('ÃƒÂ°Ã…Â¸Ã‚ÂÃ¢â‚¬ÂºÃƒÂ¯Ã‚Â¸Ã‚Â Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â£ load model base_hq.glb');
             }, undefined, (err) => {
-                console.warn('⚠️ Không load được base_hq.glb, giữ HQ dựng bằng code:', err?.message || err);
+                console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â KhÃƒÆ’Ã‚Â´ng load Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c base_hq.glb, giÃƒÂ¡Ã‚Â»Ã‚Â¯ HQ dÃƒÂ¡Ã‚Â»Ã‚Â±ng bÃƒÂ¡Ã‚ÂºÃ‚Â±ng code:', err?.message || err);
             });
         } catch(e) { console.warn('GLTFLoader error', e); }
     }
 
-    // FBX -> Turel & Minigun (tạo fallback geometry nếu FBXLoader chưa có)
+    // FBX -> Turel & Minigun (tÃƒÂ¡Ã‚ÂºÃ‚Â¡o fallback geometry nÃƒÂ¡Ã‚ÂºÃ‚Â¿u FBXLoader chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³)
     const loadFBX = (key, path, onSuccess) => {
         try {
             if (this._fbxLoader) {
@@ -3126,16 +3104,16 @@ Renderer3D.loadExternalModels = function() {
                     this._externalModels[key] = obj;
                     this._modelLoadStatus[key] = true;
                     if (onSuccess) onSuccess(obj);
-                    console.log(`📦 Đã load FBX model ${key}`);
+                    console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â£ load FBX model ${key}`);
                 }, undefined, (err) => {
-                    console.warn(`⚠️ Không load được ${key} FBX, dùng mesh tạo bằng code thay thế.`);
+                    console.warn(`ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â KhÃƒÆ’Ã‚Â´ng load Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ${key} FBX, dÃƒÆ’Ã‚Â¹ng mesh tÃƒÂ¡Ã‚ÂºÃ‚Â¡o bÃƒÂ¡Ã‚ÂºÃ‚Â±ng code thay thÃƒÂ¡Ã‚ÂºÃ‚Â¿.`);
                     this._modelLoadStatus[key] = false;
                 });
             } else {
                 this._modelLoadStatus[key] = false;
             }
         } catch(e) {
-            console.warn(`FBXLoader lỗi (${key}):`, e);
+            console.warn(`FBXLoader lÃƒÂ¡Ã‚Â»Ã¢â‚¬â€i (${key}):`, e);
             this._modelLoadStatus[key] = false;
         }
     };
@@ -3160,69 +3138,167 @@ Renderer3D._applyHQModelOverride = function(hqModel) {
         this.scene.add(model);
         this._addCollisionMesh(model);
         this._hqExternalModel = model;
-    } catch(e) {
-        console.warn('Lỗi áp dụng HQ model:', e);
-    }
+    } catch(e) { console.warn('HQ Model alignment error', e); }
+};
+
+Renderer3D._getTurretAssets = function() {
+    if (this._turretAssets) return this._turretAssets;
+    this._turretAssets = {
+        basePlatform:   new THREE.CylinderGeometry(2.0, 2.4, 0.6, 8),
+        baseRing:       new THREE.CylinderGeometry(1.5, 1.7, 0.4, 8),
+        turretCollar:   new THREE.CylinderGeometry(1.1, 1.3, 0.8, 8),
+        housingGeo:     new THREE.BoxGeometry(2.2, 1.3, 2.0),
+        armorPlateGeo:  new THREE.BoxGeometry(2.4, 0.9, 1.2),
+        barrelGeo:      new THREE.CylinderGeometry(0.13, 0.16, 3.2, 8),
+        muzzleBrakeGeo: new THREE.CylinderGeometry(0.20, 0.20, 0.5, 8),
+        radarGeo:       new THREE.SphereGeometry(0.35, 6, 6),
+        lensGeo:        new THREE.CylinderGeometry(0.12, 0.12, 0.15, 6),
+
+        matBaseDark:    new THREE.MeshLambertMaterial({ color: 0x222a30 }),
+        matArmorMetal:  new THREE.MeshPhongMaterial({ color: 0x3a4852, specular: 0x556677, shininess: 25 }),
+        matGunMetal:    new THREE.MeshPhongMaterial({ color: 0x1a2024, specular: 0x334455, shininess: 40 }),
+        matOpticLens:   new THREE.MeshBasicMaterial({ color: 0x00ff88 }),
+        matDetailSteel: new THREE.MeshLambertMaterial({ color: 0x4f5d68 })
+    };
+    return this._turretAssets;
+};
+
+Renderer3D.loadTurretModelDeferred = function() {
+    // Kept for backward compatibility
+};
+
+Renderer3D._upgradeExistingTurretVisuals = function() {
+    // No-op
 };
 
 Renderer3D.create3DTurel = function(x, z) {
     const group = new THREE.Group();
-    if (this._externalModels && this._externalModels.turel) {
-        try {
-            const model = this._externalModels.turel.clone(true);
-            const box = new THREE.Box3().setFromObject(model);
-            const size = new THREE.Vector3(); box.getSize(size);
-            const scale = Math.min(3.5 / Math.max(size.x, 0.1), 6.5 / Math.max(size.y, 0.1), 3.5 / Math.max(size.z, 0.1));
-            model.scale.setScalar(scale);
-            const b2 = new THREE.Box3().setFromObject(model);
-            model.position.set(x, -b2.min.y, z);
-            model.traverse(c => { if (c.isMesh) c.castShadow = true; });
-            group.add(model);
-            let head = null;
-            model.traverse(c => { if (!head && c.isMesh && c.position.y > (size.y * 0.4)) head = c; });
-            if (!head) head = model;
-            group.turretHead = head;
-            this._addCollisionMesh(model);
-            group.position.set(0, 0, 0);
-            this.scene.add(group);
-            return group;
-        } catch(e) { console.warn('Turel model lỗi, fallback geometry', e); }
-    }
+    const assets = this._getTurretAssets();
 
-    // Fallback: tạo Turel = base trụ + tháp xoay + ống phóng
-    const baseGeo = new THREE.CylinderGeometry(1.8, 2.2, 1.2, 16);
-    const baseMat = new THREE.MeshPhongMaterial({ color: 0x444d55 });
-    const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = 0.6; base.castShadow = true; base.receiveShadow = true;
-    group.add(base); this._addCollisionMesh(base);
+    // 1. ChÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿ bÃƒÆ’Ã‚Â¡t giÃƒÆ’Ã‚Â¡c bÃƒÂ¡Ã‚Â»Ã‚Âc thÃƒÆ’Ã‚Â©p
+    const base = new THREE.Mesh(assets.basePlatform, assets.matBaseDark);
+    base.position.y = 0.3;
+    base.receiveShadow = true;
+    group.add(base);
 
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 3.2, 16),
-        new THREE.MeshPhongMaterial({ color: 0x3b424a }));
-    pillar.position.y = 2.8; pillar.castShadow = true; pillar.receiveShadow = true;
-    group.add(pillar); this._addCollisionMesh(pillar);
+    const baseRing = new THREE.Mesh(assets.baseRing, assets.matDetailSteel);
+    baseRing.position.y = 0.7;
+    group.add(baseRing);
 
+    // 2. CÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢ xoay trÃƒÂ¡Ã‚Â»Ã‚Â£ lÃƒÂ¡Ã‚Â»Ã‚Â±c
+    const collar = new THREE.Mesh(assets.turretCollar, assets.matBaseDark);
+    collar.position.y = 1.2;
+    group.add(collar);
+
+    // 3. Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚ÂºÃ‚Â§u thÃƒÆ’Ã‚Â¡p phÃƒÆ’Ã‚Â¡o xoay (Turret Head)
     const headGroup = new THREE.Group();
-    headGroup.position.y = 4.4;
-    const turretBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 1.8),
-        new THREE.MeshPhongMaterial({ color: 0x2e3438 }));
-    turretBody.castShadow = true; headGroup.add(turretBody);
+    headGroup.position.y = 1.9;
 
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 3.4, 10),
-        new THREE.MeshPhongMaterial({ color: 0x171b1e }));
-    barrel.rotation.z = Math.PI / 2; barrel.position.x = 1.7;
-    barrel.castShadow = true; headGroup.add(barrel);
+    // VÃƒÂ¡Ã‚Â»Ã‚Â bÃƒÂ¡Ã‚Â»Ã‚Âc thÃƒÆ’Ã‚Â©p khoang phÃƒÆ’Ã‚Â¡o
+    const housing = new THREE.Mesh(assets.housingGeo, assets.matArmorMetal);
+    housing.position.set(0, 0.4, 0);
+    housing.castShadow = true;
+    headGroup.add(housing);
+
+    // TÃƒÂ¡Ã‚ÂºÃ‚Â¥m giÃƒÆ’Ã‚Â¡p vÃƒÆ’Ã‚Â¡t trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc
+    const armorPlate = new THREE.Mesh(assets.armorPlateGeo, assets.matDetailSteel);
+    armorPlate.position.set(0.6, 0.5, 0);
+    armorPlate.rotation.z = -0.3;
+    headGroup.add(armorPlate);
+
+    // CÃƒÂ¡Ã‚ÂºÃ‚Â·p nÃƒÆ’Ã‚Â²ng phÃƒÆ’Ã‚Â¡o Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â´i hÃƒÂ¡Ã‚ÂºÃ‚Â¡ng nÃƒÂ¡Ã‚ÂºÃ‚Â·ng (Dual Heavy Autocannons)
+    const barrelL = new THREE.Mesh(assets.barrelGeo, assets.matGunMetal);
+    barrelL.rotation.z = Math.PI / 2;
+    barrelL.position.set(1.7, 0.35, -0.45);
+    barrelL.castShadow = true;
+    headGroup.add(barrelL);
+
+    const brakeL = new THREE.Mesh(assets.muzzleBrakeGeo, assets.matDetailSteel);
+    brakeL.rotation.z = Math.PI / 2;
+    brakeL.position.set(3.2, 0.35, -0.45);
+    headGroup.add(brakeL);
+
+    const barrelR = new THREE.Mesh(assets.barrelGeo, assets.matGunMetal);
+    barrelR.rotation.z = Math.PI / 2;
+    barrelR.position.set(1.7, 0.35, 0.45);
+    barrelR.castShadow = true;
+    headGroup.add(barrelR);
+
+    const brakeR = new THREE.Mesh(assets.muzzleBrakeGeo, assets.matDetailSteel);
+    brakeR.rotation.z = Math.PI / 2;
+    brakeR.position.set(3.2, 0.35, 0.45);
+    headGroup.add(brakeR);
+
+    // MÃƒÂ¡Ã‚ÂºÃ‚Â¯t radar / cÃƒÂ¡Ã‚ÂºÃ‚Â£m biÃƒÂ¡Ã‚ÂºÃ‚Â¿n quang hÃƒÂ¡Ã‚Â»Ã‚Âc ngÃƒÂ¡Ã‚ÂºÃ‚Â¯m bÃƒÂ¡Ã‚ÂºÃ‚Â¯n
+    const radar = new THREE.Mesh(assets.radarGeo, assets.matDetailSteel);
+    radar.position.set(-0.3, 1.2, 0);
+    headGroup.add(radar);
+
+    const statusLens = new THREE.Mesh(assets.lensGeo, assets.matOpticLens.clone());
+    statusLens.rotation.z = Math.PI / 2;
+    statusLens.position.set(0.9, 0.85, 0);
+    headGroup.add(statusLens);
 
     group.add(headGroup);
     group.turretHead = headGroup;
+    group.statusLight = statusLens;
 
     group.position.set(x, 0, z);
     this.scene.add(group);
     return group;
 };
 
+// A preview uses only four low-poly meshes and never joins collision/shadow
+// lists. It is deliberately separate from the placed model so moving the
+// cursor cannot trigger FBX cloning or a shader/material compilation hitch.
+Renderer3D.beginTurretPreview = function() {
+    this.endTurretPreview();
+    const group = new THREE.Group();
+    const validMaterial = new THREE.MeshBasicMaterial({ color: 0x42f5a7, transparent: true, opacity: 0.42, depthWrite: false });
+    const invalidMaterial = new THREE.MeshBasicMaterial({ color: 0xff4d5d, transparent: true, opacity: 0.42, depthWrite: false });
+    const add = (geometry, y, rotationZ, x) => {
+        const mesh = new THREE.Mesh(geometry, validMaterial);
+        mesh.position.set(x || 0, y, 0);
+        if (rotationZ) mesh.rotation.z = rotationZ;
+        group.add(mesh);
+    };
+    add(new THREE.CylinderGeometry(1.8, 2.2, 1.2, 12), 0.6);
+    add(new THREE.CylinderGeometry(0.9, 1.1, 3.2, 12), 2.8);
+    add(new THREE.BoxGeometry(2.4, 1.3, 1.8), 4.4);
+    add(new THREE.CylinderGeometry(0.16, 0.2, 3.4, 8), 4.4, Math.PI / 2, 1.7);
+    group.renderOrder = 10;
+    group.userData.previewMaterials = { valid: validMaterial, invalid: invalidMaterial };
+    group.position.y = 0.03; // prevents z-fighting while keeping the base on ground
+    this.turretPreview = group;
+    this.scene.add(group);
+};
+
+Renderer3D.updateTurretPreview = function(x, z, valid) {
+    if (!this.turretPreview) return;
+    this.turretPreview.position.set(x, 0.03, z);
+    const material = valid ? this.turretPreview.userData.previewMaterials.valid : this.turretPreview.userData.previewMaterials.invalid;
+    this.turretPreview.children.forEach(mesh => { mesh.material = material; });
+    this.turretPreview.visible = true;
+};
+
+Renderer3D.endTurretPreview = function() {
+    const preview = this.turretPreview;
+    if (!preview) return;
+    if (preview.parent) preview.parent.remove(preview);
+    preview.traverse(node => {
+        if (node.geometry) node.geometry.dispose();
+    });
+    const materials = preview.userData.previewMaterials;
+    if (materials) {
+        materials.valid.dispose();
+        materials.invalid.dispose();
+    }
+    this.turretPreview = null;
+};
+
 Renderer3D.create3DMinigun = function(x, z) {
     const group = new THREE.Group();
-    // Hộp (crate) đựng minigun
+    // HÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p (crate) Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â±ng minigun
     const crateW = 3.0, crateH = 1.35, crateD = 3.0;
     const crate = new THREE.Mesh(
         new THREE.BoxGeometry(crateW, crateH, crateD),
@@ -3231,7 +3307,7 @@ Renderer3D.create3DMinigun = function(x, z) {
     crate.castShadow = true; crate.receiveShadow = true;
     group.add(crate); this._addCollisionMesh(crate);
 
-    // Các dải kim loại trên hộp
+    // CÃƒÆ’Ã‚Â¡c dÃƒÂ¡Ã‚ÂºÃ‚Â£i kim loÃƒÂ¡Ã‚ÂºÃ‚Â¡i trÃƒÆ’Ã‚Âªn hÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p
     const bandMat = new THREE.MeshPhongMaterial({ color: 0x2e2a25 });
     for (const [dx, dz] of [[-0.6, 0], [0.6, 0], [0, -0.6], [0, 0.6]]) {
         const g = dx !== 0 ? new THREE.BoxGeometry(0.08, crateH + 0.02, crateD)
@@ -3269,10 +3345,10 @@ Renderer3D.create3DMinigun = function(x, z) {
             group.position.set(x, 0, z);
             this.scene.add(group);
             return group;
-        } catch(e) { console.warn('Minigun model lỗi, fallback geometry', e); }
+        } catch(e) { console.warn('Minigun model lÃƒÂ¡Ã‚Â»Ã¢â‚¬â€i, fallback geometry', e); }
     }
 
-    // Fallback: Minigun dựng bằng code trên đỉnh hộp
+    // Fallback: Minigun dÃƒÂ¡Ã‚Â»Ã‚Â±ng bÃƒÂ¡Ã‚ÂºÃ‚Â±ng code trÃƒÆ’Ã‚Âªn Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â°nh hÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p
     const gunHead = new THREE.Group();
     gunHead.position.y = crateH + 0.2;
 
@@ -3306,16 +3382,22 @@ Renderer3D.create3DMinigun = function(x, z) {
     return group;
 };
 
-// Gọi loader trong init() của main sẽ làm cho scene tồn tại, ta nhúng vào cuối init
-// -> gọi loadExternalModels() ở cuối hàm init() (patch ngay dưới đây)
+// GÃƒÂ¡Ã‚Â»Ã‚Âi loader trong init() cÃƒÂ¡Ã‚Â»Ã‚Â§a main sÃƒÂ¡Ã‚ÂºÃ‚Â½ lÃƒÆ’Ã‚Â m cho scene tÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i, ta nhÃƒÆ’Ã‚Âºng vÃƒÆ’Ã‚Â o cuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi init
+// -> gÃƒÂ¡Ã‚Â»Ã‚Âi loadExternalModels() ÃƒÂ¡Ã‚Â»Ã…Â¸ cuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi hÃƒÆ’Ã‚Â m init() (patch ngay dÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y)
 (function() {
     const origInit = Renderer3D.init.bind(Renderer3D);
     Renderer3D.init = function() {
         origInit();
-        try { Renderer3D.loadExternalModels(); } catch(e) { console.warn('loadExternalModels failed', e); }
+        // The high-poly FBX files are intentionally not preloaded for Poki.
+        // The lightweight procedural turrets are immediately playable.
+        if (!Renderer3D.webPerformanceMode) {
+            try { Renderer3D.loadExternalModels(); } catch(e) { console.warn('loadExternalModels failed', e); }
+        }
     };
 })();
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
 }
+
+

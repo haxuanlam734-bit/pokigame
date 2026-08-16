@@ -25,7 +25,9 @@ const WEAPON_DEFS = {
         hitWindowEnd:    0.38,
         crosshairType:   'melee',
         modelPath:       'src/assets/weapon/MeleeWeapon.js/katana_low_poly.glb',
-        attach: { px: 0.45, py: 0.55, pz: 0.15, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, scale: 0.012 }
+        // Visual-only attachment data. targetSize normalizes the GLB's native
+        // units so it remains visible and proportional to the 1.6-unit player.
+        attach: { px: 0.48, py: 0.58, pz: 0.12, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 1.25 }
     },
     pistol: {
         id:              'pistol',
@@ -55,7 +57,7 @@ const WEAPON_DEFS = {
         },
         crosshairType:   'gun',
         modelPath:       'src/assets/weapon/RangedWeapon.js/free_fire_gun_desert_eagle.glb',
-        attach: { px: 0.48, py: 0.72, pz: 0.22, rx: 0, ry: Math.PI / 2, rz: 0, scale: 0.6 }
+        attach: { px: 0.50, py: 0.60, pz: 0.16, rx: 0, ry: Math.PI / 2, rz: 0, targetSize: 0.72 }
     },
     ak: {
         id:              'ak',
@@ -86,7 +88,7 @@ const WEAPON_DEFS = {
         },
         crosshairType:   'gun',
         modelPath:       'src/assets/weapon/RangedWeapon.js/gun_m4a1.glb',
-        attach: { px: 0.42, py: 0.68, pz: 0.25, rx: 0, ry: Math.PI / 2, rz: 0, scale: 0.9 }
+        attach: { px: 0.50, py: 0.60, pz: 0.16, rx: 0, ry: Math.PI / 2, rz: 0, targetSize: 1.10 }
     }
 };
 

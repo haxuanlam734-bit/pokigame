@@ -1,6 +1,6 @@
-/**
- * MINIGUN-3D.JS - Súng máy Minigun (model 3D thật), đặt trong hộp
- * Mua trong hộp (crate) tốn tiền, tốc độ bắn cực nhanh, sát thương liên tục
+﻿/**
+ * MINIGUN-3D.JS - Súng máy Minigun trong hộp (Crate Minigun)
+ * Tốc độ bắn cực nhanh, gây sát thương liên tục lên bầy zombie
  */
 
 class Minigun3D {
@@ -13,9 +13,9 @@ class Minigun3D {
         this.targetAngle = 0;
         this.lastShotTime = 0;
         this.fireRate = CONFIG.MINIGUN_FIRE_RATE || 90;
-        this.range = CONFIG.MINIGUN_RANGE || 32;
-        this.damage = CONFIG.MINIGUN_DAMAGE || 8;
-        this.rotationSpeed = CONFIG.MINIGUN_ROTATION_SPEED || 0.3;
+        this.range = CONFIG.MINIGUN_RANGE || 34;
+        this.damage = CONFIG.MINIGUN_DAMAGE || 9;
+        this.rotationSpeed = CONFIG.MINIGUN_ROTATION_SPEED || 0.35;
 
         this.spinSpeed = 0;
         this.currentSpin = 0;
@@ -28,8 +28,12 @@ class Minigun3D {
     findNearestZombie(zombies) {
         let nearest = null;
         let minDistance = this.range;
-        for (const zombie of zombies) {
-            const dist = Math.hypot((this.x - zombie.x), (this.z - zombie.z));
+
+        for (let i = 0; i < zombies.length; i++) {
+            const zombie = zombies[i];
+            if (!zombie || zombie.hp <= 0) continue;
+
+            const dist = Math.hypot(this.x - zombie.x, this.z - zombie.z);
             if (dist < minDistance) {
                 minDistance = dist;
                 nearest = zombie;
@@ -45,25 +49,28 @@ class Minigun3D {
 
         if (target) {
             this.targetAngle = Math.atan2(target.z - this.z, target.x - this.x);
+
             let diff = this.targetAngle - this.angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
             while (diff < -Math.PI) diff += 2 * Math.PI;
             this.angle += Math.max(-this.rotationSpeed, Math.min(this.rotationSpeed, diff));
-            this.spinSpeed = Math.min(this.spinSpeed + deltaSec * 30, 25);
+            this.spinSpeed = Math.min(this.spinSpeed + deltaSec * 35, 30);
 
-            if (this.mesh3D && this.mesh3D.gunHead) {
-                this.mesh3D.gunHead.rotation.y = this.angle;
-            } else if (this.mesh3D) {
-                this.mesh3D.rotation.y = this.angle;
+            if (this.mesh3D) {
+                if (this.mesh3D.gunHead) {
+                    this.mesh3D.gunHead.rotation.y = -this.angle + Math.PI / 2;
+                } else {
+                    this.mesh3D.rotation.y = -this.angle + Math.PI / 2;
+                }
             }
 
             const now = Date.now();
-            if (now - this.lastShotTime >= this.fireRate && this.spinSpeed > 12) {
-                this.shoot(bullets, target);
+            if (now - this.lastShotTime >= this.fireRate && this.spinSpeed > 10) {
+                this.shoot(target);
                 this.lastShotTime = now;
             }
         } else {
-            this.spinSpeed = Math.max(0, this.spinSpeed - deltaSec * 10);
+            this.spinSpeed = Math.max(0, this.spinSpeed - deltaSec * 12);
         }
 
         this.currentSpin += this.spinSpeed * deltaSec;
@@ -72,29 +79,24 @@ class Minigun3D {
         }
     }
 
-    shoot(bullets, target) {
-        bullets.push({
-            x: this.x,
-            z: this.z,
-            targetX: target.x,
-            targetZ: target.z,
-            speed: CONFIG.BULLET_SPEED * 1.2,
-            damage: this.damage,
-            traveled: 0,
-            maxDistance: this.range * 1.5,
-            isMinigun: true,
-            update: function(deltaTime) {
-                const deltaSec = deltaTime / 1000;
-                const dist = Math.hypot(this.targetX - this.x, this.targetZ - this.z);
-                if (dist > 0.1) {
-                    const vx = (this.targetX - this.x) / dist * this.speed;
-                    const vz = (this.targetZ - this.z) / dist * this.speed;
-                    this.x += vx * deltaSec;
-                    this.z += vz * deltaSec;
-                    this.traveled += this.speed * deltaSec;
-                }
-            }
-        });
+    shoot(target) {
+        if (!target || target.hp <= 0) return;
+
+        // 1. Gây sát thương thực tế
+        target.takeDamage(this.damage);
+
+        // 2. Điểm xuất phát nòng súng và mục tiêu
+        const startPos = new THREE.Vector3(this.x, 2.0, this.z);
+        const endPos = new THREE.Vector3(target.x, (target.y || 0) + 0.7, target.z);
+
+        // 3. Hiển thị tia đạn Minigun màu cam/vàng rực rỡ
+        if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer.spawnTracer) {
+            WeaponRenderer.spawnTracer(startPos, endPos, {
+                color: 0xffaa00,
+                lifetime: 0.08
+            });
+            WeaponRenderer.createHitSpark(endPos);
+        }
     }
 
     dispose() {
