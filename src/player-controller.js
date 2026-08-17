@@ -351,7 +351,15 @@ const PlayerController = {
             this.currentMoveAngle,
             this.hasMovementInput,
             this.position.y,
-            this.isCrouching
+            this.isCrouching,
+            {
+                isSprinting: this.isSprinting && this.hasMovementInput,
+                isGrounded: this.isGrounded,
+                isCrouching: this.isCrouching,
+                isAttacking: (typeof WeaponSystem !== 'undefined' && WeaponSystem._meleeAttacking) || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim),
+                currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol',
+                aimPitch: InputManager ? InputManager.cameraPitch : 0
+            }
         );
     },
 

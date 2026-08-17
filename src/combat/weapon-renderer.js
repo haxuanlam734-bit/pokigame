@@ -1,4 +1,4 @@
-﻿/**
+/**
  * WEAPON-RENDERER.JS - Load GLB weapon models, attach vao player, 
  * quan ly 3D Glowing Beam Tracer Object Pool, Muzzle Flash, Hit Sparks & Animations
  */
@@ -32,11 +32,16 @@ const WeaponRenderer = {
             return;
         }
 
-        // Tao weapon holder gan vao player
+        // Tao weapon holder gan vao rightHandSocket hoac player
         this._weaponHolder = new THREE.Group();
         this._weaponHolder.name = 'weaponHolder';
-        this._weaponHolder.position.set(0.45, 0.60, 0.15);
-        Renderer3D.player.add(this._weaponHolder);
+        if (Renderer3D.player && Renderer3D.player.rightHandSocket) {
+            Renderer3D.player.rightHandSocket.add(this._weaponHolder);
+            this._weaponHolder.position.set(0, 0, 0);
+        } else {
+            this._weaponHolder.position.set(0.45, 0.60, 0.15);
+            Renderer3D.player.add(this._weaponHolder);
+        }
 
         // Tao muzzle flash object
         this._createMuzzleFlash();
@@ -272,14 +277,24 @@ const WeaponRenderer = {
         const def   = (typeof WEAPON_DEFS !== 'undefined') ? WEAPON_DEFS[weaponId] : null;
         if (!model || !def) return;
 
+        // Re-parent vao rightHandSocket neu model player da load
+        if (Renderer3D && Renderer3D.player && Renderer3D.player.rightHandSocket) {
+            if (this._weaponHolder && this._weaponHolder.parent !== Renderer3D.player.rightHandSocket) {
+                Renderer3D.player.rightHandSocket.add(this._weaponHolder);
+                this._weaponHolder.position.set(0, 0, 0);
+            }
+        }
+
         model.visible = true;
 
         const a = def.attach;
         if (a) {
-            // The holder is the hand attachment point; keeping the normalized
-            // model at its own origin avoids double-applying offsets.
             model.rotation.set(a.rx || 0, a.ry || 0, a.rz || 0);
-            this._weaponHolder.position.set(a.px || 0, a.py || 0, a.pz || 0);
+            if (!Renderer3D.player || !Renderer3D.player.rightHandSocket) {
+                this._weaponHolder.position.set(a.px || 0, a.py || 0, a.pz || 0);
+            } else {
+                this._weaponHolder.position.set(0, 0, 0);
+            }
         }
 
         if (weaponId !== 'sword' && this._muzzleFlashObj) {

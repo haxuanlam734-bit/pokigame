@@ -1,6 +1,6 @@
 /**
- * RENDERER-3D.JS - XÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½ render 3D dÃƒÆ’Ã‚Â¹ng Three.js
- * TÃƒÂ¡Ã‚ÂºÃ‚Â¡o scene 3D, camera, lighting, vÃƒÆ’Ã‚Â  vÃƒÂ¡Ã‚ÂºÃ‚Â½ cÃƒÆ’Ã‚Â¡c entity
+ * RENDERER-3D.JS - XÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½ render 3D dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ng Three.js
+ * TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o scene 3D, camera, lighting, vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c entity
  */
 
 let Renderer3D = {
@@ -50,7 +50,7 @@ let Renderer3D = {
     _smoothedLookAtY: 0,
     _smoothedLookAtZ: 0,
 
-    // ---- Danh sÃƒÆ’Ã‚Â¡ch mesh chÃƒÂ¡Ã‚ÂºÃ‚Â·n camera (cho collision) ----
+    // ---- Danh sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ch mesh chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n camera (cho collision) ----
     _collisionMeshes: [],
     _autoDefenseTurrets: [],
     _autoDefenseTracers: [],
@@ -59,7 +59,7 @@ let Renderer3D = {
     _gltfLoader: null,
 
     init: function() {
-        console.log('ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â¨ KhÃƒÂ¡Ã‚Â»Ã…Â¸i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o Renderer 3D (Three.js)...');
+        console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¨ KhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o Renderer 3D (Three.js)...');
         this.canvas = document.getElementById('gameCanvas');
         if (!this.canvas) {
             this.canvas = document.createElement('canvas');
@@ -88,7 +88,7 @@ let Renderer3D = {
         this.renderer.shadowMap.type = THREE.PCFShadowMap;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 
-        // KhÃƒÂ¡Ã‚Â»Ã…Â¸i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o mÃƒÂ¡Ã‚ÂºÃ‚Â£ng collision
+        // KhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng collision
         this._collisionMeshes = [];
         this._autoDefenseTurrets = [];
         this._autoDefenseTracers = [];
@@ -99,9 +99,9 @@ let Renderer3D = {
         this.createBoundaryMountains();
         this.createRiver();
 
-        // ---- Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚ÂºÃ‚Â I BÃƒÂ¡Ã‚ÂºÃ‚Â¢N DOANH QUÃƒÆ’Ã¢â‚¬Å¡N SÃƒÂ¡Ã‚Â»Ã‚Â° ----
+        // ---- Äáº I Báº¢N DOANH QUÃ‚N Sá»° ----
         this.buildGrandBase();
-
+        this.preloadCharacterModels();
         this.createPlayer3D();
         this.createForestEnvironment();
 
@@ -111,10 +111,10 @@ let Renderer3D = {
         const verticalOffset = this.cameraDistance * Math.sin(defaultPitch) + this.cameraHeightOffset;
         const offsetX = horizontalDist * Math.sin(defaultYaw);
         const offsetZ = horizontalDist * Math.cos(defaultYaw);
-        // DÃƒÆ’Ã‚Â¹ng Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Âºng toÃƒÂ¡Ã‚ÂºÃ‚Â¡ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ spawn cÃƒÂ¡Ã‚Â»Ã‚Â§a player (250, 280) lÃƒÆ’Ã‚Â m Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m neo camera ban
-        // Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â spawn Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c dÃƒÂ¡Ã‚Â»Ã‚Âi ra sÃƒÆ’Ã‚Â¢n trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc HQ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÆ’Ã‚Â³ khoÃƒÂ¡Ã‚ÂºÃ‚Â£ng trÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng, nÃƒÂ¡Ã‚ÂºÃ‚Â¿u vÃƒÂ¡Ã‚ÂºÃ‚Â«n
-        // hardcode 250 ÃƒÂ¡Ã‚Â»Ã…Â¸ Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y thÃƒÆ’Ã‚Â¬ camera lÃƒÆ’Ã‚Âºc khÃƒÂ¡Ã‚Â»Ã…Â¸i Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng sÃƒÂ¡Ã‚ÂºÃ‚Â½ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i chÃƒâ€žÃ‚Â©a ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c vÃƒÆ’Ã‚Â o
-        // xuyÃƒÆ’Ã‚Âªn tÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng nhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi frame update Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u tiÃƒÆ’Ã‚Âªn chÃƒÂ¡Ã‚ÂºÃ‚Â¡y.
+        // DÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ng ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºng toÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ spawn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a player (250, 280) lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m neo camera ban
+        // ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â spawn ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi ra sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc HQ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ khoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng, nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿u vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â«n
+        // hardcode 250 ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ camera lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºc khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i chÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚Â©a ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o
+        // xuyÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn tÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh GLB trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc khi frame update ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u tiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡y.
         this.camera.position.set(250 - offsetX, verticalOffset, 280 - offsetZ);
         this.camera.lookAt(250, this.cameraLookAtHeight, 280);
 
@@ -126,7 +126,7 @@ let Renderer3D = {
         this._smoothedLookAtZ = 280;
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
-        console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Renderer 3D khÃƒÂ¡Ã‚Â»Ã…Â¸i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o xong');
+        console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Renderer 3D khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o xong');
     },
 
     setupLighting: function() {
@@ -213,7 +213,7 @@ let Renderer3D = {
             addMountain(cx + min, cz + pos);
             addMountain(cx + max, cz + pos);
         }
-        console.log('ÃƒÂ¢Ã¢â‚¬ÂºÃ‚Â°ÃƒÂ¯Ã‚Â¸Ã‚Â DÃƒÆ’Ã‚Â£y nÃƒÆ’Ã‚Âºi biÃƒÆ’Ã‚Âªn map Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o:', this.mountains.length, 'ngÃƒÂ¡Ã‚Â»Ã‚Ân nÃƒÆ’Ã‚Âºi');
+        console.log('ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂºÃƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â DÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£y nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºi biÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn map ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o:', this.mountains.length, 'ngÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºi');
     },
 
     createRiver: function() {
@@ -274,55 +274,55 @@ let Renderer3D = {
         this.river = new THREE.Mesh(geometry, material);
         this.river.receiveShadow = true;
         this.scene.add(this.river);
-        console.log('ÃƒÂ°Ã…Â¸Ã…â€™Ã…Â  DÃƒÆ’Ã‚Â²ng sÃƒÆ’Ã‚Â´ng Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o');
+        console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã¢â‚¬â„¢Ãƒâ€¦Ã‚Â  DÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o');
     },
 
     // ================================================================
-    // ÃƒÂ°Ã…Â¸Ã‚ÂÃ¢â‚¬â€ÃƒÂ¯Ã‚Â¸Ã‚Â Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚ÂºÃ‚Â I BÃƒÂ¡Ã‚ÂºÃ‚Â¢N DOANH QUÃƒÆ’Ã¢â‚¬Å¡N SÃƒÂ¡Ã‚Â»Ã‚Â° (GRAND MILITARY BASE)
+    // ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â I BÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¢N DOANH QUÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡N SÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â° (GRAND MILITARY BASE)
     // ================================================================
 
     buildGrandBase: function() {
         const cx = 250, cz = 250;
-        console.log('ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â° XÃƒÆ’Ã‚Â¢y dÃƒÂ¡Ã‚Â»Ã‚Â±ng Military Complex mÃƒÂ¡Ã‚Â»Ã…Â¸ rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng...');
+        console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â° XÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±ng Military Complex mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng...');
 
-        // BÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ cÃƒÂ¡Ã‚Â»Ã‚Â¥c tÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢ng thÃƒÂ¡Ã‚Â»Ã†â€™ ~180x180, Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â§ rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i cÃƒÂ¡Ã‚ÂºÃ‚Â£m nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y lÃƒÆ’Ã‚Â 
-        // mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t khu cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â© thÃƒÂ¡Ã‚ÂºÃ‚Â­t sÃƒÂ¡Ã‚Â»Ã‚Â± thay vÃƒÆ’Ã‚Â¬ mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t "tycoon plot".
+        // BÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ ~180x180, ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£m nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â 
+        // mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢t khu cÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢n cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â© thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â± thay vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢t "tycoon plot".
         this._militaryBaseBounds = { minX: cx - 88, maxX: cx + 88, minZ: cz - 88, maxZ: cz + 88 };
 
-        // 1. NÃƒÂ¡Ã‚Â»Ã‚Ân cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â© + sÃƒÆ’Ã‚Â¢n bÃƒÆ’Ã‚Âª tÃƒÆ’Ã‚Â´ng theo tÃƒÂ¡Ã‚Â»Ã‚Â«ng phÃƒÆ’Ã‚Â¢n khu
+        // 1. NÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân cÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢n cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â© + sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âª tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng theo tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â«ng phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n khu
         this._createConcreteBase(cx, cz, 176);
         this._createBaseRoadNetwork(cx, cz);
         this._createPerimeterLighting(cx, cz);
         this._createPerimeterDefense(cx, cz, 86);
 
-        // 2. Khu trung tÃƒÆ’Ã‚Â¢m: Command HQ + quÃƒÂ¡Ã‚ÂºÃ‚Â£ng trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng + cÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t cÃƒÂ¡Ã‚Â»Ã‚Â
+        // 2. Khu trung tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢m: Command HQ + quÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng + cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢t cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â
         this._createCommandCenter(cx, cz - 18);
         this._createFlagpole(cx, cz - 3);
         this._createBasePlaza(cx, cz + 3);
 
-        // 3. Khu quÃƒÆ’Ã‚Â¢n nhÃƒÆ’Ã‚Â¢n phÃƒÆ’Ã‚Â­a tÃƒÆ’Ã‚Â¢y
+        // 3. Khu quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y
         this._createLargeBarracksArea(cx - 51, cz - 20);
         this._createMessHall(cx - 54, cz + 25);
         this._createMedicalBlock(cx - 25, cz + 27);
 
-        // 4. Khu hÃƒÂ¡Ã‚ÂºÃ‚Â­u cÃƒÂ¡Ã‚ÂºÃ‚Â§n / kho bÃƒÆ’Ã‚Â£i phÃƒÆ’Ã‚Â­a Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â´ng
+        // 4. Khu hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­u cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n / kho bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£i phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng
         this._createLargeSupplyDepot(cx + 50, cz - 18);
         this._createFuelFarm(cx + 51, cz + 28);
         this._createMotorPool(cx + 50, cz + 55);
 
-        // 5. Khu kÃƒÂ¡Ã‚Â»Ã‚Â¹ thuÃƒÂ¡Ã‚ÂºÃ‚Â­t / nghiÃƒÆ’Ã‚Âªn cÃƒÂ¡Ã‚Â»Ã‚Â©u phÃƒÆ’Ã‚Â­a bÃƒÂ¡Ã‚ÂºÃ‚Â¯c
+        // 5. Khu kÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¹ thuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t / nghiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©u phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯c
         this._createResearchFacility(cx + 3, cz - 59);
         this._createVehicleWorkshop(cx - 42, cz - 58);
 
-        // 6. SÃƒÆ’Ã‚Â¢n huÃƒÂ¡Ã‚ÂºÃ‚Â¥n luyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n phÃƒÆ’Ã‚Â­a nam
+        // 6. SÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n huÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥n luyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a nam
         this._createTrainingGround(cx - 42, cz + 58);
         this._createShootingRange(cx + 8, cz + 59);
 
-        // 7. Radar + relay tower ÃƒÂ¡Ã‚Â»Ã…Â¸ gÃƒÆ’Ã‚Â³c cao, tÃƒÂ¡Ã‚ÂºÃ‚Â¡o silhouette rÃƒÆ’Ã‚Âµ khi nhÃƒÆ’Ã‚Â¬n xa
+        // 7. Radar + relay tower ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ gÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³c cao, tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o silhouette rÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âµ khi nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬n xa
         this._createRadarStation(cx + 72, cz - 70);
         this._createCommsTower(cx - 72, cz - 70);
 
-        // 8. 4 thÃƒÆ’Ã‚Â¡p canh lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºn vÃƒÆ’Ã‚Â  cÃƒÆ’Ã‚Â¡c chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœt phÃƒÂ¡Ã‚Â»Ã‚Â¥
+        // 8. 4 thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡p canh lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºn vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“t phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥
         const towerOffsets = [
             [-78, -78], [78, -78], [78, 78], [-78, 78],
             [0, -84], [0, 84]
@@ -331,32 +331,32 @@ let Renderer3D = {
             this._createGuardTower(cx + dx, cz + dz);
         });
 
-        // 9. CÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢ng chÃƒÆ’Ã‚Â­nh 2 lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp + nhÃƒÆ’Ã‚Â  kiÃƒÂ¡Ã‚Â»Ã†â€™m soÃƒÆ’Ã‚Â¡t
+        // 9. CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ng chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh 2 lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºp + nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  kiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m soÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡t
         this._createMainGate(cx, cz + 86);
         this._createSecondaryGate(cx, cz - 86);
 
-        // 10. CÃƒÂ¡Ã‚ÂºÃ‚Â£nh quan quÃƒÆ’Ã‚Â¢n sÃƒÂ¡Ã‚Â»Ã‚Â± nhÃƒÂ¡Ã‚Â»Ã‚Â: sandbag, xe quÃƒÆ’Ã‚Â¢n sÃƒÂ¡Ã‚Â»Ã‚Â±, pallet, container
+        // 10. CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh quan quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â± nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â: sandbag, xe quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±, pallet, container
         this._createBaseProps(cx, cz);
         this._registerMilitaryInteractions(cx, cz);
 
-        console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Military Complex hoÃƒÆ’Ã‚Â n tÃƒÂ¡Ã‚ÂºÃ‚Â¥t!');
+        console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Military Complex hoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t!');
     },
 
     _registerMilitaryInteractions: function(cx, cz) {
         this._militaryInteractions = [
-            { id: 'hq', name: 'COMMAND HQ', description: 'NÃƒÆ’Ã‚Â¢ng cÃƒÂ¡Ã‚ÂºÃ‚Â¥p cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â© vÃƒÆ’Ã‚Â  mÃƒÂ¡Ã‚Â»Ã…Â¸ thÃƒÆ’Ã‚Âªm cÃƒÆ’Ã‚Â´ng suÃƒÂ¡Ã‚ÂºÃ‚Â¥t kiÃƒÂ¡Ã‚ÂºÃ‚Â¿m tiÃƒÂ¡Ã‚Â»Ã‚Ân.', x: cx, z: cz - 18, radius: 11 },
-            { id: 'barracks', name: 'BARRACKS', description: 'TuyÃƒÂ¡Ã‚Â»Ã†â€™n lÃƒÆ’Ã‚Â­nh gÃƒÆ’Ã‚Â¡c vÃƒÆ’Ã‚Â  tÃƒâ€žÃ†â€™ng khÃƒÂ¡Ã‚ÂºÃ‚Â£ nÃƒâ€žÃ†â€™ng phÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â§ cÃƒâ€žÃ†â€™n cÃƒÂ¡Ã‚Â»Ã‚Â©.', x: cx - 51 + 6, z: cz - 20 + 6, radius: 10 },
-            { id: 'mess', name: 'MESS HALL', description: 'Ãƒâ€žÃ¢â‚¬Å¡n uÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng, hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i stamina vÃƒÆ’Ã‚Â  nhÃƒÂ¡Ã‚ÂºÃ‚Â­n buff di chuyÃƒÂ¡Ã‚Â»Ã†â€™n.', x: cx - 54, z: cz + 25, radius: 9 },
-            { id: 'medical', name: 'MEDICAL', description: 'HÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§y HP vÃƒÆ’Ã‚Â  nhÃƒÂ¡Ã‚ÂºÃ‚Â­n lÃƒÆ’Ã‚Â¡ chÃƒÂ¡Ã‚ÂºÃ‚Â¯n y tÃƒÂ¡Ã‚ÂºÃ‚Â¿ tÃƒÂ¡Ã‚ÂºÃ‚Â¡m thÃƒÂ¡Ã‚Â»Ã‚Âi.', x: cx - 25, z: cz + 27, radius: 9 },
-            { id: 'supply', name: 'SUPPLY DEPOT', description: 'Mua ammo vÃƒÆ’Ã‚Â  nÃƒÆ’Ã‚Â¢ng cÃƒÂ¡Ã‚ÂºÃ‚Â¥p vÃƒâ€¦Ã‚Â© khÃƒÆ’Ã‚Â­ hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i.', x: cx + 50, z: cz - 18, radius: 10 },
-            { id: 'fuel', name: 'FUEL FARM', description: 'Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢i nhiÃƒÆ’Ã‚Âªn liÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u thÃƒÆ’Ã‚Â nh tiÃƒÂ¡Ã‚Â»Ã‚Ân vÃƒÆ’Ã‚Â  tÃƒâ€žÃ†â€™ng thu nhÃƒÂ¡Ã‚ÂºÃ‚Â­p thÃƒÂ¡Ã‚Â»Ã‚Â¥ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng.', x: cx + 51, z: cz + 28, radius: 9 },
-            { id: 'motorPool', name: 'MOTOR POOL', description: 'TriÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i xe vÃƒÆ’Ã‚Â  nÃƒÆ’Ã‚Â¢ng tÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœc Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ di chuyÃƒÂ¡Ã‚Â»Ã†â€™n.', x: cx + 50, z: cz + 55, radius: 10 },
-            { id: 'lab', name: 'RESEARCH LAB', description: 'NghiÃƒÆ’Ã‚Âªn cÃƒÂ¡Ã‚Â»Ã‚Â©u nÃƒÆ’Ã‚Â¢ng damage vÃƒÆ’Ã‚Â  hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u suÃƒÂ¡Ã‚ÂºÃ‚Â¥t mÃƒÆ’Ã‚Â¡y in.', x: cx + 3, z: cz - 59, radius: 11 },
-            { id: 'workshop', name: 'VEHICLE WORKSHOP', description: 'SÃƒÂ¡Ã‚Â»Ã‚Â­a xe vÃƒÆ’Ã‚Â  tÃƒâ€žÃ†â€™ng tÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœc Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢/giÃƒÂ¡Ã‚ÂºÃ‚Â£m cooldown phÃƒâ€ Ã‚Â°Ãƒâ€ Ã‚Â¡ng tiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n.', x: cx - 42, z: cz - 58, radius: 10 },
-            { id: 'training', name: 'TRAINING GROUND', description: 'LuyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â­p Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ tÃƒâ€žÃ†â€™ng weapon XP vÃƒÆ’Ã‚Â  damage.', x: cx - 42, z: cz + 58, radius: 13 },
-            { id: 'range', name: 'SHOOTING RANGE', description: 'Test sÃƒÆ’Ã‚Âºng, hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“i ammo vÃƒÆ’Ã‚Â  nhÃƒÂ¡Ã‚ÂºÃ‚Â­n buff accuracy.', x: cx + 8, z: cz + 59, radius: 13 },
-            { id: 'radar', name: 'RADAR STATION', description: 'QuÃƒÆ’Ã‚Â©t sÃƒÆ’Ã‚Â³ng zombie vÃƒÆ’Ã‚Â  phÃƒÆ’Ã‚Â¡t hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n boss sÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºm.', x: cx + 72, z: cz - 70, radius: 9 },
-            { id: 'comms', name: 'COMMS TOWER', description: 'NhÃƒÂ¡Ã‚ÂºÃ‚Â­n hÃƒÂ¡Ã‚Â»Ã‚Â£p Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ng tiÃƒÂ¡Ã‚ÂºÃ‚Â¿p tÃƒÂ¡Ã‚ÂºÃ‚Â¿ vÃƒÆ’Ã‚Â  phÃƒÂ¡Ã‚ÂºÃ‚Â§n thÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã…Â¸ng tiÃƒÂ¡Ã‚Â»Ã‚Ân.', x: cx - 72, z: cz - 70, radius: 9 }
+            { id: 'hq', name: 'COMMAND HQ', description: 'NÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ng cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥p cÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢n cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â© vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªm cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng suÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t kiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿m tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân.', x: cx, z: cz - 18, radius: 11 },
+            { id: 'barracks', name: 'BARRACKS', description: 'TuyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢n lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh gÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  tÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ nÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ cÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢n cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©.', x: cx - 51 + 6, z: cz - 20 + 6, radius: 10 },
+            { id: 'mess', name: 'MESS HALL', description: 'ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡n uÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng, hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œi stamina vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n buff di chuyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢n.', x: cx - 54, z: cz + 25, radius: 9 },
+            { id: 'medical', name: 'MEDICAL', description: 'HÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œi ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§y HP vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯n y tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿ tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi.', x: cx - 25, z: cz + 27, radius: 9 },
+            { id: 'supply', name: 'SUPPLY DEPOT', description: 'Mua ammo vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ng cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥p vÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â© khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i.', x: cx + 50, z: cz - 18, radius: 10 },
+            { id: 'fuel', name: 'FUEL FARM', description: 'ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢i nhiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn liÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡u thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  tÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng thu nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­p thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng.', x: cx + 51, z: cz + 28, radius: 9 },
+            { id: 'motorPool', name: 'MOTOR POOL', description: 'TriÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡u hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œi xe vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“c ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ di chuyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢n.', x: cx + 50, z: cz + 55, radius: 10 },
+            { id: 'lab', name: 'RESEARCH LAB', description: 'NghiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©u nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ng damage vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡u suÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡y in.', x: cx + 3, z: cz - 59, radius: 11 },
+            { id: 'workshop', name: 'VEHICLE WORKSHOP', description: 'SÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a xe vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  tÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“c ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢/giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£m cooldown phÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡ng tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n.', x: cx - 42, z: cz - 58, radius: 10 },
+            { id: 'training', name: 'TRAINING GROUND', description: 'LuyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­p ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ tÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng weapon XP vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  damage.', x: cx - 42, z: cz + 58, radius: 13 },
+            { id: 'range', name: 'SHOOTING RANGE', description: 'Test sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºng, hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œi ammo vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n buff accuracy.', x: cx + 8, z: cz + 59, radius: 13 },
+            { id: 'radar', name: 'RADAR STATION', description: 'QuÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©t sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ng zombie vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡t hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n boss sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºm.', x: cx + 72, z: cz - 70, radius: 9 },
+            { id: 'comms', name: 'COMMS TOWER', description: 'NhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£p ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œng tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿p tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿ vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n thÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ng tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân.', x: cx - 72, z: cz - 70, radius: 9 }
         ];
     },
 
@@ -378,7 +378,7 @@ let Renderer3D = {
         return best;
     },
 
-    // --- Helper Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ thÃƒÆ’Ã‚Âªm mesh vÃƒÆ’Ã‚Â o danh sÃƒÆ’Ã‚Â¡ch collision ---
+    // --- Helper ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªm mesh vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o danh sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ch collision ---
     _addCollisionMesh: function(mesh) {
         if (mesh && mesh.isMesh) {
             this._collisionMeshes.push(mesh);
@@ -451,10 +451,10 @@ let Renderer3D = {
     _createCommandCenter: function(cx, cz) {
         const group = new THREE.Group();
 
-        // TÃƒÆ’Ã‚Â²a trung tÃƒÆ’Ã‚Â¢m lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºn hÃƒâ€ Ã‚Â¡n hÃƒÂ¡Ã‚ÂºÃ‚Â³n cÃƒÆ’Ã‚Â¡c khu cÃƒÆ’Ã‚Â²n lÃƒÂ¡Ã‚ÂºÃ‚Â¡i: 3 tÃƒÂ¡Ã‚ÂºÃ‚Â§ng, sÃƒÆ’Ã‚Â¢n trong rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng,
-        // tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1 Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ build minter/conveyor, tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 2 lÃƒÆ’Ã‚Â  command floor, tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 3 lÃƒÆ’Ã‚Â 
-        // operations / VIP floor. CÃƒÆ’Ã‚Â¡c tÃƒÂ¡Ã‚ÂºÃ‚Â§ng trÃƒÆ’Ã‚Âªn mang tÃƒÆ’Ã‚Â­nh trÃƒÆ’Ã‚Â¬nh diÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¦n nhÃƒâ€ Ã‚Â°ng
-        // vÃƒÂ¡Ã‚ÂºÃ‚Â«n cÃƒÆ’Ã‚Â³ cÃƒÂ¡Ã‚ÂºÃ‚Â§u thang Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ sau nÃƒÆ’Ã‚Â y mÃƒÂ¡Ã‚Â»Ã…Â¸ rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng gameplay.
+        // TÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²a trung tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢m lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºn hÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡n hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â³n cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c khu cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i: 3 tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng, sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n trong rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng,
+        // tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1 ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ build minter/conveyor, tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 2 lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  command floor, tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 3 lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â 
+        // operations / VIP floor. CÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn mang tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬nh diÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦n nhÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ng
+        // vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â«n cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ sau nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng gameplay.
         const W = 30;
         const D = 22;
         const floorH = 3.8;
@@ -481,19 +481,19 @@ let Renderer3D = {
             return mesh;
         };
 
-        // SÃƒÆ’Ã‚Â n 3 tÃƒÂ¡Ã‚ÂºÃ‚Â§ng (tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1 chÃƒÂ¡Ã‚Â»Ã‚Â«a hÃƒÂ¡Ã‚ÂºÃ‚Â³n khÃƒÆ’Ã‚Â´ng gian build).
+        // SÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n 3 tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng (tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1 chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â«a hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â³n khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng gian build).
         [0.16, floorH + 0.12, floorH * 2 + 0.12].forEach(y => {
             addBox(new THREE.BoxGeometry(W, 0.28, D), floorMat, 0, y, 0, false);
         });
 
-        // TÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1: mÃƒÂ¡Ã‚ÂºÃ‚Â·t trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc cÃƒÆ’Ã‚Â³ cÃƒÂ¡Ã‚Â»Ã‚Â­a lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºn 7m, phÃƒÂ¡Ã‚ÂºÃ‚Â§n cÃƒÆ’Ã‚Â²n lÃƒÂ¡Ã‚ÂºÃ‚Â¡i tÃƒÂ¡Ã‚ÂºÃ‚Â¡o cÃƒÂ¡Ã‚ÂºÃ‚Â£m giÃƒÆ’Ã‚Â¡c
-        // Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¡i sÃƒÂ¡Ã‚ÂºÃ‚Â£nh mÃƒÂ¡Ã‚Â»Ã…Â¸ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t mÃƒÆ’Ã‚Â¡y in tiÃƒÂ¡Ã‚Â»Ã‚Ân/conveyor.
+        // TÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1: mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºn 7m, phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£m giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c
+        // ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡y in tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân/conveyor.
         const frontSide = (yBase, h) => {
             const gap = 7.0;
             const sideW = (W - gap) / 2;
             addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, -(gap + sideW) / 2, yBase + h / 2, D / 2, true);
             addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, (gap + sideW) / 2, yBase + h / 2, D / 2, true);
-            // header phÃƒÆ’Ã‚Â­a trÃƒÆ’Ã‚Âªn cÃƒÂ¡Ã‚Â»Ã‚Â­a
+            // header phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a
             addBox(new THREE.BoxGeometry(gap, 0.9, wallT), wallMat, 0, yBase + h - 0.45, D / 2, true);
         };
         const fullWall = (x, yBase, z, w, h, d, mat = wallMat) => {
@@ -505,7 +505,7 @@ let Renderer3D = {
         fullWall(-W / 2, 0.28, 0, wallT, floorH - 0.2, D);
         fullWall(W / 2, 0.28, 0, wallT, floorH - 0.2, D);
 
-        // TÃƒÂ¡Ã‚ÂºÃ‚Â§ng 2 + tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 3 khÃƒÆ’Ã‚Â©p kÃƒÆ’Ã‚Â­n hÃƒâ€ Ã‚Â¡n, lÃƒÆ’Ã‚Â m silhouette thÃƒÂ¡Ã‚ÂºÃ‚Â­t cÃƒÂ¡Ã‚Â»Ã‚Â§a HQ.
+        // TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 2 + tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 3 khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­n hÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡n, lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m silhouette thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a HQ.
         for (let level = 1; level <= 2; level++) {
             const yBase = level * floorH + 0.28;
             frontSide(yBase, floorH - 0.2);
@@ -514,12 +514,12 @@ let Renderer3D = {
             fullWall(W / 2, yBase, 0, wallT, floorH - 0.2, D);
         }
 
-        // DÃƒÂ¡Ã‚ÂºÃ‚Â£i cÃƒÂ¡Ã‚Â»Ã‚Â­a kÃƒÆ’Ã‚Â­nh cho cÃƒÂ¡Ã‚ÂºÃ‚Â£ 3 tÃƒÂ¡Ã‚ÂºÃ‚Â§ng.
+        // DÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh cho cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ 3 tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng.
         for (let level = 0; level < 3; level++) {
             const y = 1.75 + level * floorH;
             const frontZ = D / 2 + 0.02;
             for (let i = -2; i <= 2; i++) {
-                if (level === 0 && i === 0) continue; // cÃƒÂ¡Ã‚Â»Ã‚Â­a chÃƒÆ’Ã‚Â­nh tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1
+                if (level === 0 && i === 0) continue; // cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1
                 const win = addBox(new THREE.BoxGeometry(3.2, 1.2, 0.12), glassMat,
                     i * 4.7, y, frontZ, false);
                 win.castShadow = false;
@@ -533,7 +533,7 @@ let Renderer3D = {
             }
         }
 
-        // CÃƒÂ¡Ã‚Â»Ã‚Â­a chÃƒÆ’Ã‚Â­nh kiÃƒÂ¡Ã‚Â»Ã†â€™u military airlock.
+        // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh kiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢u military airlock.
         const doorOuter = addBox(new THREE.BoxGeometry(6.4, 3.0, 0.18), darkMat, 0, 1.62, D / 2 + 0.18, false);
         doorOuter.castShadow = false;
         const doorGlow = addBox(new THREE.BoxGeometry(5.2, 2.35, 0.08),
@@ -541,12 +541,12 @@ let Renderer3D = {
             0, 1.55, D / 2 + 0.29, false);
         doorGlow.castShadow = false;
 
-        // MÃƒÆ’Ã‚Â¡i Ãƒâ€žÃ¢â‚¬Ëœua + tÃƒÂ¡Ã‚ÂºÃ‚Â§ng mÃƒÆ’Ã‚Â¡i, lÃƒÆ’Ã‚Â m cÃƒÆ’Ã‚Â´ng trÃƒÆ’Ã‚Â¬nh nÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢i bÃƒÂ¡Ã‚ÂºÃ‚Â­t tÃƒÂ¡Ã‚Â»Ã‚Â« xa.
+        // MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ua + tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i, lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬nh nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢i bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« xa.
         addBox(new THREE.BoxGeometry(W + 1.8, 0.38, D + 1.8), darkMat, 0, floorH * 3 + 0.35, 0, true);
         addBox(new THREE.BoxGeometry(18, 1.0, 9), new THREE.MeshPhongMaterial({ color: 0x30373c }), 0, floorH * 3 + 1.0, -0.5, true);
         addBox(new THREE.BoxGeometry(20, 0.28, 11), trimMat, 0, floorH * 3 + 1.48, -0.5, true);
 
-        // CÃƒÂ¡Ã‚Â»Ã‚Â hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u + logo HQ trÃƒÆ’Ã‚Âªn mÃƒÂ¡Ã‚ÂºÃ‚Â·t tiÃƒÂ¡Ã‚Â»Ã‚Ân.
+        // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡u + logo HQ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân.
         const sign = this._createBuildingSign('COMMAND HQ', 0x74e7ff, 8.5, 1.8);
         sign.position.set(0, 5.9, D / 2 + 0.42);
         group.add(sign);
@@ -555,7 +555,7 @@ let Renderer3D = {
         subSign.position.set(0, 2.8, D / 2 + 0.42);
         group.add(subSign);
 
-        // NÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢i thÃƒÂ¡Ã‚ÂºÃ‚Â¥t tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 1: cÃƒÆ’Ã‚Â¡c khu build minter cÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹nh, rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng vÃƒÆ’Ã‚Â  thoÃƒÆ’Ã‚Â¡ng.
+        // NÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢i thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1: cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c khu build minter cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹nh, rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  thoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ng.
         const interiorPadMat = new THREE.MeshPhongMaterial({ color: 0x263238 });
         const laneMat = new THREE.MeshPhongMaterial({ color: 0x40545b });
         const mintGlowMat = new THREE.MeshPhongMaterial({ color: 0x7bed9f, emissive: 0x2ecc71, emissiveIntensity: 0.3 });
@@ -570,9 +570,9 @@ let Renderer3D = {
                 const inner = addBox(new THREE.BoxGeometry(5.7, 0.05, 3.8), laneMat, x, 0.48, z, false);
                 inner.userData = { buildZone: 'minter' };
 
-                // ViÃƒÂ¡Ã‚Â»Ã‚Ân slot mÃƒÆ’Ã‚Â u xanh + Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m sÃƒÆ’Ã‚Â¡ng, bÃƒÆ’Ã‚Â¡o cho player Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y lÃƒÆ’Ã‚Â  khu build tiÃƒÂ¡Ã‚Â»Ã‚Ân.
+                // ViÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân slot mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â u xanh + ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ng, bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o cho player ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  khu build tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân.
                 for (const edge of [[5.9,0.06,0.08,0],[5.9,0.06,0.08,Math.PI], [0.08,0.06,3.9,0],[0.08,0.06,3.9,0]]) {
-                    // Khung nhÃƒÂ¡Ã‚ÂºÃ‚Â¹; khÃƒÆ’Ã‚Â´ng collision Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ player Ãƒâ€žÃ¢â‚¬Ëœi qua.
+                    // Khung nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¹; khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng collision ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ player ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i qua.
                 }
                 const marker = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.22), mintGlowMat);
                 marker.position.set(x - 2.65, 0.58, z - 1.8);
@@ -581,11 +581,11 @@ let Renderer3D = {
             }
         }
 
-        // TrÃƒÂ¡Ã‚Â»Ã‚Â¥c giao thÃƒÆ’Ã‚Â´ng trong sÃƒÂ¡Ã‚ÂºÃ‚Â£nh.
+        // TrÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥c giao thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng trong sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh.
         addBox(new THREE.BoxGeometry(1.0, 0.05, D - 2.0),
             new THREE.MeshPhongMaterial({ color: 0x92a1a8 }), 0, 0.55, 1.6, false);
 
-        // CÃƒÂ¡Ã‚ÂºÃ‚Â§u thang bÃƒÆ’Ã‚Âªn hÃƒÆ’Ã‚Â´ng nÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi lÃƒÆ’Ã‚Âªn tÃƒÂ¡Ã‚ÂºÃ‚Â§ng 2/3 (Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¹p vÃƒÆ’Ã‚Â  cÃƒÆ’Ã‚Â³ thÃƒÂ¡Ã‚Â»Ã†â€™ mÃƒÂ¡Ã‚Â»Ã…Â¸ gameplay sau).
+        // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thang bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 2/3 (ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¹p vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ gameplay sau).
         const stairMat = new THREE.MeshPhongMaterial({ color: 0x59666d });
         for (let level = 0; level < 2; level++) {
             for (let i = 0; i < 9; i++) {
@@ -595,11 +595,11 @@ let Renderer3D = {
             }
         }
 
-        // Hai terminal chÃƒÂ¡Ã‚Â»Ã‚Â©c nÃƒâ€žÃ†â€™ng ÃƒÂ¡Ã‚Â»Ã…Â¸ sÃƒÂ¡Ã‚ÂºÃ‚Â£nh.
+        // Hai terminal chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©c nÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh.
         this._createTerminalKiosk(group, -11.0, 1.2, 5.0, 0x54a0ff, 'BASE UPGRADES');
         this._createTerminalKiosk(group, 11.0, 1.2, 5.0, 0xffc857, 'MONEY CONTROL');
 
-        // Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â¨n/strips dÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi mÃƒÆ’Ã‚Â¡i.
+        // ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨n/strips dÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i.
         for (let side of [-1, 1]) {
             const strip = addBox(new THREE.BoxGeometry(W + 0.4, 0.18, 0.18),
                 new THREE.MeshPhongMaterial({ color: 0x64dff0, emissive: 0x33c7df, emissiveIntensity: 0.35 }),
@@ -675,7 +675,7 @@ let Renderer3D = {
         const wallThick = 0.5;
         const segments = 48;
 
-        // VÃƒÆ’Ã‚Â²ng ngoÃƒÆ’Ã‚Â i
+        // VÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng ngoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â i
         for (let i = 0; i < segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
             const nextAngle = ((i + 1) / segments) * Math.PI * 2;
@@ -696,7 +696,7 @@ let Renderer3D = {
             this._addCollisionMesh(wall);
         }
 
-        // HÃƒÆ’Ã‚Â ng rÃƒÆ’Ã‚Â o thÃƒÆ’Ã‚Â©p bÃƒÆ’Ã‚Âªn trong (khÃƒÆ’Ã‚Â´ng chÃƒÂ¡Ã‚ÂºÃ‚Â·n camera vÃƒÆ’Ã‚Â¬ lÃƒÆ’Ã‚Â  lÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi thÃƒÆ’Ã‚Â©p mÃƒÂ¡Ã‚Â»Ã‚Âng, nhÃƒâ€ Ã‚Â°ng vÃƒÂ¡Ã‚ÂºÃ‚Â«n thÃƒÆ’Ã‚Âªm Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ an toÃƒÆ’Ã‚Â n)
+        // HÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â ng rÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn trong (khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n camera vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  lÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng, nhÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ng vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â«n thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªm ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ an toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n)
         const innerRadius = radius - 1.2;
         const fenceMat = new THREE.MeshPhongMaterial({ color: 0xa4b0be });
         for (let i = 0; i < segments; i++) {
@@ -732,7 +732,7 @@ let Renderer3D = {
             }
         }
 
-        // ChÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºng ngÃƒÂ¡Ã‚ÂºÃ‚Â¡i vÃƒÂ¡Ã‚ÂºÃ‚Â­t (hedgehog + barrier)
+        // ChÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºng ngÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t (hedgehog + barrier)
         const hedgehogMat = new THREE.MeshPhongMaterial({ color: 0x6b6b6b });
         const barrierMat = new THREE.MeshPhongMaterial({ color: 0x8e8e8e });
         for (let i = 0; i < 20; i++) {
@@ -1024,7 +1024,7 @@ let Renderer3D = {
         ctx.font = 'bold 50px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('ÃƒÂ¢Ã‹Å“Ã¢â‚¬Â¦', 64, 44);
+        ctx.fillText('ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦', 64, 44);
         const flagTexture = new THREE.CanvasTexture(flagCanvas);
         const flagMat = new THREE.MeshPhongMaterial({ map: flagTexture, side: THREE.DoubleSide, transparent: true });
         const flag = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.0), flagMat);
@@ -1374,208 +1374,356 @@ let Renderer3D = {
         this.scene.add(beacon);
     },
 
-    _createCommsTower: function(cx, cz) {
-        const towerMat = new THREE.MeshPhongMaterial({ color: 0x6d777d });
-        for (const [dx, dz] of [[-1.4,-1.4],[1.4,-1.4],[1.4,1.4],[-1.4,1.4]]) {
-            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 18, 6), towerMat);
-            leg.position.set(cx + dx, 9, cz + dz);
-            leg.castShadow = true;
-            this.scene.add(leg);
+    preloadCharacterModels: function() {
+        if (!this._gltfLoader) {
+            if (typeof GLTFLoader !== 'undefined') this._gltfLoader = new GLTFLoader();
+            else if (typeof THREE !== 'undefined' && typeof THREE.GLTFLoader !== 'undefined') this._gltfLoader = new THREE.GLTFLoader();
         }
-        for (let i = 1; i <= 5; i++) {
-            const cross = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.07, 3.3), towerMat);
-            cross.position.set(cx, i * 3.0, cz);
-            cross.rotation.y = Math.PI / 4;
-            cross.castShadow = true;
-            this.scene.add(cross);
-        }
-        const light = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8),
-            new THREE.MeshPhongMaterial({ color: 0xff3b30, emissive: 0xff3b30, emissiveIntensity: 0.9 }));
-        light.position.set(cx, 18.4, cz);
-        this.scene.add(light);
-    },
+        if (!this._gltfLoader) return;
 
-    _createPerimeterLighting: function(cx, cz) {
-        const poleMat = new THREE.MeshPhongMaterial({ color: 0x5d666b });
-        const glowMat = new THREE.MeshPhongMaterial({ color: 0xffdd88, emissive: 0xffcc66, emissiveIntensity: 0.55 });
-        const points = [
-            [-55,-86], [-20,-86], [20,-86], [55,-86],
-            [-86,-50], [-86,0], [-86,50],
-            [86,-50], [86,0], [86,50],
-            [-55,86], [-20,86], [20,86], [55,86]
-        ];
-        points.forEach(([dx,dz]) => {
-            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.0, 8), poleMat);
-            pole.position.set(cx + dx, 3.5, cz + dz);
-            pole.castShadow = true;
-            this.scene.add(pole);
+        // 1. Preload Zombie Model Template
+        const zombiePath = 'src/assets/character/zombie/roblox_retro_zombie.glb';
+        this._gltfLoader.load(zombiePath, (gltf) => {
+            const root = gltf.scene || gltf;
+            root.traverse(c => {
+                if (c.isMesh) {
+                    c.castShadow = true;
+                    c.receiveShadow = true;
+                    if (c.material) {
+                        c.material = c.material.clone();
+                    }
+                }
+            });
 
-            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), glowMat);
-            lamp.position.set(cx + dx, 7.1, cz + dz);
-            this.scene.add(lamp);
+            // Center & normalize scale (height = 1.75m)
+            const box = new THREE.Box3().setFromObject(root);
+            const size = new THREE.Vector3();
+            const center = new THREE.Vector3();
+            box.getSize(size);
+            box.getCenter(center);
+            const scale = 1.75 / Math.max(size.y, 0.01);
+            root.scale.setScalar(scale);
+            root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+
+            const wrapper = new THREE.Group();
+            wrapper.add(root);
+            this._zombieModelTemplate = wrapper;
+            console.log('ðŸ§Ÿ ÄÃ£ load model Zombie GLB roblox_retro_zombie.glb');
+        }, undefined, (err) => {
+            console.warn('KhÃ´ng load Ä‘Æ°á»£c zombie GLB, dÃ¹ng fallback procedural:', err?.message || err);
         });
     },
-
-    _createPerimeterDefense: function(cx, cz, radius) {
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x687177 });
-        const braceMat = new THREE.MeshPhongMaterial({ color: 0x3a4145 });
-        const segments = 72;
-
-        for (let i = 0; i < segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const next = ((i + 1) / segments) * Math.PI * 2;
-            const x1 = cx + Math.cos(angle) * radius;
-            const z1 = cz + Math.sin(angle) * radius;
-            const x2 = cx + Math.cos(next) * radius;
-            const z2 = cz + Math.sin(next) * radius;
-            const midX = (x1 + x2) / 2;
-            const midZ = (z1 + z2) / 2;
-            const dist = Math.hypot(x2-x1, z2-z1);
-
-            const wall = new THREE.Mesh(new THREE.BoxGeometry(dist, 4.2, 0.55), wallMat);
-            wall.position.set(midX, 2.1, midZ);
-            wall.lookAt(x2, 2.1, z2);
-            wall.castShadow = true;
-            wall.receiveShadow = true;
-            this.scene.add(wall);
-            this._addCollisionMesh(wall);
-
-            if (i % 3 === 0) {
-                const brace = new THREE.Mesh(new THREE.BoxGeometry(0.18, 5.0, 0.18), braceMat);
-                brace.position.set(x1, 2.5, z1);
-                brace.castShadow = true;
-                this.scene.add(brace);
-                this._addCollisionMesh(brace);
-            }
-        }
-
-        // HÃƒÆ’Ã‚Â ng rÃƒÆ’Ã‚Â o dÃƒÆ’Ã‚Â¢y thÃƒÆ’Ã‚Â©p phÃƒÆ’Ã‚Â­a trong tÃƒÂ¡Ã‚ÂºÃ‚Â¡o cÃƒÂ¡Ã‚ÂºÃ‚Â£m giÃƒÆ’Ã‚Â¡c "2 lÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp phÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â§"
-        const inner = radius - 3.5;
-        for (let i = 0; i < segments; i += 2) {
-            const angle = (i / segments) * Math.PI * 2;
-            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 2.6, 6),
-                new THREE.MeshPhongMaterial({ color: 0x9aa2a7 }));
-            post.position.set(cx + Math.cos(angle) * inner, 1.3, cz + Math.sin(angle) * inner);
-            post.castShadow = true;
-            this.scene.add(post);
-        }
-    },
-
-    _createSecondaryGate: function(cx, cz) {
-        const group = new THREE.Group();
-        const gateMat = new THREE.MeshPhongMaterial({ color: 0x4b555a });
-        const left = new THREE.Mesh(new THREE.BoxGeometry(7, 3.8, 0.45), gateMat);
-        left.position.set(-3.7, 1.9, 0);
-        const right = left.clone();
-        right.position.x = 3.7;
-        group.add(left, right);
-
-        const sign = new THREE.Mesh(new THREE.BoxGeometry(12, 1.5, 0.5),
-            new THREE.MeshPhongMaterial({ color: 0x1f272b }));
-        sign.position.set(0, 5.0, 0);
-        group.add(sign);
-
-        const postMat = new THREE.MeshPhongMaterial({ color: 0x7b858a });
-        for (const dx of [-8,8]) {
-            const post = new THREE.Mesh(new THREE.BoxGeometry(0.6, 5.8, 0.6), postMat);
-            post.position.set(dx, 2.9, 0);
-            group.add(post);
-        }
-
-        group.position.set(cx, 0, cz);
-        this.scene.add(group);
-    },
-
-    _createBaseProps: function(cx, cz) {
-        const sandbagMat = new THREE.MeshPhongMaterial({ color: 0x75644d });
-        const points = [
-            [cx - 68, cz + 42], [cx + 67, cz + 43],
-            [cx - 66, cz - 42], [cx + 65, cz - 43],
-            [cx - 23, cz + 71], [cx + 24, cz + 71]
-        ];
-        points.forEach(([x,z]) => {
-            for (let i = -2; i <= 2; i++) {
-                const bag = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 0.75), sandbagMat);
-                bag.position.set(x + i * 1.6, 0.28, z);
-                bag.rotation.y = i * 0.06;
-                bag.castShadow = true;
-                this.scene.add(bag);
-            }
-        });
-
-        const crateMat = new THREE.MeshPhongMaterial({ color: 0x735d3e });
-        for (let i = 0; i < 12; i++) {
-            const crate = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.0, 1.25), crateMat);
-            const x = cx - 69 + (i % 4) * 2.0;
-            const z = cz + 53 + Math.floor(i / 4) * 1.8;
-            crate.position.set(x, 0.5, z);
-            crate.castShadow = true;
-            this.scene.add(crate);
-        }
-    },
-
-    // ================================================================
-    // PHÃƒÂ¡Ã‚ÂºÃ‚Â¦N CÃƒâ€¦Ã‚Â¨: PLAYER, FOREST, VÃƒÆ’Ã¢â€šÂ¬ CÃƒÆ’Ã‚ÂC HÃƒÆ’Ã¢â€šÂ¬M KHÃƒÆ’Ã‚ÂC
-    // ================================================================
 
     createPlayer3D: function() {
-        const playerWidth = 0.8;
-        const playerHeight = 1.6;
-        const headSize = 0.6;
-
-        const bodyGeometry = new THREE.BoxGeometry(playerWidth, playerHeight * 0.7, playerWidth);
-        const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x0088ff });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = playerHeight * 0.35;
-        body.castShadow = true;
-        body.receiveShadow = true;
-
-        const headGeometry = new THREE.BoxGeometry(headSize, headSize, headSize);
-        const headMaterial = new THREE.MeshPhongMaterial({ color: 0xffcc99 });
-        const head = new THREE.Mesh(headGeometry, headMaterial);
-        head.position.set(0, playerHeight * 0.7 + headSize / 2, 0);
-        head.castShadow = true;
-
-        const indicatorGeometry = new THREE.ConeGeometry(0.12, 0.25, 4);
-        const indicatorMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
-        const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
-        indicator.position.set(0, playerHeight * 0.35, playerWidth * 0.6);
-        indicator.rotation.x = -Math.PI / 2;
-        indicator.castShadow = true;
-
         const group = new THREE.Group();
-        group.add(body);
-        group.add(head);
-        group.add(indicator);
         group.position.set(250, 0, 280);
-        group.body = body;
-        group.head = head;
-        group.indicator = indicator;
-        this.scene.add(group);
 
+        // Visual Rig Container
+        const rig = new THREE.Group();
+        rig.name = 'playerRig';
+        group.add(rig);
+
+        // Build procedural fallback rig immediately
+        this._buildProceduralPlayerRig(rig);
+
+        // Asynchronously load the upgraded Roblox player model GLB
+        this._loadPlayerGLB(rig);
+
+        this.scene.add(group);
         this.player = group;
-        console.log('ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â NhÃƒÆ’Ã‚Â¢n vÃƒÂ¡Ã‚ÂºÃ‚Â­t player Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o');
+        this.player.rig = rig;
+
+        console.log('ðŸ§ NhÃ¢n váº­t Player 3D Ä‘Æ°á»£c khá»Ÿi táº¡o');
     },
 
-    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving, jumpY, isCrouching) {
+    _buildProceduralPlayerRig: function(rig) {
+        const matShirt = new THREE.MeshPhongMaterial({ color: 0x0088ff });
+        const matPants = new THREE.MeshPhongMaterial({ color: 0x223344 });
+        const matSkin  = new THREE.MeshPhongMaterial({ color: 0xffcc88 });
+
+        // Torso
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.75, 0.4), matShirt);
+        torso.position.set(0, 1.05, 0);
+        torso.castShadow = true;
+        rig.add(torso);
+        rig.torso = torso;
+
+        // Head
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.48), matSkin);
+        head.position.set(0, 1.68, 0);
+        head.castShadow = true;
+        rig.add(head);
+        rig.head = head;
+
+        // Right Arm Pivot & Mesh
+        const rArmPivot = new THREE.Group();
+        rArmPivot.position.set(-0.58, 1.40, 0);
+        const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.75, 0.35), matShirt);
+        rArm.position.set(0, -0.35, 0);
+        rArm.castShadow = true;
+        rArmPivot.add(rArm);
+        rig.add(rArmPivot);
+        rig.rightArm = rArmPivot;
+
+        // Left Arm Pivot & Mesh
+        const lArmPivot = new THREE.Group();
+        lArmPivot.position.set(0.58, 1.40, 0);
+        const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.75, 0.35), matShirt);
+        lArm.position.set(0, -0.35, 0);
+        lArm.castShadow = true;
+        lArmPivot.add(lArm);
+        rig.add(lArmPivot);
+        rig.leftArm = lArmPivot;
+
+        // Right Leg Pivot & Mesh
+        const rLegPivot = new THREE.Group();
+        rLegPivot.position.set(-0.22, 0.70, 0);
+        const rLeg = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.70, 0.36), matPants);
+        rLeg.position.set(0, -0.35, 0);
+        rLeg.castShadow = true;
+        rLegPivot.add(rLeg);
+        rig.add(rLegPivot);
+        rig.rightLeg = rLegPivot;
+
+        // Left Leg Pivot & Mesh
+        const lLegPivot = new THREE.Group();
+        lLegPivot.position.set(0.22, 0.70, 0);
+        const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.70, 0.36), matPants);
+        lLeg.position.set(0, -0.35, 0);
+        lLeg.castShadow = true;
+        lLegPivot.add(lLeg);
+        rig.add(lLegPivot);
+        rig.leftLeg = lLegPivot;
+
+        // Dedicated Weapon Socket attached to Right Hand
+        const rightHandSocket = new THREE.Group();
+        rightHandSocket.name = 'rightHandSocket';
+        rightHandSocket.position.set(0, -0.65, 0.2);
+        rArmPivot.add(rightHandSocket);
+        rig.rightHandSocket = rightHandSocket;
+        this.player.rightHandSocket = rightHandSocket;
+
+        // Backwards compatibility references
+        this.player.body = torso;
+        this.player.head = head;
+    },
+
+    _loadPlayerGLB: function(rig) {
+        if (!this._gltfLoader) {
+            if (typeof GLTFLoader !== 'undefined') this._gltfLoader = new GLTFLoader();
+            else if (typeof THREE !== 'undefined' && typeof THREE.GLTFLoader !== 'undefined') this._gltfLoader = new THREE.GLTFLoader();
+        }
+        if (!this._gltfLoader) return;
+
+        const path = 'src/assets/character/player/upgraded_roblox_model.glb';
+        this._gltfLoader.load(path, (gltf) => {
+            const root = gltf.scene || gltf;
+            root.traverse(c => {
+                if (c.isMesh) {
+                    c.castShadow = true;
+                    c.receiveShadow = true;
+                }
+            });
+
+            // Extract Roblox limb nodes
+            let torsoMesh = null, headMesh = null;
+            let rArmMesh = null, lArmMesh = null;
+            let rLegMesh = null, lLegMesh = null;
+
+            root.traverse(c => {
+                const name = c.name || '';
+                if (name.includes('dummy2_0')) torsoMesh = c;
+                else if (name.includes('dummy2.001_1')) headMesh = c;
+                else if (name.includes('dummy2.003_2')) rArmMesh = c;
+                else if (name.includes('dummy2.007_5')) lArmMesh = c;
+                else if (name.includes('dummy2.005_3')) rLegMesh = c;
+                else if (name.includes('dummy2.006_4')) lLegMesh = c;
+            });
+
+            // If parsed with submeshes, mount into rig
+            if (torsoMesh && headMesh && rArmMesh && lArmMesh && rLegMesh && lLegMesh) {
+                while (rig.children.length > 0) {
+                    rig.remove(rig.children[0]);
+                }
+
+                const glbScale = 0.35;
+                const glbContainer = new THREE.Group();
+                glbContainer.scale.setScalar(glbScale);
+
+                // Setup joint pivots
+                // Torso (y = 3.115)
+                const torsoPivot = new THREE.Group();
+                torsoPivot.position.set(0, 0, 0);
+                torsoPivot.add(torsoMesh);
+                glbContainer.add(torsoPivot);
+                rig.torso = torsoPivot;
+
+                // Head (y = 4.692)
+                const headPivot = new THREE.Group();
+                headPivot.position.set(0, 4.692, 0);
+                headMesh.position.y -= 4.692;
+                headPivot.add(headMesh);
+                glbContainer.add(headPivot);
+                rig.head = headPivot;
+
+                // Right Arm (x = -1.529, y = 3.115)
+                const rArmPivot = new THREE.Group();
+                rArmPivot.position.set(-1.529, 3.115, 0.023);
+                rArmMesh.position.set(0, -1.0, 0);
+                rArmPivot.add(rArmMesh);
+                glbContainer.add(rArmPivot);
+                rig.rightArm = rArmPivot;
+
+                // Left Arm (x = 1.566, y = 3.115)
+                const lArmPivot = new THREE.Group();
+                lArmPivot.position.set(1.566, 3.115, 0.023);
+                lArmMesh.position.set(0, -1.0, 0);
+                lArmPivot.add(lArmMesh);
+                glbContainer.add(lArmPivot);
+                rig.leftArm = lArmPivot;
+
+                // Right Leg (x = -0.479, y = 1.065)
+                const rLegPivot = new THREE.Group();
+                rLegPivot.position.set(-0.479, 1.065, 0.023);
+                rLegMesh.position.set(0, -1.0, 0);
+                rLegPivot.add(rLegMesh);
+                glbContainer.add(rLegPivot);
+                rig.rightLeg = rLegPivot;
+
+                // Left Leg (x = 0.520, y = 1.065)
+                const lLegPivot = new THREE.Group();
+                lLegPivot.position.set(0.520, 1.065, 0.023);
+                lLegMesh.position.set(0, -1.0, 0);
+                lLegPivot.add(lLegMesh);
+                glbContainer.add(lLegPivot);
+                rig.leftLeg = lLegPivot;
+
+                // Weapon socket in right hand
+                const rightHandSocket = new THREE.Group();
+                rightHandSocket.name = 'rightHandSocket';
+                rightHandSocket.position.set(0, -1.8, 0.8);
+                rArmPivot.add(rightHandSocket);
+                rig.rightHandSocket = rightHandSocket;
+                this.player.rightHandSocket = rightHandSocket;
+
+                rig.add(glbContainer);
+                this.player.body = torsoPivot;
+                this.player.head = headPivot;
+
+                // Re-bind weapon holder if WeaponRenderer exists
+                if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
+                    rightHandSocket.add(WeaponRenderer._weaponHolder);
+                    WeaponRenderer._weaponHolder.position.set(0, 0, 0);
+                    if (typeof WeaponSystem !== 'undefined') {
+                        WeaponRenderer._showModel(WeaponSystem.currentId);
+                    }
+                }
+
+                console.log('ðŸ§ ÄÃ£ tÃ­ch há»£p MODEL PLAYER upgraded_roblox_model.glb vÃ o Player Controller');
+            } else {
+                const box = new THREE.Box3().setFromObject(root);
+                const size = new THREE.Vector3();
+                const center = new THREE.Vector3();
+                box.getSize(size);
+                box.getCenter(center);
+                const scale = 1.8 / Math.max(size.y, 0.01);
+                root.scale.setScalar(scale);
+                root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+                while (rig.children.length > 0) rig.remove(rig.children[0]);
+                rig.add(root);
+                rig.torso = root;
+                this.player.body = root;
+                console.log('ðŸ§ ÄÃ£ load model player (toÃ n bá»™ scene)');
+            }
+        }, undefined, (err) => {
+            console.warn('Lá»—i load player GLB, giá»¯ nguyÃªn procedural rig:', err?.message || err);
+        });
+    },
+
+    updatePlayerMesh: function(playerX, playerZ, rotationY, isMoving, jumpY, isCrouching, animOptions) {
         if (!this.player) return;
         this.player.position.x = playerX;
         this.player.position.z = playerZ;
         this.player.rotation.y = rotationY;
 
         const jumpOffset = jumpY || 0;
-        const targetScaleY = isCrouching ? 0.68 : 1.0;
+        const targetScaleY = isCrouching ? 0.70 : 1.0;
         if (typeof this.player._currentScaleY === 'undefined') this.player._currentScaleY = 1.0;
         this.player._currentScaleY += (targetScaleY - this.player._currentScaleY) * 0.2;
-        this.player.scale.y = this.player._currentScaleY;
+
+        const rig = this.player.rig;
+        if (rig) {
+            rig.scale.y = this.player._currentScaleY;
+            rig.position.y = isCrouching ? -0.25 : 0;
+        }
+
+        const time = Date.now() * 0.008;
+        const opts = animOptions || {};
+        const isSprinting = opts.isSprinting || false;
+        const isAttacking = opts.isAttacking || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim);
+        const currentWeapon = opts.currentWeapon || (typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol');
 
         if (isMoving) {
-            const time = Date.now() * 0.01;
-            this.player.position.y = Math.abs(Math.sin(time)) * (isCrouching ? 0.04 : 0.08) + jumpOffset;
-            this.player.body.rotation.x = Math.sin(time) * 0.1;
+            const freq = isSprinting ? 1.6 : 1.0;
+            const amp = isSprinting ? 0.75 : 0.50;
+            this.player.position.y = Math.abs(Math.sin(time * freq * 1.5)) * (isCrouching ? 0.03 : 0.07) + jumpOffset;
+
+            if (rig) {
+                // Swing legs
+                if (rig.leftLeg) rig.leftLeg.rotation.x = Math.sin(time * freq) * amp;
+                if (rig.rightLeg) rig.rightLeg.rotation.x = -Math.sin(time * freq) * amp;
+
+                // Swing left arm
+                if (rig.leftArm) rig.leftArm.rotation.x = -Math.sin(time * freq) * amp;
+
+                // Right arm: if not attacking, weapon stance or swing
+                if (rig.rightArm && !isAttacking) {
+                    if (currentWeapon === 'sword') {
+                        rig.rightArm.rotation.x = -0.4 + Math.sin(time * freq) * 0.2;
+                        rig.rightArm.rotation.z = -0.2;
+                    } else {
+                        // Gun aim forward
+                        rig.rightArm.rotation.x = -Math.PI / 2.2 + Math.sin(time * freq) * 0.08;
+                        rig.rightArm.rotation.z = 0;
+                    }
+                }
+
+                // Torso slight forward lean when sprinting
+                if (rig.torso) {
+                    rig.torso.rotation.x = isSprinting ? 0.12 : 0.04;
+                }
+            }
         } else {
+            // Idle breathing
             this.player.position.y = jumpOffset;
-            this.player.body.rotation.x = 0;
+            if (rig) {
+                const breath = Math.sin(time * 0.3) * 0.03;
+                if (rig.leftLeg) rig.leftLeg.rotation.x = 0;
+                if (rig.rightLeg) rig.rightLeg.rotation.x = 0;
+                if (rig.torso) rig.torso.rotation.x = breath;
+                if (rig.head) rig.head.rotation.x = -breath * 0.5;
+
+                if (rig.leftArm) rig.leftArm.rotation.x = breath * 2;
+
+                if (rig.rightArm && !isAttacking) {
+                    if (currentWeapon === 'sword') {
+                        rig.rightArm.rotation.x = -0.3 + breath;
+                        rig.rightArm.rotation.z = -0.15;
+                    } else {
+                        // Holding gun forward
+                        rig.rightArm.rotation.x = -Math.PI / 2.2 + breath;
+                        rig.rightArm.rotation.z = 0;
+                    }
+                }
+            }
+        }
+
+        // Melee attack animation for Right Arm
+        if (rig && rig.rightArm && isAttacking && currentWeapon === 'sword') {
+            const swingTimer = (typeof WeaponRenderer !== 'undefined' ? WeaponRenderer._swingTimer : 0) || 0;
+            const slashPhase = Math.sin(swingTimer * Math.PI * 3);
+            rig.rightArm.rotation.x = -Math.PI / 2 - slashPhase * 0.8;
+            rig.rightArm.rotation.y = slashPhase * 0.6;
         }
     },
 
@@ -1651,33 +1799,41 @@ let Renderer3D = {
     },
 
     create3DZombie: function(x, z) {
-        const zombieWidth = 0.7;
-        const zombieHeight = 1.4;
-        const bodyGeometry = new THREE.BoxGeometry(zombieWidth, zombieHeight * 0.7, zombieWidth);
-        const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0xff3333 });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = zombieHeight * 0.35;
-        body.castShadow = true;
-        body.receiveShadow = true;
-
-        const headSize = 0.52;
-        const headGeometry = new THREE.BoxGeometry(headSize, headSize, headSize);
-        const headMaterial = new THREE.MeshPhongMaterial({ color: 0xff5555 });
-        const head = new THREE.Mesh(headGeometry, headMaterial);
-        head.position.set(0, zombieHeight * 0.7 + headSize / 2, 0);
-        head.castShadow = true;
-
         const group = new THREE.Group();
-        group.add(body);
-        group.add(head);
         group.position.set(x, 0, z);
-        group.body = body;
-        group.head = head;
+
+        if (this._zombieModelTemplate) {
+            const zombieModel = this._zombieModelTemplate.clone(true);
+            group.add(zombieModel);
+            group.model = zombieModel;
+            group.body = zombieModel;
+        } else {
+            const zombieWidth = 0.7;
+            const zombieHeight = 1.4;
+            const bodyGeometry = new THREE.BoxGeometry(zombieWidth, zombieHeight * 0.7, zombieWidth);
+            const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x2e5c38 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = zombieHeight * 0.35;
+            body.castShadow = true;
+            body.receiveShadow = true;
+
+            const headSize = 0.52;
+            const headGeometry = new THREE.BoxGeometry(headSize, headSize, headSize);
+            const headMaterial = new THREE.MeshPhongMaterial({ color: 0x3d7a4a });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.set(0, zombieHeight * 0.7 + headSize / 2, 0);
+            head.castShadow = true;
+
+            group.add(body);
+            group.add(head);
+            group.body = body;
+            group.head = head;
+        }
+
         this.scene.add(group);
         return group;
     },
 
-    // HÃƒÆ’Ã‚Â m tÃƒÂ¡Ã‚ÂºÃ‚Â¡o cÃƒÆ’Ã‚Â¢y, Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¡ (khÃƒÆ’Ã‚Â´ng chÃƒÂ¡Ã‚ÂºÃ‚Â·n camera vÃƒÆ’Ã‚Â¬ khÃƒÆ’Ã‚Â´ng nÃƒÆ’Ã‚Âªn chÃƒÂ¡Ã‚ÂºÃ‚Â·n)
     createLowPolyTree: function(x, z) {
         const scale = 0.7 + Math.random() * 0.8;
         const trunkHeight = (1.5 + Math.random() * 1.2) * scale;
@@ -1964,12 +2120,12 @@ let Renderer3D = {
             }
         }
 
-        console.log('ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â² MÃƒÆ’Ã‚Â´i trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng rÃƒÂ¡Ã‚Â»Ã‚Â«ng rÃƒÂ¡Ã‚ÂºÃ‚Â­m rÃƒÂ¡Ã‚ÂºÃ‚Â¡p Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â¡o:', this.trees.length, 'cÃƒÆ’Ã‚Â¢y/bÃƒÂ¡Ã‚Â»Ã‚Â¥i/gÃƒÂ¡Ã‚Â»Ã¢â‚¬â€,', this.rocks.length, 'Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¡');
+        console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã¢â‚¬â„¢Ãƒâ€šÃ‚Â² MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´i trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â«ng rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­m rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡p ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o:', this.trees.length, 'cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y/bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥i/gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â,', this.rocks.length, 'ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡');
     },
 
     /**
-     * HÃƒÆ’Ã‚Â m xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½ camera collision vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi vÃƒÂ¡Ã‚ÂºÃ‚Â­t thÃƒÂ¡Ã‚Â»Ã†â€™ vÃƒÆ’Ã‚Â  mÃƒÂ¡Ã‚ÂºÃ‚Â·t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥t
-     * TrÃƒÂ¡Ã‚ÂºÃ‚Â£ vÃƒÂ¡Ã‚Â»Ã‚Â vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ camera hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡
+     * HÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½ camera collision vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t
+     * TrÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ camera hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£p lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡
      */
     _getSafeCameraPosition: function(fromPos, toPos, lookAtPos) {
         const direction = new THREE.Vector3().copy(toPos).sub(fromPos);
@@ -1978,25 +2134,25 @@ let Renderer3D = {
 
         direction.normalize();
 
-        // TÃƒÂ¡Ã‚ÂºÃ‚Â¡o ray tÃƒÂ¡Ã‚Â»Ã‚Â« nhÃƒÆ’Ã‚Â¢n vÃƒÂ¡Ã‚ÂºÃ‚Â­t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ camera mong muÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœn
+        // TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o ray tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ camera mong muÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“n
         const raycaster = new THREE.Raycaster(fromPos, direction, 0.1, distance);
 
-        // KiÃƒÂ¡Ã‚Â»Ã†â€™m tra va chÃƒÂ¡Ã‚ÂºÃ‚Â¡m vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi cÃƒÆ’Ã‚Â¡c mesh trong danh sÃƒÆ’Ã‚Â¡ch
+        // KiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m tra va chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡m vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c mesh trong danh sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ch
         const intersects = raycaster.intersectObjects(this._collisionMeshes);
 
         let safePos = toPos.clone();
 
         if (intersects.length > 0) {
-            // LÃƒÂ¡Ã‚ÂºÃ‚Â¥y Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m va chÃƒÂ¡Ã‚ÂºÃ‚Â¡m gÃƒÂ¡Ã‚ÂºÃ‚Â§n nhÃƒÂ¡Ã‚ÂºÃ‚Â¥t
+            // LÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m va chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡m gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t
             const hit = intersects[0];
             const hitDistance = hit.distance;
-            // LÃƒÆ’Ã‚Â¹i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t chÃƒÆ’Ã‚Âºt Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ camera khÃƒÆ’Ã‚Â´ng bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ dÃƒÆ’Ã‚Â­nh vÃƒÆ’Ã‚Â o tÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng
+            // LÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹i lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢t chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºt ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ camera khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o tÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng
             const offset = 0.3;
             const safeDistance = Math.max(0.1, hitDistance - offset);
             safePos.copy(fromPos).add(direction.clone().multiplyScalar(safeDistance));
         }
 
-        // ChÃƒÂ¡Ã‚ÂºÃ‚Â·n camera khÃƒÆ’Ã‚Â´ng xuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng dÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi mÃƒÂ¡Ã‚ÂºÃ‚Â·t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥t (Y > 0.3)
+        // ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n camera khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng xuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng dÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t (Y > 0.3)
         if (safePos.y < 0.3) {
             safePos.y = 0.3;
         }
@@ -2073,16 +2229,16 @@ let Renderer3D = {
             const offsetX = horizontalDist * sinYaw;
             const offsetZ = horizontalDist * cosYaw;
 
-            // VÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ camera mong muÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœn
+            // VÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ camera mong muÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“n
             let rawCamX = playerX - offsetX;
             let rawCamY = verticalOffset;
             let rawCamZ = playerZ - offsetZ;
 
-            // Ãƒâ€žÃ‚ÂiÃƒÂ¡Ã‚Â»Ã†â€™m tÃƒÂ¡Ã‚Â»Ã‚Â« nhÃƒÆ’Ã‚Â¢n vÃƒÂ¡Ã‚ÂºÃ‚Â­t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n camera
+            // ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n camera
             const fromPos = new THREE.Vector3(playerX, py + 0.5, playerZ);
             const toPos = new THREE.Vector3(rawCamX, rawCamY, rawCamZ);
 
-            // ÃƒÆ’Ã‚Âp dÃƒÂ¡Ã‚Â»Ã‚Â¥ng collision Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÆ’Ã‚Â³ vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â­ an toÃƒÆ’Ã‚Â n
+            // ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âp dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥ng collision ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ an toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n
             const safePos = this._getSafeCameraPosition(fromPos, toPos, new THREE.Vector3(playerX, this.cameraLookAtHeight, playerZ));
             targetCamX = safePos.x;
             targetCamY = safePos.y;
@@ -2121,7 +2277,7 @@ let Renderer3D = {
 
 
 /* ============================================================================
- * APOCALYPSE MILITARY COMPLEX ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â VISUAL OVERHAUL
+ * APOCALYPSE MILITARY COMPLEX ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â VISUAL OVERHAUL
  * Inspired by the user's references: brutalist concrete, asymmetrical towers,
  * cyan emergency lighting, rooftop control decks, dense functional districts.
  * ========================================================================== */
@@ -2244,7 +2400,7 @@ Renderer3D._createApocalypseBlock = function(x, z, cfg = {}) {
 Renderer3D.buildGrandBase = function() {
     const cx = this.worldCenterX, cz = this.worldCenterZ;
     const mats = this._apocalypseMaterials();
-    console.log('ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â° Building modern post-apocalypse military complex...');
+    console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â° Building modern post-apocalypse military complex...');
 
     this._militaryBaseBounds = { minX: cx - 108, maxX: cx + 108, minZ: cz - 108, maxZ: cz + 108 };
     this._militaryBuildingFunctions = {};
@@ -2297,7 +2453,7 @@ Renderer3D.buildGrandBase = function() {
     this._createAutomatedMachineGunNetwork(cx, cz);
 
     this._registerApocalypseMilitaryInteractions(cx, cz);
-    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Modern post-apocalypse base complete');
+    console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Modern post-apocalypse base complete');
 };
 
 Renderer3D._prepareImportedModel = function(root, options = {}) {
@@ -2372,16 +2528,16 @@ Renderer3D._addModelCollisionBox = function(centerX, centerZ, width, height, dep
     return box;
 };
 
-// TÃƒÂ¡Ã‚ÂºÃ‚Â¡o collision box KHÃƒÆ’Ã‚ÂT vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi kÃƒÆ’Ã‚Â­ch thÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc thÃƒÂ¡Ã‚ÂºÃ‚Â­t (world-space) cÃƒÂ¡Ã‚Â»Ã‚Â§a model Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£
-// load, thay vÃƒÆ’Ã‚Â¬ dÃƒÆ’Ã‚Â¹ng sÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ liÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡u Ãƒâ€žÃ¢â‚¬ËœoÃƒÆ’Ã‚Â¡n cÃƒÂ¡Ã‚Â»Ã‚Â©ng ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â trÃƒÆ’Ã‚Â¡nh trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng hÃƒÂ¡Ã‚Â»Ã‚Â£p box quÃƒÆ’Ã‚Â¡ to
-// (chÃƒÂ¡Ã‚ÂºÃ‚Â·n nhÃƒÂ¡Ã‚ÂºÃ‚Â§m cÃƒÂ¡Ã‚ÂºÃ‚Â£ khu vÃƒÂ¡Ã‚Â»Ã‚Â±c trÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng, hoÃƒÂ¡Ã‚ÂºÃ‚Â·c "nuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœt" luÃƒÆ’Ã‚Â´n Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m spawn cÃƒÂ¡Ã‚Â»Ã‚Â§a ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i).
+// TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o collision box KHÃƒÆ’Ã†â€™Ãƒâ€šÃ‚ÂT vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ch thÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t (world-space) cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a model ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£
+// load, thay vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ng sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ liÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡u ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“oÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©ng ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡nh trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£p box quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ to
+// (chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§m cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ khu vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±c trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng, hoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·c "nuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“t" luÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m spawn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i).
 Renderer3D._addModelCollisionBoxFromObject = function(root, centerX, centerZ, opts = {}) {
-    const margin = opts.margin != null ? opts.margin : 1.0; // hÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡ sÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ nÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi nhÃƒÂ¡Ã‚ÂºÃ‚Â¹, 1.0 = khÃƒÆ’Ã‚Â­t
+    const margin = opts.margin != null ? opts.margin : 1.0; // hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¹, 1.0 = khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­t
     const minWidth = opts.minWidth || 2;
     const minDepth = opts.minDepth || 2;
     const box3 = new THREE.Box3().setFromObject(root);
     if (box3.isEmpty()) {
-        console.warn('Model rÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ng, bÃƒÂ¡Ã‚Â»Ã‚Â qua tÃƒÂ¡Ã‚ÂºÃ‚Â¡o collision box:', root.name);
+        console.warn('Model rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Âng, bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â qua tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o collision box:', root.name);
         return null;
     }
     const size = box3.getSize(new THREE.Vector3());
@@ -2393,12 +2549,12 @@ Renderer3D._addModelCollisionBoxFromObject = function(root, centerX, centerZ, op
 
 Renderer3D._loadMainHQModel = function(cx, cz) {
     if (typeof THREE.GLTFLoader === 'undefined') {
-        console.error('GLTFLoader chÃƒâ€ Ã‚Â°a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â£i; khÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ load model_game_ready.glb');
+        console.error('GLTFLoader chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i; khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ load model_game_ready.glb');
         return;
     }
     this._gltfLoader = this._gltfLoader || new THREE.GLTFLoader();
     const url = 'src/assets/models/model_game_ready.glb';
-    console.log('Ãƒâ€žÃ‚Âang tÃƒÂ¡Ã‚ÂºÃ‚Â£i nhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB:', url);
+    console.log('ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚Âang tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh GLB:', url);
     this._gltfLoader.load(url, (gltf) => {
         const root = this._prepareImportedModel(gltf.scene, { castShadow: true, receiveShadow: true });
         this._normalizeImportedModel(root, 25);
@@ -2406,24 +2562,24 @@ Renderer3D._loadMainHQModel = function(cx, cz) {
         root.name = 'MainHQImportedGLB';
         this.scene.add(root);
         this._externalModels.push(root);
-        // Collision box khÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Âºng kÃƒÆ’Ã‚Â­ch thÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc thÃƒÂ¡Ã‚ÂºÃ‚Â­t sau khi scale/normalize,
-        // trÃƒÆ’Ã‚Â¡nh chÃƒÂ¡Ã‚ÂºÃ‚Â·n nhÃƒÂ¡Ã‚ÂºÃ‚Â§m Ãƒâ€žÃ¢â‚¬ËœiÃƒÂ¡Ã‚Â»Ã†â€™m spawn cÃƒÂ¡Ã‚Â»Ã‚Â§a ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i (250,250) ÃƒÂ¡Ã‚Â»Ã…Â¸ gÃƒÂ¡Ã‚ÂºÃ‚Â§n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â³.
+        // Collision box khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºp ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºng kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ch thÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t sau khi scale/normalize,
+        // trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡nh chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§m ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m spawn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i (250,250) ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³.
         this._addModelCollisionBoxFromObject(root, cx, cz, { margin: 1.02, minWidth: 20, minDepth: 10 });
         if (this._militaryBuildingFunctions) this._militaryBuildingFunctions.command = { name: 'Command HQ', function: 'Base upgrades + money production hub', x: cx, z: cz - 9, radius: 20 };
-        console.log('NhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t tÃƒÂ¡Ã‚ÂºÃ‚Â¡i trung tÃƒÆ’Ã‚Â¢m');
+        console.log('NhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh GLB ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i trung tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢m');
     }, undefined, (err) => {
-        console.error('KhÃƒÆ’Ã‚Â´ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c nhÃƒÆ’Ã‚Â  chÃƒÆ’Ã‚Â­nh GLB:', url, err);
+        console.error('KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh GLB:', url, err);
     });
 };
 
 Renderer3D._loadTentModel = function(x, z) {
     if (typeof THREE.GLTFLoader === 'undefined') {
-        console.error('GLTFLoader chÃƒâ€ Ã‚Â°a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â£i; khÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ load base_hq.glb');
+        console.error('GLTFLoader chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i; khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ load base_hq.glb');
         return;
     }
     this._gltfLoader = this._gltfLoader || new THREE.GLTFLoader();
     const url = 'src/assets/models/base_hq.glb';
-    console.log('Ãƒâ€žÃ‚Âang tÃƒÂ¡Ã‚ÂºÃ‚Â£i lÃƒÂ¡Ã‚Â»Ã‚Âu/outpost GLB:', url);
+    console.log('ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚Âang tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu/outpost GLB:', url);
     this._gltfLoader.load(url, (gltf) => {
         const root = this._prepareImportedModel(gltf.scene, { castShadow: true, receiveShadow: true });
         this._normalizeImportedModel(root, 9);
@@ -2432,18 +2588,18 @@ Renderer3D._loadTentModel = function(x, z) {
         root.name = 'TentOutpostImportedGLB';
         this.scene.add(root);
         this._externalModels.push(root);
-        // VÃƒÆ’Ã‚Â¬ lÃƒÂ¡Ã‚Â»Ã‚Âu xoay 90Ãƒâ€šÃ‚Â°, chiÃƒÂ¡Ã‚Â»Ã‚Âu rÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng/sÃƒÆ’Ã‚Â¢u thÃƒÂ¡Ã‚Â»Ã‚Â±c tÃƒÂ¡Ã‚ÂºÃ‚Â¿ trÃƒÆ’Ã‚Âªn trÃƒÂ¡Ã‚Â»Ã‚Â¥c X/Z bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ hoÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢i so
-        // vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi bbox gÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœc ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tÃƒÆ’Ã‚Â­nh lÃƒÂ¡Ã‚ÂºÃ‚Â¡i collision box SAU khi Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ xoay Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ khÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºp thÃƒÂ¡Ã‚ÂºÃ‚Â­t.
+        // VÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu xoay 90ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°, chiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng/sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢u thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥c X/Z bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ hoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢i so
+        // vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi bbox gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“c ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i collision box SAU khi ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ xoay ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºp thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t.
         this._addModelCollisionBoxFromObject(root, x, z, { margin: 1.02, minWidth: 6, minDepth: 6 });
-        console.log('LÃƒÂ¡Ã‚Â»Ã‚Âu/outpost GLB Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t tÃƒÂ¡Ã‚ÂºÃ‚Â¡i:', x, z);
+        console.log('LÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu/outpost GLB ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i:', x, z);
     }, undefined, (err) => {
-        console.error('KhÃƒÆ’Ã‚Â´ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c lÃƒÂ¡Ã‚Â»Ã‚Âu/outpost GLB:', url, err);
+        console.error('KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu/outpost GLB:', url, err);
     });
 };
 
 Renderer3D._loadGLBAsset = function(url, key, options = {}) {
     if (typeof THREE.GLTFLoader !== 'function') {
-        console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â GLTFLoader chÃƒâ€ Ã‚Â°a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c nÃƒÂ¡Ã‚ÂºÃ‚Â¡p, bÃƒÂ¡Ã‚Â»Ã‚Â qua asset:', key);
+        console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â GLTFLoader chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡p, bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â qua asset:', key);
         return Promise.resolve(null);
     }
 
@@ -2460,7 +2616,7 @@ Renderer3D._loadGLBAsset = function(url, key, options = {}) {
             },
             undefined,
             (error) => {
-                console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ KhÃƒÆ’Ã‚Â´ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c GLB:', key, error);
+                console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c GLB:', key, error);
                 // Asset failure should not kill the whole game.
                 resolve(null);
             }
@@ -2641,7 +2797,7 @@ Renderer3D._createApocalypseCommandCenter = function(cx, cz) {
 
     this._apocLabel(group, 'COMMAND HQ', 0x62e8ff, 0, 10.7, 15.62, 12.0, 1.25);
     this._apocLabel(group, 'BASE OPERATIONS', 0xffc857, 0, 6.9, 15.64, 9.0, 0.9);
-    this._apocLabel(group, 'MONEY DECK ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ BUILD HERE', 0x42e8a1, 0, 2.15, 15.7, 14.0, 0.82);
+    this._apocLabel(group, 'MONEY DECK ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ BUILD HERE', 0x42e8a1, 0, 2.15, 15.7, 14.0, 0.82);
 
     // Strong architectural diagonals to emulate the carved/brutalist reference.
     for (let side of [-1, 1]) {
@@ -2661,7 +2817,7 @@ Renderer3D._createHQInterior = function(cx, cz) {
     const g = new THREE.Group();
     this._hqInterior = { cx, cz, floor1Y: 2.52, floor2Y: 6.77, floor3Y: 11.02 };
 
-    // Soft interior illumination ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cool emergency strips + warm task lights.
+    // Soft interior illumination ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â cool emergency strips + warm task lights.
     const addPoint = (x,y,z,color,intensity,distance) => {
         const light = new THREE.PointLight(color, intensity, distance);
         light.position.set(x,y,z); g.add(light); return light;
@@ -3035,19 +3191,19 @@ Renderer3D._createApocalypseSecondaryGate = function(cx,cz) {
 
 Renderer3D._registerApocalypseMilitaryInteractions = function(cx,cz) {
     this._militaryInteractions = [
-        { id:'hq', name:'COMMAND HQ', description:'NÃ¢ng cáº¥p cÄƒn cá»© vÃ  má»Ÿ cÃ¡c mÃ¡y kiáº¿m tiá»n.', x:cx, z:cz-9, radius:14 },
-        { id:'barracks', name:'BARRACKS', description:'Tuyá»ƒn lÃ­nh gÃ¡c vÃ  tÄƒng phÃ²ng thá»§.', x:cx-55, z:cz-28, radius:12 },
-        { id:'mess', name:'MESS HALL', description:'Há»“i stamina vÃ  nháº­n buff.', x:cx-38, z:cz+36, radius:10 },
-        { id:'medical', name:'MEDICAL', description:'Sá»­ dá»¥ng váº­t tÆ° y táº¿.', x:cx-38, z:cz+36, radius:10 },
-        { id:'supply', name:'SUPPLY DEPOT', description:'Mua ammo vÃ  nÃ¢ng cáº¥p vÅ© khÃ­.', x:cx+53, z:cz-30, radius:12 },
-        { id:'fuel', name:'FUEL FARM', description:'Quáº£n lÃ½ nhiÃªn liá»‡u vÃ  income.', x:cx+62, z:cz+17, radius:10 },
-        { id:'motorPool', name:'MOTOR POOL', description:'Triá»‡u há»“i vÃ  nÃ¢ng cáº¥p vehicle.', x:cx+49, z:cz+57, radius:13 },
-        { id:'lab', name:'RESEARCH LAB', description:'NghiÃªn cá»©u zombie vÃ  weapon.', x:cx+3, z:cz-73, radius:13 },
-        { id:'workshop', name:'VEHICLE WORKSHOP', description:'Sá»­a vÃ  nÃ¢ng cáº¥p vehicle.', x:cx-49, z:cz-73, radius:12 },
-        { id:'training', name:'TRAINING GROUND', description:'Luyá»‡n weapon XP.', x:cx-42, z:cz+70, radius:15 },
-        { id:'range', name:'SHOOTING RANGE', description:'Test sÃºng vÃ  accuracy.', x:cx+30, z:cz+70, radius:15 },
-        { id:'radar', name:'RADAR', description:'PhÃ¡t hiá»‡n zombie wave vÃ  boss.', x:cx+86, z:cz-78, radius:10 },
-        { id:'comms', name:'COMMS', description:'Nháº­n supply contracts.', x:cx-84, z:cz-78, radius:10 }
+        { id:'hq', name:'COMMAND HQ', description:'NÃƒÂ¢ng cÃ¡ÂºÂ¥p cÃ„Æ’n cÃ¡Â»Â© vÃƒÂ  mÃ¡Â»Å¸ cÃƒÂ¡c mÃƒÂ¡y kiÃ¡ÂºÂ¿m tiÃ¡Â»Ân.', x:cx, z:cz-9, radius:14 },
+        { id:'barracks', name:'BARRACKS', description:'TuyÃ¡Â»Æ’n lÃƒÂ­nh gÃƒÂ¡c vÃƒÂ  tÃ„Æ’ng phÃƒÂ²ng thÃ¡Â»Â§.', x:cx-55, z:cz-28, radius:12 },
+        { id:'mess', name:'MESS HALL', description:'HÃ¡Â»â€œi stamina vÃƒÂ  nhÃ¡ÂºÂ­n buff.', x:cx-38, z:cz+36, radius:10 },
+        { id:'medical', name:'MEDICAL', description:'SÃ¡Â»Â­ dÃ¡Â»Â¥ng vÃ¡ÂºÂ­t tÃ†Â° y tÃ¡ÂºÂ¿.', x:cx-38, z:cz+36, radius:10 },
+        { id:'supply', name:'SUPPLY DEPOT', description:'Mua ammo vÃƒÂ  nÃƒÂ¢ng cÃ¡ÂºÂ¥p vÃ…Â© khÃƒÂ­.', x:cx+53, z:cz-30, radius:12 },
+        { id:'fuel', name:'FUEL FARM', description:'QuÃ¡ÂºÂ£n lÃƒÂ½ nhiÃƒÂªn liÃ¡Â»â€¡u vÃƒÂ  income.', x:cx+62, z:cz+17, radius:10 },
+        { id:'motorPool', name:'MOTOR POOL', description:'TriÃ¡Â»â€¡u hÃ¡Â»â€œi vÃƒÂ  nÃƒÂ¢ng cÃ¡ÂºÂ¥p vehicle.', x:cx+49, z:cz+57, radius:13 },
+        { id:'lab', name:'RESEARCH LAB', description:'NghiÃƒÂªn cÃ¡Â»Â©u zombie vÃƒÂ  weapon.', x:cx+3, z:cz-73, radius:13 },
+        { id:'workshop', name:'VEHICLE WORKSHOP', description:'SÃ¡Â»Â­a vÃƒÂ  nÃƒÂ¢ng cÃ¡ÂºÂ¥p vehicle.', x:cx-49, z:cz-73, radius:12 },
+        { id:'training', name:'TRAINING GROUND', description:'LuyÃ¡Â»â€¡n weapon XP.', x:cx-42, z:cz+70, radius:15 },
+        { id:'range', name:'SHOOTING RANGE', description:'Test sÃƒÂºng vÃƒÂ  accuracy.', x:cx+30, z:cz+70, radius:15 },
+        { id:'radar', name:'RADAR', description:'PhÃƒÂ¡t hiÃ¡Â»â€¡n zombie wave vÃƒÂ  boss.', x:cx+86, z:cz-78, radius:10 },
+        { id:'comms', name:'COMMS', description:'NhÃ¡ÂºÂ­n supply contracts.', x:cx-84, z:cz-78, radius:10 }
     ];
 };
 
@@ -3088,14 +3244,14 @@ Renderer3D.loadExternalModels = function() {
                 this._externalModels.hq = root;
                 this._modelLoadStatus.hq = true;
                 this._applyHQModelOverride(root);
-                console.log('ÃƒÂ°Ã…Â¸Ã‚ÂÃ¢â‚¬ÂºÃƒÂ¯Ã‚Â¸Ã‚Â Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â£ load model base_hq.glb');
+                console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂºÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ load model base_hq.glb');
             }, undefined, (err) => {
-                console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â KhÃƒÆ’Ã‚Â´ng load Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c base_hq.glb, giÃƒÂ¡Ã‚Â»Ã‚Â¯ HQ dÃƒÂ¡Ã‚Â»Ã‚Â±ng bÃƒÂ¡Ã‚ÂºÃ‚Â±ng code:', err?.message || err);
+                console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng load ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c base_hq.glb, giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ HQ dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±ng bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â±ng code:', err?.message || err);
             });
         } catch(e) { console.warn('GLTFLoader error', e); }
     }
 
-    // FBX -> Turel & Minigun (tÃƒÂ¡Ã‚ÂºÃ‚Â¡o fallback geometry nÃƒÂ¡Ã‚ÂºÃ‚Â¿u FBXLoader chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³)
+    // FBX -> Turel & Minigun (tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o fallback geometry nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿u FBXLoader chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³)
     const loadFBX = (key, path, onSuccess) => {
         try {
             if (this._fbxLoader) {
@@ -3104,16 +3260,16 @@ Renderer3D.loadExternalModels = function() {
                     this._externalModels[key] = obj;
                     this._modelLoadStatus[key] = true;
                     if (onSuccess) onSuccess(obj);
-                    console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â£ load FBX model ${key}`);
+                    console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¦ ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ load FBX model ${key}`);
                 }, undefined, (err) => {
-                    console.warn(`ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â KhÃƒÆ’Ã‚Â´ng load Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ${key} FBX, dÃƒÆ’Ã‚Â¹ng mesh tÃƒÂ¡Ã‚ÂºÃ‚Â¡o bÃƒÂ¡Ã‚ÂºÃ‚Â±ng code thay thÃƒÂ¡Ã‚ÂºÃ‚Â¿.`);
+                    console.warn(`ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng load ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c ${key} FBX, dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ng mesh tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â±ng code thay thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿.`);
                     this._modelLoadStatus[key] = false;
                 });
             } else {
                 this._modelLoadStatus[key] = false;
             }
         } catch(e) {
-            console.warn(`FBXLoader lÃƒÂ¡Ã‚Â»Ã¢â‚¬â€i (${key}):`, e);
+            console.warn(`FBXLoader lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Âi (${key}):`, e);
             this._modelLoadStatus[key] = false;
         }
     };
@@ -3175,7 +3331,7 @@ Renderer3D.create3DTurel = function(x, z) {
     const group = new THREE.Group();
     const assets = this._getTurretAssets();
 
-    // 1. ChÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿ bÃƒÆ’Ã‚Â¡t giÃƒÆ’Ã‚Â¡c bÃƒÂ¡Ã‚Â»Ã‚Âc thÃƒÆ’Ã‚Â©p
+    // 1. ChÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿ bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡t giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âc thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p
     const base = new THREE.Mesh(assets.basePlatform, assets.matBaseDark);
     base.position.y = 0.3;
     base.receiveShadow = true;
@@ -3185,28 +3341,28 @@ Renderer3D.create3DTurel = function(x, z) {
     baseRing.position.y = 0.7;
     group.add(baseRing);
 
-    // 2. CÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¢ xoay trÃƒÂ¡Ã‚Â»Ã‚Â£ lÃƒÂ¡Ã‚Â»Ã‚Â±c
+    // 2. CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ xoay trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±c
     const collar = new THREE.Mesh(assets.turretCollar, assets.matBaseDark);
     collar.position.y = 1.2;
     group.add(collar);
 
-    // 3. Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚ÂºÃ‚Â§u thÃƒÆ’Ã‚Â¡p phÃƒÆ’Ã‚Â¡o xoay (Turret Head)
+    // 3. ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡p phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o xoay (Turret Head)
     const headGroup = new THREE.Group();
     headGroup.position.y = 1.9;
 
-    // VÃƒÂ¡Ã‚Â»Ã‚Â bÃƒÂ¡Ã‚Â»Ã‚Âc thÃƒÆ’Ã‚Â©p khoang phÃƒÆ’Ã‚Â¡o
+    // VÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âc thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p khoang phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o
     const housing = new THREE.Mesh(assets.housingGeo, assets.matArmorMetal);
     housing.position.set(0, 0.4, 0);
     housing.castShadow = true;
     headGroup.add(housing);
 
-    // TÃƒÂ¡Ã‚ÂºÃ‚Â¥m giÃƒÆ’Ã‚Â¡p vÃƒÆ’Ã‚Â¡t trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc
+    // TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥m giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡p vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡t trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc
     const armorPlate = new THREE.Mesh(assets.armorPlateGeo, assets.matDetailSteel);
     armorPlate.position.set(0.6, 0.5, 0);
     armorPlate.rotation.z = -0.3;
     headGroup.add(armorPlate);
 
-    // CÃƒÂ¡Ã‚ÂºÃ‚Â·p nÃƒÆ’Ã‚Â²ng phÃƒÆ’Ã‚Â¡o Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â´i hÃƒÂ¡Ã‚ÂºÃ‚Â¡ng nÃƒÂ¡Ã‚ÂºÃ‚Â·ng (Dual Heavy Autocannons)
+    // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·p nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´i hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·ng (Dual Heavy Autocannons)
     const barrelL = new THREE.Mesh(assets.barrelGeo, assets.matGunMetal);
     barrelL.rotation.z = Math.PI / 2;
     barrelL.position.set(1.7, 0.35, -0.45);
@@ -3229,7 +3385,7 @@ Renderer3D.create3DTurel = function(x, z) {
     brakeR.position.set(3.2, 0.35, 0.45);
     headGroup.add(brakeR);
 
-    // MÃƒÂ¡Ã‚ÂºÃ‚Â¯t radar / cÃƒÂ¡Ã‚ÂºÃ‚Â£m biÃƒÂ¡Ã‚ÂºÃ‚Â¿n quang hÃƒÂ¡Ã‚Â»Ã‚Âc ngÃƒÂ¡Ã‚ÂºÃ‚Â¯m bÃƒÂ¡Ã‚ÂºÃ‚Â¯n
+    // MÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯t radar / cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£m biÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n quang hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âc ngÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯m bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯n
     const radar = new THREE.Mesh(assets.radarGeo, assets.matDetailSteel);
     radar.position.set(-0.3, 1.2, 0);
     headGroup.add(radar);
@@ -3298,7 +3454,7 @@ Renderer3D.endTurretPreview = function() {
 
 Renderer3D.create3DMinigun = function(x, z) {
     const group = new THREE.Group();
-    // HÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p (crate) Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â±ng minigun
+    // HÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢p (crate) ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±ng minigun
     const crateW = 3.0, crateH = 1.35, crateD = 3.0;
     const crate = new THREE.Mesh(
         new THREE.BoxGeometry(crateW, crateH, crateD),
@@ -3307,7 +3463,7 @@ Renderer3D.create3DMinigun = function(x, z) {
     crate.castShadow = true; crate.receiveShadow = true;
     group.add(crate); this._addCollisionMesh(crate);
 
-    // CÃƒÆ’Ã‚Â¡c dÃƒÂ¡Ã‚ÂºÃ‚Â£i kim loÃƒÂ¡Ã‚ÂºÃ‚Â¡i trÃƒÆ’Ã‚Âªn hÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p
+    // CÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i kim loÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢p
     const bandMat = new THREE.MeshPhongMaterial({ color: 0x2e2a25 });
     for (const [dx, dz] of [[-0.6, 0], [0.6, 0], [0, -0.6], [0, 0.6]]) {
         const g = dx !== 0 ? new THREE.BoxGeometry(0.08, crateH + 0.02, crateD)
@@ -3345,10 +3501,10 @@ Renderer3D.create3DMinigun = function(x, z) {
             group.position.set(x, 0, z);
             this.scene.add(group);
             return group;
-        } catch(e) { console.warn('Minigun model lÃƒÂ¡Ã‚Â»Ã¢â‚¬â€i, fallback geometry', e); }
+        } catch(e) { console.warn('Minigun model lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Âi, fallback geometry', e); }
     }
 
-    // Fallback: Minigun dÃƒÂ¡Ã‚Â»Ã‚Â±ng bÃƒÂ¡Ã‚ÂºÃ‚Â±ng code trÃƒÆ’Ã‚Âªn Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â°nh hÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p
+    // Fallback: Minigun dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±ng bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â±ng code trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°nh hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢p
     const gunHead = new THREE.Group();
     gunHead.position.y = crateH + 0.2;
 
@@ -3382,8 +3538,8 @@ Renderer3D.create3DMinigun = function(x, z) {
     return group;
 };
 
-// GÃƒÂ¡Ã‚Â»Ã‚Âi loader trong init() cÃƒÂ¡Ã‚Â»Ã‚Â§a main sÃƒÂ¡Ã‚ÂºÃ‚Â½ lÃƒÆ’Ã‚Â m cho scene tÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i, ta nhÃƒÆ’Ã‚Âºng vÃƒÆ’Ã‚Â o cuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi init
-// -> gÃƒÂ¡Ã‚Â»Ã‚Âi loadExternalModels() ÃƒÂ¡Ã‚Â»Ã…Â¸ cuÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi hÃƒÆ’Ã‚Â m init() (patch ngay dÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â¢y)
+// GÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi loader trong init() cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a main sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m cho scene tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œn tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i, ta nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºng vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o cuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i init
+// -> gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi loadExternalModels() ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ cuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m init() (patch ngay dÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y)
 (function() {
     const origInit = Renderer3D.init.bind(Renderer3D);
     Renderer3D.init = function() {
@@ -3399,5 +3555,6 @@ Renderer3D.create3DMinigun = function(x, z) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
 }
+
 
 
