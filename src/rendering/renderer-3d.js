@@ -1,4 +1,4 @@
-/**
+﻿/**
  * RENDERER-3D.JS - XÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½ render 3D dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ng Three.js
  * TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o scene 3D, camera, lighting, vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c entity
  */
@@ -57,6 +57,13 @@ let Renderer3D = {
     _hqInterior: null,
     _externalModels: [],
     _gltfLoader: null,
+
+    // Animation System (Clips, Mixers, Actions)
+    playerMixer: null,
+    playerActions: {},
+    currentPlayerAnim: 'idle',
+    _zombieClips: [],
+    _zombieModelTemplate: null,
 
     init: function() {
         console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¨ KhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o Renderer 3D (Three.js)...');
@@ -429,614 +436,11 @@ let Renderer3D = {
         ctx.fillText('H', 128, 128);
         const hTexture = new THREE.CanvasTexture(hCanvas);
         const hMat = new THREE.MeshPhongMaterial({ map: hTexture, transparent: true, side: THREE.DoubleSide });
-        const hPlane = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 4.5), hMat);
-        hPlane.rotation.x = -Math.PI / 2;
-        hPlane.position.set(cx, 0.51, cz);
-        hPlane.receiveShadow = true;
-        this.scene.add(hPlane);
-
-        const ledMat = new THREE.MeshPhongMaterial({ color: 0xfbc531, emissive: 0xfbc531, emissiveIntensity: 0.3 });
-        for (let i = 0; i < 12; i++) {
-            const angle = (i / 12) * Math.PI * 2;
-            const r = 7.5;
-            const x = cx + Math.cos(angle) * r;
-            const z = cz + Math.sin(angle) * r;
-            const led = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), ledMat);
-            led.position.set(x, 0.55, z);
-            led.castShadow = true;
-            this.scene.add(led);
-        }
+        const hMesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), hMat);
+        hMesh.rotation.x = -Math.PI / 2;
+        hMesh.position.set(cx, 0.51, cz);
+        this.scene.add(hMesh);
     },
-
-    _createCommandCenter: function(cx, cz) {
-        const group = new THREE.Group();
-
-        // TÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²a trung tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢m lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºn hÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡n hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â³n cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c khu cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i: 3 tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng, sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n trong rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng,
-        // tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1 ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ build minter/conveyor, tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 2 lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  command floor, tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 3 lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â 
-        // operations / VIP floor. CÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn mang tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬nh diÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦n nhÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ng
-        // vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â«n cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ sau nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng gameplay.
-        const W = 30;
-        const D = 22;
-        const floorH = 3.8;
-        const wallT = 0.65;
-        const floorMat = new THREE.MeshPhongMaterial({ color: 0x343a40 });
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x4b555c });
-        const trimMat = new THREE.MeshPhongMaterial({ color: 0x7a8a92 });
-        const darkMat = new THREE.MeshPhongMaterial({ color: 0x20262a });
-        const glassMat = new THREE.MeshPhongMaterial({
-            color: 0x7fe8ff,
-            emissive: 0x2f93a8,
-            emissiveIntensity: 0.3,
-            transparent: true,
-            opacity: 0.72
-        });
-
-        const addBox = (geo, mat, x, y, z, collision = true) => {
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set(x, y, z);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            group.add(mesh);
-            if (collision) this._addCollisionMesh(mesh);
-            return mesh;
-        };
-
-        // SÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n 3 tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng (tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1 chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â«a hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â³n khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng gian build).
-        [0.16, floorH + 0.12, floorH * 2 + 0.12].forEach(y => {
-            addBox(new THREE.BoxGeometry(W, 0.28, D), floorMat, 0, y, 0, false);
-        });
-
-        // TÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1: mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºn 7m, phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£m giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c
-        // ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡y in tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân/conveyor.
-        const frontSide = (yBase, h) => {
-            const gap = 7.0;
-            const sideW = (W - gap) / 2;
-            addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, -(gap + sideW) / 2, yBase + h / 2, D / 2, true);
-            addBox(new THREE.BoxGeometry(sideW, h, wallT), wallMat, (gap + sideW) / 2, yBase + h / 2, D / 2, true);
-            // header phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a
-            addBox(new THREE.BoxGeometry(gap, 0.9, wallT), wallMat, 0, yBase + h - 0.45, D / 2, true);
-        };
-        const fullWall = (x, yBase, z, w, h, d, mat = wallMat) => {
-            addBox(new THREE.BoxGeometry(w, h, d), mat, x, yBase + h / 2, z, true);
-        };
-
-        frontSide(0.28, floorH - 0.2);
-        fullWall(0, 0.28, -D / 2, W, floorH - 0.2, wallT);
-        fullWall(-W / 2, 0.28, 0, wallT, floorH - 0.2, D);
-        fullWall(W / 2, 0.28, 0, wallT, floorH - 0.2, D);
-
-        // TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 2 + tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 3 khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­n hÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡n, lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m silhouette thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a HQ.
-        for (let level = 1; level <= 2; level++) {
-            const yBase = level * floorH + 0.28;
-            frontSide(yBase, floorH - 0.2);
-            fullWall(0, yBase, -D / 2, W, floorH - 0.2, wallT);
-            fullWall(-W / 2, yBase, 0, wallT, floorH - 0.2, D);
-            fullWall(W / 2, yBase, 0, wallT, floorH - 0.2, D);
-        }
-
-        // DÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh cho cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ 3 tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng.
-        for (let level = 0; level < 3; level++) {
-            const y = 1.75 + level * floorH;
-            const frontZ = D / 2 + 0.02;
-            for (let i = -2; i <= 2; i++) {
-                if (level === 0 && i === 0) continue; // cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1
-                const win = addBox(new THREE.BoxGeometry(3.2, 1.2, 0.12), glassMat,
-                    i * 4.7, y, frontZ, false);
-                win.castShadow = false;
-            }
-            for (let i = -2; i <= 2; i++) {
-                const winL = addBox(new THREE.BoxGeometry(0.12, 1.1, 3.0), glassMat,
-                    -W / 2 - 0.02, y, i * 3.6, false);
-                const winR = addBox(new THREE.BoxGeometry(0.12, 1.1, 3.0), glassMat,
-                    W / 2 + 0.02, y, i * 3.6, false);
-                winL.castShadow = winR.castShadow = false;
-            }
-        }
-
-        // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­a chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh kiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢u military airlock.
-        const doorOuter = addBox(new THREE.BoxGeometry(6.4, 3.0, 0.18), darkMat, 0, 1.62, D / 2 + 0.18, false);
-        doorOuter.castShadow = false;
-        const doorGlow = addBox(new THREE.BoxGeometry(5.2, 2.35, 0.08),
-            new THREE.MeshPhongMaterial({ color: 0x26363a, emissive: 0x4cc9dc, emissiveIntensity: 0.12 }),
-            0, 1.55, D / 2 + 0.29, false);
-        doorGlow.castShadow = false;
-
-        // MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ua + tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i, lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â m cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬nh nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢i bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« xa.
-        addBox(new THREE.BoxGeometry(W + 1.8, 0.38, D + 1.8), darkMat, 0, floorH * 3 + 0.35, 0, true);
-        addBox(new THREE.BoxGeometry(18, 1.0, 9), new THREE.MeshPhongMaterial({ color: 0x30373c }), 0, floorH * 3 + 1.0, -0.5, true);
-        addBox(new THREE.BoxGeometry(20, 0.28, 11), trimMat, 0, floorH * 3 + 1.48, -0.5, true);
-
-        // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡u + logo HQ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân.
-        const sign = this._createBuildingSign('COMMAND HQ', 0x74e7ff, 8.5, 1.8);
-        sign.position.set(0, 5.9, D / 2 + 0.42);
-        group.add(sign);
-
-        const subSign = this._createBuildingSign('BASE OPERATIONS', 0xf1c40f, 7.3, 1.25);
-        subSign.position.set(0, 2.8, D / 2 + 0.42);
-        group.add(subSign);
-
-        // NÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢i thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥t tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 1: cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c khu build minter cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹nh, rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  thoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ng.
-        const interiorPadMat = new THREE.MeshPhongMaterial({ color: 0x263238 });
-        const laneMat = new THREE.MeshPhongMaterial({ color: 0x40545b });
-        const mintGlowMat = new THREE.MeshPhongMaterial({ color: 0x7bed9f, emissive: 0x2ecc71, emissiveIntensity: 0.3 });
-
-        for (let row = 0; row < 2; row++) {
-            for (let col = 0; col < 3; col++) {
-                const x = -8.5 + col * 8.5;
-                const z = -4.0 + row * 7.0;
-                const pad = addBox(new THREE.BoxGeometry(6.8, 0.12, 4.9), interiorPadMat, x, 0.40, z, false);
-                pad.userData = { buildZone: 'minter', slot: `${row}-${col}` };
-
-                const inner = addBox(new THREE.BoxGeometry(5.7, 0.05, 3.8), laneMat, x, 0.48, z, false);
-                inner.userData = { buildZone: 'minter' };
-
-                // ViÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân slot mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â u xanh + ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ng, bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o cho player ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  khu build tiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân.
-                for (const edge of [[5.9,0.06,0.08,0],[5.9,0.06,0.08,Math.PI], [0.08,0.06,3.9,0],[0.08,0.06,3.9,0]]) {
-                    // Khung nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¹; khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng collision ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ player ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i qua.
-                }
-                const marker = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.22), mintGlowMat);
-                marker.position.set(x - 2.65, 0.58, z - 1.8);
-                marker.castShadow = true;
-                group.add(marker);
-            }
-        }
-
-        // TrÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥c giao thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng trong sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh.
-        addBox(new THREE.BoxGeometry(1.0, 0.05, D - 2.0),
-            new THREE.MeshPhongMaterial({ color: 0x92a1a8 }), 0, 0.55, 1.6, false);
-
-        // CÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thang bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§ng 2/3 (ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¹p vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ gameplay sau).
-        const stairMat = new THREE.MeshPhongMaterial({ color: 0x59666d });
-        for (let level = 0; level < 2; level++) {
-            for (let i = 0; i < 9; i++) {
-                const step = addBox(new THREE.BoxGeometry(4.8, 0.28 + i * 0.04, 0.8), stairMat,
-                    W / 2 - 4.0, 0.62 + level * floorH + i * 0.18, -7.6 + i * 0.85, true);
-                step.rotation.y = 0;
-            }
-        }
-
-        // Hai terminal chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©c nÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€ Ã¢â‚¬â„¢ng ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£nh.
-        this._createTerminalKiosk(group, -11.0, 1.2, 5.0, 0x54a0ff, 'BASE UPGRADES');
-        this._createTerminalKiosk(group, 11.0, 1.2, 5.0, 0xffc857, 'MONEY CONTROL');
-
-        // ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨n/strips dÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i.
-        for (let side of [-1, 1]) {
-            const strip = addBox(new THREE.BoxGeometry(W + 0.4, 0.18, 0.18),
-                new THREE.MeshPhongMaterial({ color: 0x64dff0, emissive: 0x33c7df, emissiveIntensity: 0.35 }),
-                0, floorH * 3 + 0.62, side * (D / 2 + 0.16), false);
-            strip.castShadow = false;
-        }
-
-        group.position.set(cx, 0, cz);
-        this.scene.add(group);
-
-        this._createInteriorBuildSign(cx, cz, W, D);
-        this._militaryBuildingFunctions = this._militaryBuildingFunctions || {};
-        this._militaryBuildingFunctions.command = {
-            name: 'Command HQ',
-            function: 'Base upgrades + money production hub',
-            buildZone: 'minter'
-        };
-    },
-
-    _createBuildingSign: function(text, color, width = 6, height = 1.4) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#11181d';
-        ctx.fillRect(8, 8, 496, 112);
-        ctx.strokeStyle = '#' + color.toString(16).padStart(6, '0');
-        ctx.lineWidth = 6;
-        ctx.strokeRect(10, 10, 492, 108);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 42px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, 256, 66);
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.needsUpdate = true;
-        const mat = new THREE.MeshPhongMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
-        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
-        mesh.castShadow = false;
-        return mesh;
-    },
-
-    _createInteriorBuildSign: function(cx, cz, width, depth) {
-        const sign = this._createBuildingSign('BUILD MONEY MACHINES', 0x2ecc71, 9.4, 1.1);
-        sign.position.set(cx, 3.8, cz + depth / 2 + 0.36);
-        sign.rotation.y = Math.PI;
-        this.scene.add(sign);
-    },
-
-    _createTerminalKiosk: function(group, x, y, z, color, label) {
-        const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.2), new THREE.MeshPhongMaterial({ color: 0x252c31 }));
-        base.position.set(x, y, z);
-        base.castShadow = true;
-        group.add(base);
-        const screen = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.12), new THREE.MeshPhongMaterial({
-            color,
-            emissive: color,
-            emissiveIntensity: 0.28
-        }));
-        screen.position.set(x, y + 0.78, z - 0.18);
-        screen.castShadow = true;
-        group.add(screen);
-        const sign = this._createBuildingSign(label, color, 3.8, 0.62);
-        sign.position.set(x, y + 1.55, z + 0.06);
-        sign.rotation.x = -0.12;
-        group.add(sign);
-    },
-
-    _createDoubleWalls: function(cx, cz, radius) {
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x7f8c8d });
-        const wallHeight = 3.0;
-        const wallThick = 0.5;
-        const segments = 48;
-
-        // VÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng ngoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â i
-        for (let i = 0; i < segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const nextAngle = ((i + 1) / segments) * Math.PI * 2;
-            const x1 = cx + Math.cos(angle) * radius;
-            const z1 = cz + Math.sin(angle) * radius;
-            const x2 = cx + Math.cos(nextAngle) * radius;
-            const z2 = cz + Math.sin(nextAngle) * radius;
-            const midX = (x1 + x2) / 2;
-            const midZ = (z1 + z2) / 2;
-            const dist = Math.hypot(x2 - x1, z2 - z1);
-
-            const wall = new THREE.Mesh(new THREE.BoxGeometry(dist, wallHeight, wallThick), wallMat);
-            wall.position.set(midX, wallHeight / 2, midZ);
-            wall.lookAt(x2, wallHeight / 2, z2);
-            wall.castShadow = true;
-            wall.receiveShadow = true;
-            this.scene.add(wall);
-            this._addCollisionMesh(wall);
-        }
-
-        // HÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â ng rÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn trong (khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n camera vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  lÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng, nhÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ng vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â«n thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªm ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ an toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n)
-        const innerRadius = radius - 1.2;
-        const fenceMat = new THREE.MeshPhongMaterial({ color: 0xa4b0be });
-        for (let i = 0; i < segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const x = cx + Math.cos(angle) * innerRadius;
-            const z = cz + Math.sin(angle) * innerRadius;
-            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.0, 6), fenceMat);
-            post.position.set(x, 1.0, z);
-            post.castShadow = true;
-            post.receiveShadow = true;
-            this.scene.add(post);
-            this._addCollisionMesh(post);
-
-            if (i % 2 === 0) {
-                const nextAngle = ((i + 1) % segments) / segments * Math.PI * 2;
-                const nx = cx + Math.cos(nextAngle) * innerRadius;
-                const nz = cz + Math.sin(nextAngle) * innerRadius;
-                const midX = (x + nx) / 2;
-                const midZ = (z + nz) / 2;
-                const dist = Math.hypot(nx - x, nz - z);
-                const bar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, dist), fenceMat);
-                bar.position.set(midX, 0.8, midZ);
-                bar.lookAt(nx, 0.8, nz);
-                bar.castShadow = true;
-                bar.receiveShadow = true;
-                this.scene.add(bar);
-                const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, dist), fenceMat);
-                bar2.position.set(midX, 1.6, midZ);
-                bar2.lookAt(nx, 1.6, nz);
-                bar2.castShadow = true;
-                bar2.receiveShadow = true;
-                this.scene.add(bar2);
-            }
-        }
-
-        // ChÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºng ngÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t (hedgehog + barrier)
-        const hedgehogMat = new THREE.MeshPhongMaterial({ color: 0x6b6b6b });
-        const barrierMat = new THREE.MeshPhongMaterial({ color: 0x8e8e8e });
-        for (let i = 0; i < 20; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const r = radius - 2 - Math.random() * 3;
-            const x = cx + Math.cos(angle) * r;
-            const z = cz + Math.sin(angle) * r;
-
-            if (Math.random() < 0.5) {
-                const hGroup = new THREE.Group();
-                const barLen = 1.2;
-                const bar = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.06, 0.06), hedgehogMat);
-                bar.position.set(0, 0, 0);
-                bar.castShadow = true;
-                hGroup.add(bar);
-                const bar2 = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.06, 0.06), hedgehogMat);
-                bar2.rotation.x = Math.PI / 2;
-                bar2.position.set(0, 0, 0);
-                bar2.castShadow = true;
-                hGroup.add(bar2);
-                const bar3 = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.06, 0.06), hedgehogMat);
-                bar3.rotation.z = Math.PI / 2;
-                bar3.position.set(0, 0, 0);
-                bar3.castShadow = true;
-                hGroup.add(bar3);
-                hGroup.position.set(x, 0.6, z);
-                hGroup.rotation.y = Math.random() * Math.PI * 2;
-                this.scene.add(hGroup);
-                hGroup.children.forEach(child => this._addCollisionMesh(child));
-            } else {
-                const barrier = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), barrierMat);
-                barrier.position.set(x, 0.2, z);
-                barrier.castShadow = true;
-                barrier.receiveShadow = true;
-                this.scene.add(barrier);
-                this._addCollisionMesh(barrier);
-            }
-        }
-    },
-
-    _createGuardTower: function(x, z) {
-        const group = new THREE.Group();
-
-        const colMat = new THREE.MeshPhongMaterial({ color: 0x57606f });
-        const colPos = [[-1.2, -1.2], [1.2, -1.2], [1.2, 1.2], [-1.2, 1.2]];
-        const cols = [];
-        colPos.forEach(([dx, dz]) => {
-            const col = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 6.0, 6), colMat);
-            col.position.set(dx, 3.0, dz);
-            col.castShadow = true;
-            col.receiveShadow = true;
-            group.add(col);
-            cols.push(col);
-            this._addCollisionMesh(col);
-        });
-
-        const floor = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.15, 3.0),
-            new THREE.MeshPhongMaterial({ color: 0x2f3542 }));
-        floor.position.set(0, 5.5, 0);
-        floor.castShadow = true;
-        floor.receiveShadow = true;
-        group.add(floor);
-        this._addCollisionMesh(floor);
-
-        const railMat = new THREE.MeshPhongMaterial({ color: 0x7f8c8d });
-        for (let i = 0; i < 4; i++) {
-            const angle = (i / 4) * Math.PI * 2;
-            const r = 1.5;
-            const x1 = Math.cos(angle) * r;
-            const z1 = Math.sin(angle) * r;
-            const x2 = Math.cos((i + 1) / 4 * Math.PI * 2) * r;
-            const z2 = Math.sin((i + 1) / 4 * Math.PI * 2) * r;
-            const midX = (x1 + x2) / 2;
-            const midZ = (z1 + z2) / 2;
-            const dist = Math.hypot(x2 - x1, z2 - z1);
-            const bar = new THREE.Mesh(new THREE.BoxGeometry(dist, 0.05, 0.05), railMat);
-            bar.position.set(midX, 6.2, midZ);
-            bar.lookAt(x2, 6.2, z2);
-            bar.castShadow = true;
-            group.add(bar);
-        }
-
-        const roof = new THREE.Mesh(new THREE.ConeGeometry(2.2, 0.8, 4),
-            new THREE.MeshPhongMaterial({ color: 0x2f3542 }));
-        roof.position.set(0, 6.5, 0);
-        roof.rotation.y = Math.PI / 4;
-        roof.castShadow = true;
-        roof.receiveShadow = true;
-        group.add(roof);
-        this._addCollisionMesh(roof);
-
-        const light = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8),
-            new THREE.MeshPhongMaterial({ color: 0xfbc531, emissive: 0xfbc531, emissiveIntensity: 0.5 }));
-        light.position.set(0, 6.8, 0);
-        light.castShadow = true;
-        group.add(light);
-
-        const dish = new THREE.Mesh(new THREE.CircleGeometry(0.4, 8),
-            new THREE.MeshPhongMaterial({ color: 0x95a5a6, side: THREE.DoubleSide }));
-        dish.position.set(0, 6.6, 1.2);
-        dish.rotation.x = -Math.PI / 2;
-        dish.castShadow = true;
-        group.add(dish);
-
-        group.position.set(x, 0, z);
-        this.scene.add(group);
-    },
-
-    _createBarracks: function(cx, cz) {
-        for (let i = -1; i <= 1; i += 2) {
-            for (let j = -1; j <= 1; j += 2) {
-                const x = cx + i * 3.5;
-                const z = cz + j * 4.0;
-                this._createTent(x, z);
-            }
-        }
-
-        const pathMat = new THREE.MeshPhongMaterial({ color: 0x7f8c8d });
-        for (let i = -1; i <= 1; i += 2) {
-            const path = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 6), pathMat);
-            path.position.set(cx + i * 1.8, 0.03, cz);
-            path.receiveShadow = true;
-            path.castShadow = true;
-            this.scene.add(path);
-        }
-    },
-
-    _createTent: function(x, z) {
-        const group = new THREE.Group();
-        const tentMat = new THREE.MeshPhongMaterial({
-            color: 0x1b4332,
-            side: THREE.DoubleSide,
-            flatShading: true
-        });
-        const tent = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 3.5, 8, 1, true, 0, Math.PI), tentMat);
-        tent.rotation.z = Math.PI / 2;
-        tent.position.set(0, 1.0, 0);
-        tent.castShadow = true;
-        tent.receiveShadow = true;
-        group.add(tent);
-        this._addCollisionMesh(tent);
-
-        const base = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.2),
-            new THREE.MeshPhongMaterial({ color: 0x1b4332 }));
-        base.rotation.x = -Math.PI / 2;
-        base.position.set(0, 0.02, 0);
-        base.receiveShadow = true;
-        group.add(base);
-
-        const stakeMat = new THREE.MeshPhongMaterial({ color: 0x718093 });
-        for (let i = -1; i <= 1; i += 2) {
-            const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.4, 4), stakeMat);
-            stake.position.set(i * 2.4, 0.2, 1.4);
-            stake.castShadow = true;
-            group.add(stake);
-        }
-
-        group.position.set(x, 0, z);
-        group.rotation.y = (Math.random() - 0.5) * 0.3;
-        this.scene.add(group);
-    },
-
-    _createSupplyDepot: function(cx, cz) {
-        const contMat = new THREE.MeshPhongMaterial({ color: 0xc0392b });
-        const cont = new THREE.Mesh(new THREE.BoxGeometry(4.0, 2.5, 2.5), contMat);
-        cont.position.set(cx - 3, 1.25, cz);
-        cont.castShadow = true;
-        cont.receiveShadow = true;
-        this.scene.add(cont);
-        this._addCollisionMesh(cont);
-
-        const contMat2 = new THREE.MeshPhongMaterial({ color: 0x2980b9 });
-        const cont2 = new THREE.Mesh(new THREE.BoxGeometry(4.0, 2.5, 2.5), contMat2);
-        cont2.position.set(cx + 3, 1.25, cz);
-        cont2.castShadow = true;
-        cont2.receiveShadow = true;
-        this.scene.add(cont2);
-        this._addCollisionMesh(cont2);
-
-        const small = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.2, 1.8),
-            new THREE.MeshPhongMaterial({ color: 0xe67e22 }));
-        small.position.set(cx - 1.5, 3.0, cz - 1.5);
-        small.castShadow = true;
-        small.receiveShadow = true;
-        this.scene.add(small);
-        this._addCollisionMesh(small);
-
-        const woodMat = new THREE.MeshPhongMaterial({ color: 0x8e7538 });
-        for (let i = -1; i <= 1; i += 2) {
-            const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), woodMat);
-            box.position.set(cx + i * 1.5, 0.3, cz + 3.5);
-            box.castShadow = true;
-            box.receiveShadow = true;
-            this.scene.add(box);
-            this._addCollisionMesh(box);
-        }
-
-        const oilMat = new THREE.MeshPhongMaterial({ color: 0xe67e22 });
-        for (let i = 0; i < 3; i++) {
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.8, 8), oilMat);
-            barrel.position.set(cx + i * 1.2 - 1.2, 0.4, cz - 3.2);
-            barrel.castShadow = true;
-            barrel.receiveShadow = true;
-            this.scene.add(barrel);
-            this._addCollisionMesh(barrel);
-            const rim = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.03, 6, 8),
-                new THREE.MeshPhongMaterial({ color: 0x7f8c8d }));
-            rim.position.set(cx + i * 1.2 - 1.2, 0.8, cz - 3.2);
-            rim.rotation.x = Math.PI / 2;
-            rim.castShadow = true;
-            this.scene.add(rim);
-        }
-    },
-
-    _createMainGate: function(cx, cz) {
-        const group = new THREE.Group();
-
-        const boothMat = new THREE.MeshPhongMaterial({ color: 0x34495e });
-        for (let i = -1; i <= 1; i += 2) {
-            const booth = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.0, 1.2), boothMat);
-            booth.position.set(i * 3.0, 1.0, 0);
-            booth.castShadow = true;
-            booth.receiveShadow = true;
-            group.add(booth);
-            this._addCollisionMesh(booth);
-
-            const roof = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.4, 4),
-                new THREE.MeshPhongMaterial({ color: 0x2c3e50 }));
-            roof.position.set(i * 3.0, 2.2, 0);
-            roof.rotation.y = Math.PI / 4;
-            roof.castShadow = true;
-            group.add(roof);
-            this._addCollisionMesh(roof);
-        }
-
-        const barMat = new THREE.MeshPhongMaterial({ color: 0xe74c3c });
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 5.0), barMat);
-        bar.position.set(0, 0.6, 0);
-        bar.castShadow = true;
-        bar.receiveShadow = true;
-        group.add(bar);
-        this._addCollisionMesh(bar);
-
-        const whiteMat = new THREE.MeshPhongMaterial({ color: 0xecf0f1 });
-        for (let i = -2; i <= 2; i += 1.5) {
-            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.5), whiteMat);
-            stripe.position.set(0, 0.6, i);
-            stripe.castShadow = true;
-            group.add(stripe);
-        }
-
-        const poleMat = new THREE.MeshPhongMaterial({ color: 0x7f8c8d });
-        for (let i = -1; i <= 1; i += 2) {
-            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.2, 6), poleMat);
-            pole.position.set(i * 2.6, 0.6, 0);
-            pole.castShadow = true;
-            group.add(pole);
-            this._addCollisionMesh(pole);
-        }
-
-        group.position.set(cx, 0, cz);
-        this.scene.add(group);
-    },
-
-    _createFlagpole: function(cx, cz) {
-        const group = new THREE.Group();
-
-        const poleMat = new THREE.MeshPhongMaterial({ color: 0xbdc3c7 });
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 10, 8), poleMat);
-        pole.position.set(0, 5, 0);
-        pole.castShadow = true;
-        pole.receiveShadow = true;
-        group.add(pole);
-        this._addCollisionMesh(pole);
-
-        const top = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8),
-            new THREE.MeshPhongMaterial({ color: 0xf1c40f }));
-        top.position.set(0, 10.1, 0);
-        top.castShadow = true;
-        group.add(top);
-
-        const flagCanvas = document.createElement('canvas');
-        flagCanvas.width = 128;
-        flagCanvas.height = 80;
-        const ctx = flagCanvas.getContext('2d');
-        ctx.fillStyle = '#e74c3c';
-        ctx.fillRect(0, 0, 128, 80);
-        ctx.fillStyle = '#f1c40f';
-        ctx.font = 'bold 50px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦', 64, 44);
-        const flagTexture = new THREE.CanvasTexture(flagCanvas);
-        const flagMat = new THREE.MeshPhongMaterial({ map: flagTexture, side: THREE.DoubleSide, transparent: true });
-        const flag = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.0), flagMat);
-        flag.position.set(1.6, 8.5, 0);
-        flag.rotation.y = -0.2;
-        flag.castShadow = true;
-        group.add(flag);
-
-        group.position.set(cx, 0, cz);
-        this.scene.add(group);
-    },
-
 
     _createBoxBuilding: function(x, z, width, height, depth, bodyColor, accentColor, labelColor, labelText) {
         const group = new THREE.Group();
@@ -1520,14 +924,20 @@ let Renderer3D = {
         }
         if (!this._gltfLoader) return;
 
-        // 1. Preload Zombie Model Template
+        // 1. Preload Zombie Model Template & Animation Clips
         const zombiePath = 'src/assets/character/zombie/roblox_retro_zombie.glb';
         this._gltfLoader.load(zombiePath, (gltf) => {
             const root = gltf.scene || gltf;
+            this._zombieClips = gltf.animations || [];
+            if (this._zombieClips.length > 0) {
+                console.log('🎬 Zombie GLB có', this._zombieClips.length, 'animation clips:', this._zombieClips.map(a => a.name));
+            }
+
             root.traverse(c => {
                 if (c.isMesh) {
                     c.castShadow = true;
                     c.receiveShadow = true;
+                    c.frustumCulled = false;
                     if (c.material) {
                         c.material = c.material.clone();
                     }
@@ -1547,9 +957,9 @@ let Renderer3D = {
             const wrapper = new THREE.Group();
             wrapper.add(root);
             this._zombieModelTemplate = wrapper;
-            console.log('ðŸ§Ÿ ÄÃ£ load model Zombie GLB roblox_retro_zombie.glb');
+            console.log('🧟 Đã load model Zombie GLB roblox_retro_zombie.glb');
         }, undefined, (err) => {
-            console.warn('KhÃ´ng load Ä‘Æ°á»£c zombie GLB, dÃ¹ng fallback procedural:', err?.message || err);
+            console.warn('Không load được zombie GLB, dùng fallback procedural:', err?.message || err);
         });
     },
 
@@ -1572,7 +982,26 @@ let Renderer3D = {
         // Asynchronously load the upgraded Roblox player model GLB
         this._loadPlayerGLB(rig);
 
-        console.log('🚶 NhÃ¢n váº­t Player 3D Ä‘Æ°á»£c khá»Ÿi táº¡o');
+        console.log('🚶 Nhân vật Player 3D được khởi tạo');
+    },
+
+    setPlayerAnimation: function(name, duration = 0.2) {
+        if (!this.playerMixer || !this.playerActions) return;
+        const targetAction = this.playerActions[name] || this.playerActions['idle'];
+        if (!targetAction || this.currentPlayerAnim === name) return;
+
+        const prevAction = this.playerActions[this.currentPlayerAnim];
+        if (prevAction && prevAction !== targetAction) {
+            prevAction.fadeOut(duration);
+        }
+        targetAction.reset().fadeIn(duration).play();
+        this.currentPlayerAnim = name;
+    },
+
+    updatePlayerAnimationMixer: function(deltaSec) {
+        if (this.playerMixer) {
+            this.playerMixer.update(deltaSec);
+        }
     },
 
     _buildProceduralPlayerRig: function(rig) {
@@ -1657,14 +1086,135 @@ let Renderer3D = {
         const path = 'src/assets/character/player/upgraded_roblox_model.glb';
         this._gltfLoader.load(path, (gltf) => {
             const root = gltf.scene || gltf;
+
+            // 1. Duyệt toàn bộ node/bone của Player model và console.log ra F12
+            const boneNames = [];
             root.traverse(c => {
+                if (c.name) {
+                    boneNames.push(c.name + (c.isBone ? ' [Bone]' : (c.isMesh ? ' [Mesh]' : ' [Group]')));
+                }
                 if (c.isMesh) {
                     c.castShadow = true;
                     c.receiveShadow = true;
+                    c.frustumCulled = false;
+                }
+            });
+            console.log('🦴 [Player Model] Danh sách Nodes / Bones:', boneNames);
+
+            // 2. Khởi tạo AnimationMixer nếu model có Animation Clips
+            if (gltf.animations && gltf.animations.length > 0) {
+                this.playerMixer = new THREE.AnimationMixer(root);
+                this.playerActions = {};
+                console.log('🎬 Player GLTF có', gltf.animations.length, 'animation clips:', gltf.animations.map(a => a.name));
+                gltf.animations.forEach((clip, idx) => {
+                    const name = (clip.name || '').toLowerCase();
+                    const action = this.playerMixer.clipAction(clip);
+                    if (name.includes('idle')) this.playerActions['idle'] = action;
+                    else if (name.includes('run') || name.includes('sprint')) this.playerActions['run'] = action;
+                    else if (name.includes('walk')) this.playerActions['walk'] = action;
+                    else if (name.includes('attack') || name.includes('shoot') || name.includes('slash')) this.playerActions['attack'] = action;
+
+                    if (idx === 0 && !this.playerActions['idle']) this.playerActions['idle'] = action;
+                    if (idx === 1 && !this.playerActions['walk']) this.playerActions['walk'] = action;
+                    if (idx === 2 && !this.playerActions['run']) this.playerActions['run'] = action;
+                    if (idx === 3 && !this.playerActions['attack']) this.playerActions['attack'] = action;
+                });
+                this.setPlayerAnimation('idle', 0.1);
+            } else {
+                console.log('ℹ️ Model Player không có sẵn animation clip, tự động kích hoạt Procedural Animation');
+            }
+
+            // 3. Dynamic Bone Matching cho Right Hand Socket
+            // Thiết lập thang điểm ưu tiên rõ ràng để tìm node tay phải chính xác nhất, tránh bị khớp sớm vào các node cánh tay ở trên
+            const handBones = [
+                'righthand', 'mixamorigrighthand', 'mixamorig:righthand',
+                'hand_r', 'hand.r', 'handr', 'bip001_r_hand', 'right_hand',
+                'bone_righthand', 'dummy2.003_2'
+            ];
+            const forearmBones = [
+                'rightforearm', 'mixamorigrightforearm', 'forearm_r', 'forearm.r', 
+                'forearmr', 'right_forearm'
+            ];
+            const armBones = [
+                'rightarm', 'mixamorigrightarm', 'arm_r', 'arm.r', 
+                'armr', 'right_arm', 'dummy2_3'
+            ];
+
+            let targetBone = null;
+            let bestScore = -1;
+
+            root.traverse(c => {
+                const name = (c.name || '').toLowerCase().trim();
+                if (!name) return;
+
+                let score = 0;
+                
+                // 1. Khớp chính xác (exact match) có điểm cao nhất trong nhóm của nó
+                if (handBones.includes(name)) {
+                    score = 100;
+                } else if (forearmBones.includes(name)) {
+                    score = 80;
+                } else if (armBones.includes(name)) {
+                    score = 60;
+                }
+                // 2. Khớp một phần (partial match) có điểm thấp hơn khớp chính xác
+                else {
+                    for (const target of handBones) {
+                        if (name.includes(target)) {
+                            score = 90;
+                            break;
+                        }
+                    }
+                    if (score === 0) {
+                        for (const target of forearmBones) {
+                            if (name.includes(target)) {
+                                score = 70;
+                                break;
+                            }
+                        }
+                    }
+                    if (score === 0) {
+                        for (const target of armBones) {
+                            if (name.includes(target)) {
+                                score = 50;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 3. Khớp chung chung bằng từ khóa bổ trợ
+                if (score === 0) {
+                    if ((name.includes('hand') && (name.includes('right') || name.includes('_r') || name.includes('.r'))) ||
+                        name.includes('righthand')) {
+                        score = 40;
+                    } else if (name.includes('forearm') && (name.includes('right') || name.includes('_r') || name.includes('.r'))) {
+                        score = 30;
+                    } else if (name.includes('arm') && (name.includes('right') || name.includes('_r') || name.includes('.r'))) {
+                        score = 20;
+                    }
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    targetBone = c;
                 }
             });
 
-            // Extract Roblox limb nodes
+            // Fallback Layer 1: Nếu vẫn không tìm thấy bone nào khớp, tìm mesh tay phải thực tế
+            if (!targetBone) {
+                root.traverse(c => {
+                    if (targetBone) return;
+                    if (c.isMesh) {
+                        const name = (c.name || '').toLowerCase();
+                        if (name.includes('dummy2.003_2') || name.includes('rightarm') || name.includes('right_arm') || name.includes('r_arm') || name.includes('righthand') || name.includes('right_hand')) {
+                            targetBone = c;
+                        }
+                    }
+                });
+            }
+
+            // Extract Roblox limb nodes if modular
             let torsoMesh = null, headMesh = null;
             let rArmMesh = null, lArmMesh = null;
             let rLegMesh = null, lLegMesh = null;
@@ -1679,7 +1229,8 @@ let Renderer3D = {
                 else if (name.includes('dummy2.006_4')) lLegMesh = c;
             });
 
-            // If parsed with submeshes, mount into rig
+            let rightHandSocket = null;
+
             if (torsoMesh && headMesh && rArmMesh && lArmMesh && rLegMesh && lLegMesh) {
                 while (rig.children.length > 0) {
                     rig.remove(rig.children[0]);
@@ -1737,28 +1288,19 @@ let Renderer3D = {
                 glbContainer.add(lLegPivot);
                 rig.leftLeg = lLegPivot;
 
-                // Weapon socket in right hand
-                const rightHandSocket = new THREE.Group();
+                // Dedicated Weapon Socket attached to Right Hand
+                rightHandSocket = new THREE.Group();
                 rightHandSocket.name = 'rightHandSocket';
                 rightHandSocket.position.set(0, -1.8, 0.8);
                 rArmPivot.add(rightHandSocket);
-                rig.rightHandSocket = rightHandSocket;
-                if (this.player) this.player.rightHandSocket = rightHandSocket;
 
                 rig.add(glbContainer);
-                if (this.player) this.player.body = torsoPivot;
-                if (this.player) this.player.head = headPivot;
-
-                // Re-bind weapon holder if WeaponRenderer exists
-                if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
-                    rightHandSocket.add(WeaponRenderer._weaponHolder);
-                    WeaponRenderer._weaponHolder.position.set(0, 0, 0);
-                    if (typeof WeaponSystem !== 'undefined') {
-                        WeaponRenderer._showModel(WeaponSystem.currentId);
-                    }
+                if (this.player) {
+                    this.player.body = torsoPivot;
+                    this.player.head = headPivot;
                 }
 
-                console.log('ðŸ§ ÄÃ£ tÃ­ch há»£p MODEL PLAYER upgraded_roblox_model.glb vÃ o Player Controller');
+                console.log('✅ Đã ghép model Roblox Player vào Procedural Rig với Right Hand Socket');
             } else {
                 const box = new THREE.Box3().setFromObject(root);
                 const size = new THREE.Vector3();
@@ -1772,10 +1314,54 @@ let Renderer3D = {
                 rig.add(root);
                 rig.torso = root;
                 if (this.player) this.player.body = root;
-                console.log('ðŸ§ ÄÃ£ load model player (toÃ n bá»™ scene)');
+
+                if (targetBone) {
+                    console.log('✅ Dynamic Bone Matching: Gắn vũ khí vào bone ->', targetBone.name);
+                    rightHandSocket = new THREE.Group();
+                    rightHandSocket.name = 'rightHandSocket';
+                    rightHandSocket.position.set(0, 0, 0);
+                    rightHandSocket.rotation.set(0, 0, 0);
+                    targetBone.add(rightHandSocket);
+                } else {
+                    console.warn('⚠️ Dynamic Bone Matching: Không tìm thấy bone tay phải chuẩn, fallback gắn vào Root Model bằng toạ độ động');
+                    rightHandSocket = new THREE.Group();
+                    rightHandSocket.name = 'rightHandSocket';
+                    
+                    // Fallback Layer 2: Tính toán vị trí dựa trên kích thước bounding box thực tế của model (sau khi scale)
+                    const scaledHeight = size.y * scale;
+                    const scaledWidth = size.x * scale;
+                    const scaledDepth = size.z * scale;
+                    
+                    const fallbackX = Math.max(scaledWidth * 0.25, scaledHeight * 0.25);
+                    const fallbackY = scaledHeight * 0.33;
+                    const fallbackZ = Math.max(scaledDepth * 0.15, scaledHeight * 0.08);
+                    
+                    rightHandSocket.position.set(fallbackX, fallbackY, fallbackZ);
+                    root.add(rightHandSocket);
+                }
+            }
+
+            rig.rightHandSocket = rightHandSocket;
+            if (this.player) this.player.rightHandSocket = rightHandSocket;
+
+            // Re-bind weapon holder if WeaponRenderer exists
+            if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
+                rightHandSocket.add(WeaponRenderer._weaponHolder);
+                WeaponRenderer._weaponHolder.position.set(0, 0, 0);
+                WeaponRenderer._weaponHolder.rotation.set(0, 0, 0);
+                WeaponRenderer._weaponHolder.visible = true;
+                WeaponRenderer._weaponHolder.traverse(m => {
+                    if (m.isMesh) {
+                        m.frustumCulled = false;
+                        m.visible = true;
+                    }
+                });
+                if (typeof WeaponSystem !== 'undefined') {
+                    WeaponRenderer._showModel(WeaponSystem.currentId);
+                }
             }
         }, undefined, (err) => {
-            console.warn('Lá»—i load player GLB, giá»¯ nguyÃªn procedural rig:', err?.message || err);
+            console.warn('Lỗi load player GLB, giữ nguyên procedural rig:', err?.message || err);
         });
     },
 
@@ -1954,6 +1540,28 @@ let Renderer3D = {
             group.add(zombieModel);
             group.model = zombieModel;
             group.body = zombieModel;
+
+            // Khởi tạo AnimationMixer cho từng Zombie instance nếu có animation clips
+            if (this._zombieClips && this._zombieClips.length > 0) {
+                const mixer = new THREE.AnimationMixer(zombieModel);
+                group.mixer = mixer;
+                group.actions = {};
+                this._zombieClips.forEach((clip, idx) => {
+                    const name = (clip.name || '').toLowerCase();
+                    const action = mixer.clipAction(clip);
+                    if (name.includes('walk')) group.actions['walk'] = action;
+                    else if (name.includes('run') || name.includes('chase')) group.actions['run'] = action;
+                    else if (name.includes('attack') || name.includes('bite')) group.actions['attack'] = action;
+                    else if (name.includes('death') || name.includes('die')) group.actions['death'] = action;
+                    else if (name.includes('idle')) group.actions['idle'] = action;
+
+                    if (idx === 0 && !group.actions['walk']) group.actions['walk'] = action;
+                    if (idx === 1 && !group.actions['attack']) group.actions['attack'] = action;
+                    if (idx === 2 && !group.actions['death']) group.actions['death'] = action;
+                });
+                const initial = group.actions['walk'] || group.actions['run'] || group.actions['idle'];
+                if (initial) initial.play();
+            }
         } else {
             const zombieWidth = 0.7;
             const zombieHeight = 1.4;
@@ -2478,6 +2086,35 @@ Renderer3D._apocRoof = function(group, w, d, y, lip = 0.8) {
     const mats = this._apocalypseMaterials();
     this._apocBox(group, w + lip, 0.36, d + lip, 0, y, 0, mats.concreteDark, true);
     this._apocStrip(group, 0, y + 0.25, d / 2 + 0.12, w - 1, 0.16, mats.cyan);
+};
+
+Renderer3D._createBuildingSign = function(text, color, width = 7, height = 0.85) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(10,14,16,0.85)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const hexColor = '#' + (color || 0x74e7ff).toString(16).padStart(6, '0');
+    ctx.strokeStyle = hexColor;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, canvas.width - 6, canvas.height - 6);
+    ctx.fillStyle = hexColor;
+    ctx.font = 'bold 64px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        side: THREE.DoubleSide
+    });
+    const geometry = new THREE.PlaneGeometry(width, height);
+    const mesh = new THREE.Mesh(geometry, material);
+    return mesh;
 };
 
 Renderer3D._apocLabel = function(group, text, color, x, y, z, width = 7, height = 0.85, rotY = 0) {

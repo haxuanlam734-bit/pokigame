@@ -345,6 +345,17 @@ const PlayerController = {
             this.position.y
         );
 
+        const isAttacking = (typeof WeaponSystem !== 'undefined' && (WeaponSystem._meleeAttacking || (InputManager.isMouseDown && WeaponSystem.currentId !== 'sword'))) || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim);
+        let playerAnim = 'idle';
+        if (isAttacking) {
+            playerAnim = 'attack';
+        } else if (this.hasMovementInput) {
+            playerAnim = this.isSprinting ? 'run' : 'walk';
+        }
+        if (Renderer3D && Renderer3D.setPlayerAnimation) {
+            Renderer3D.setPlayerAnimation(playerAnim, 0.18);
+        }
+
         Renderer3D.updatePlayerMesh(
             this.position.x,
             this.position.z,
@@ -356,7 +367,7 @@ const PlayerController = {
                 isSprinting: this.isSprinting && this.hasMovementInput,
                 isGrounded: this.isGrounded,
                 isCrouching: this.isCrouching,
-                isAttacking: (typeof WeaponSystem !== 'undefined' && WeaponSystem._meleeAttacking) || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim),
+                isAttacking: isAttacking,
                 currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol',
                 aimPitch: InputManager ? InputManager.cameraPitch : 0
             }

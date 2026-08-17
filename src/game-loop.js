@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GAME-LOOP.JS - Vòng lặp game chính
  * Cập nhật trạng thái, vẽ, và xử lý khung hình
  */
@@ -16,9 +16,13 @@ const GameLoop = {
     start: function() {
         console.log('▶️ Khởi động Game Loop...');
         this.isRunning = true;
-        this.lastFrameTime = Date.now();
+        // 0 = "chưa có mốc thời gian" -> loop() sẽ tự khởi tạo bằng timestamp
+        // của requestAnimationFrame ở frame đầu tiên. Không dùng Date.now()
+        // ở đây vì rAF cấp timestamp theo performance.now(), khác epoch với
+        // Date.now() -> trộn 2 mốc thời gian sẽ ra deltaTime sai (rất lớn/âm).
+        this.lastFrameTime = 0;
         this.frameCount = 0;
-        this.lastFpsUpdate = this.lastFrameTime;
+        this.lastFpsUpdate = 0;
         requestAnimationFrame(this.loop.bind(this));
         console.log('✅ Game Loop đã khởi động');
     },
@@ -33,31 +37,44 @@ const GameLoop = {
     
     /**
      * Vòng lặp chính
-     * @param {number} timestamp - Thời gian từ browser
+     * @param {number} timestamp - Thời gian từ browser (performance.now())
      */
     loop: function(timestamp) {
         if (!this.isRunning) return;
-        
-        const currentTime = Date.now();
-        const deltaTime = currentTime - this.lastFrameTime;
-        this.lastFrameTime = currentTime;
-        const clampedDeltaTime = Math.min(deltaTime, 50);
-        
-        if (PlayerController) {
-            PlayerController.update(clampedDeltaTime);
+
+        // Khởi tạo mốc thời gian ở frame đầu tiên
+        if (!this.lastFrameTime) {
+            this.lastFrameTime = timestamp;
+            this.lastFpsUpdate = timestamp;
         }
-        
-        this.update(clampedDeltaTime);
-        
-        if (Renderer3D) {
+
+        let deltaTime = timestamp - this.lastFrameTime;
+        this.lastFrameTime = timestamp;
+
+        // Chặn deltaTime bất thường (đổi tab, dừng debugger, máy lag...)
+        // để tránh vật lý/game logic bị "nhảy" một bước quá lớn
+        if (!(deltaTime >= 0)) deltaTime = 0;
+        if (deltaTime > 250) deltaTime = 250;
+
+        // 1. Cập nhật logic game (zombie, tháp, pha ngày/đêm, tiền, HP...)
+        this.update(deltaTime);
+
+        // 2. Cập nhật người chơi (di chuyển, camera, vũ khí)
+        if (typeof PlayerController !== 'undefined' && PlayerController.update) {
+            PlayerController.update(deltaTime);
+        }
+
+        // 3. Cập nhật HUD
+        this.updateUI();
+
+        // 4. Vẽ lại khung hình 3D
+        if (typeof Renderer3D !== 'undefined' && Renderer3D.render) {
             Renderer3D.render();
         }
-        
-        this.updateUI();
-        if (Game && Game.updateMilitaryInteraction) {
-            Game.updateMilitaryInteraction();
-        }
-        this.updateFPS(currentTime);
+
+        // 5. Cập nhật FPS counter
+        this.updateFPS(timestamp);
+
         requestAnimationFrame(this.loop.bind(this));
     },
     

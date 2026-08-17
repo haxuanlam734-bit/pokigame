@@ -213,36 +213,65 @@ class Zombie3D {
             }
         }
 
-        // ============ XOAY VÀ ANIMATION SHAMBLING ============
+        // ============ XOAY VÀ ANIMATION (MIXER + PROCEDURAL FALLBACK) ============
         if (this.mesh3D) {
             this.mesh3D.position.x = this.x;
             this.mesh3D.position.z = this.z;
 
-            // Xoay mượt theo hướng chuyển động
-            const currentSpeedSq = this.vx * this.vx + this.vz * this.vz;
-            if (currentSpeedSq > 0.05) {
-                this.targetAngle = Math.atan2(this.vx, this.vz);
-                let diff = this.targetAngle - this.currentAngle;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                this.currentAngle += diff * Math.min(1.0, this.rotationSpeed * deltaSec);
-                this.mesh3D.rotation.y = this.currentAngle;
+            // Cố định Y-plane khi Zombie hướng về phía Player
+            let targetAngle = this.currentAngle;
+            if (this.chasingPlayer && typeof PlayerController !== 'undefined' && PlayerController.position) {
+                const px = PlayerController.position.x;
+                const pz = PlayerController.position.z;
+                targetAngle = Math.atan2(px - this.x, pz - this.z);
+            } else {
+                const currentSpeedSq = this.vx * this.vx + this.vz * this.vz;
+                if (currentSpeedSq > 0.05) {
+                    targetAngle = Math.atan2(this.vx, this.vz);
+                }
             }
 
-            // Hoạt ảnh Shambling (bước đi lắc lư của zombie)
-            if (currentSpeedSq > 0.1) {
-                const stepFreq = this.speed * 1.8;
-                // Nhấp nhô trục Y khi bước đi
-                this.mesh3D.position.y = Math.abs(Math.sin(this.animTime * stepFreq)) * 0.08;
-                // Lắc lư thân mình sang hai bên (Z-tilt)
-                this.mesh3D.rotation.z = Math.sin(this.animTime * stepFreq * 0.5) * 0.06;
-                // Nghiêng nhẹ người về phía trước
-                this.mesh3D.rotation.x = 0.08;
+            // Xoay mượt theo góc mục tiêu
+            let diff = targetAngle - this.currentAngle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            this.currentAngle += diff * Math.min(1.0, this.rotationSpeed * deltaSec);
+            this.mesh3D.rotation.y = this.currentAngle;
+
+            // Cập nhật AnimationMixer nếu model 3D có clip animation
+            if (this.mesh3D.mixer) {
+                this.mesh3D.mixer.update(deltaSec);
+                let desiredAction = 'idle';
+                if (this.isDead) {
+                    desiredAction = 'death';
+                } else if (this.attackTimer > 0) {
+                    desiredAction = 'attack';
+                } else if (this.chasingPlayer) {
+                    desiredAction = (this.mesh3D.actions && this.mesh3D.actions['run']) ? 'run' : 'walk';
+                } else {
+                    desiredAction = 'walk';
+                }
+
+                if (this.mesh3D.actions) {
+                    const act = this.mesh3D.actions[desiredAction] || this.mesh3D.actions['walk'] || this.mesh3D.actions['idle'];
+                    if (act && !act.isRunning()) {
+                        Object.values(this.mesh3D.actions).forEach(a => a.stop());
+                        act.reset().play();
+                    }
+                }
             } else {
-                // Đứng yên thở
-                this.mesh3D.position.y = 0;
-                this.mesh3D.rotation.z = 0;
-                this.mesh3D.rotation.x = Math.sin(this.animTime * 2.0) * 0.02;
+                // Fallback Procedural Animation (bước đi lắc lư nhún nhảy)
+                const currentSpeedSq = this.vx * this.vx + this.vz * this.vz;
+                if (currentSpeedSq > 0.1) {
+                    const stepFreq = this.speed * 1.8;
+                    this.mesh3D.position.y = Math.abs(Math.sin(this.animTime * stepFreq)) * 0.08;
+                    this.mesh3D.rotation.z = Math.sin(this.animTime * stepFreq * 0.5) * 0.06;
+                    this.mesh3D.rotation.x = 0.08;
+                } else {
+                    this.mesh3D.position.y = 0;
+                    this.mesh3D.rotation.z = 0;
+                    this.mesh3D.rotation.x = Math.sin(this.animTime * 2.0) * 0.02;
+                }
             }
 
             // Hoạt ảnh vung tay khi tấn công
