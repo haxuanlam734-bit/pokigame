@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GAME-STATE.JS - Quản lý trạng thái game
  * Theo dõi tiền, HP, sóng, vv...
  */
@@ -291,20 +291,29 @@ const GameState = {
      */
     update: function(deltaTime) {
         if (!this.isRunning) return;
-        
+
         // Cập nhật thời gian pha
         this.phaseTimeRemaining -= deltaTime / 1000;
 
-        // Stamina tự hồi chỉ khi không sprint; HP tuyệt đối KHÔNG tự hồi.
+        // Stamina tự hồi chỉ khi không sprint
         if (typeof PlayerController !== 'undefined' && !PlayerController.isSprinting) {
             this.stamina = Math.min(this.maxStamina, this.stamina + 12 * (deltaTime / 1000));
         }
-        
+
+        // HP tự hồi 1 mỗi 5 giây (natural regen)
+        this._hpRegenTimer = (this._hpRegenTimer || 0) + deltaTime;
+        if (this._hpRegenTimer >= 5000) {
+            this._hpRegenTimer = 0;
+            if (this.playerHP < this.playerMaxHP) {
+                this.playerHP = Math.min(this.playerMaxHP, this.playerHP + 1);
+            }
+        }
+
         // Chuyển pha nếu hết thời gian
         if (this.phaseTimeRemaining <= 0) {
             this.switchPhase();
         }
-        
+
         // Regen tiền
         this.updateMoneyRegen();
         
@@ -427,7 +436,7 @@ const GameState = {
         if (!this.hasUnlockedBuilding(type)) return false;
         if (type === 'minter' && this.builtBuildings[type] >= this.maxMinterSlots) return false;
         if (this.builtBuildings[type] >= def.maxCount) return false;
-        if (this.phase !== CONFIG.PHASE_DAY) return false;
+        // Shop accessible day AND night
         if (typeof x === 'number' && typeof z === 'number' && !this.isInPlacementZone(type, x, z)) return false;
         if (this.isAdmin) return true;
         return this.money >= def.cost;
@@ -521,6 +530,15 @@ const GameState = {
             const zombie = this.zombies[i];
             zombie.update(deltaTime);
 
+            // Bỏ qua zombie đã chết (đang play death animation)
+            if (zombie.isDead) {
+                // Kiểm tra khi nào animation kết thúc để xóa khỏi array
+                if (zombie.isDestroyed && zombie.isDestroyed()) {
+                    this.zombies.splice(i, 1);
+                }
+                continue;
+            }
+
             // Zombie có thể cắn player khi ở đủ gần. Mỗi lần cắn làm mất 1 segment HP
             // (10 HP) và đồng thời giảm trần HP vĩnh viễn cho tới khi dùng vật tư y tế.
             if (typeof PlayerController !== 'undefined' && this.playerHP > 0) {
@@ -543,13 +561,13 @@ const GameState = {
                 continue;
             }
             
-            // Nếu zombie chết
+            // Nếu zombie vừa chết - cộng thưởng ngay lập tức, để animation chết tự play
             if (zombie.hp <= 0) {
                 this.addMoney(CONFIG.MONEY_FROM_KILLED_ZOMBIE);
                 this.zombiesKilled++;
                 this.totalScore += 100;
-                zombie.dispose();
-                this.zombies.splice(i, 1);
+                // KHÔNG dispose/splice ngay - zombie.isDead=true sẽ được set bởi zombie.die()
+                // zombie.update() sẽ chạy death animation, rồi isDestroyed() mới return true
             }
         }
     },
@@ -682,43 +700,34 @@ const GameState = {
 
             const hp = wave.count > 10 ? 25 : 20;
             const zombie = new Zombie3D(x, z, wave.speed, hp);
-
             this.zombies.push(zombie);
             this.lastZombieSpawnTime = now;
         }
     },
-    
+
     /**
      * Thêm tiền
-     * @param {number} amount - Số lượng
      */
     addMoney: function(amount) {
         this.money += amount;
         this.moneyEarned += amount;
         this.totalScore += Math.floor(amount);
     },
-    
+
     /**
      * Trừ tiền
-     * @param {number} amount - Số lượng
-     * @returns {boolean} Có đủ tiền?
      */
     spendMoney: function(amount) {
-        if (this.isAdmin) {
-            return true;
-        }
+        if (this.isAdmin) return true;
         if (this.money >= amount) {
             this.money -= amount;
             return true;
         }
         return false;
     },
-    
+
     /**
      * Tạo tháp pháo
-     * @param {number} x - Tọa độ X
-     * @param {number} y - Tọa độ Y
-     * @returns {boolean} Thành công?
      */
     buildTower: function(x, y) {
         const def = this.getBuildingDef('tower');
@@ -726,30 +735,23 @@ const GameState = {
             console.log('❌ Không thể xây tháp pháo. Kiểm tra unlock hoặc đủ tiền.');
             return false;
         }
-
         if (!this.spendMoney(def.cost)) {
             console.log('❌ Không đủ tiền để xây tháp');
             return false;
         }
-
         const tower = new Tower(x, y);
         this.towers.push(tower);
         this.builtBuildings.tower += 1;
         this.buildingsBuilt++;
         this.totalScore += 50;
-
         if (!this.unlockedBuildings.tower) this.unlockedBuildings.tower = true;
         this.unlockedBuildings.minter = this.hasUnlockedBuilding('minter') || this.unlockedBuildings.minter;
-
         console.log('🔫 Xây tháp pháo tại (' + x + ', ' + y + ')');
         return true;
     },
-    
+
     /**
      * Tạo tường rào
-     * @param {number} x - Tọa độ X
-     * @param {number} y - Tọa độ Y
-     * @returns {boolean} Thành công?
      */
     buildWall: function(x, y) {
         const def = this.getBuildingDef('wall');
@@ -757,88 +759,76 @@ const GameState = {
             console.log('❌ Không thể xây tường rào.');
             return false;
         }
-
         if (!this.spendMoney(def.cost)) {
             console.log('❌ Không đủ tiền để xây tường');
             return false;
         }
-
         const wall = new Wall(x, y);
         this.walls.push(wall);
         this.builtBuildings.wall += 1;
         this.buildingsBuilt++;
         this.totalScore += 25;
-
         this.unlockedBuildings.wall = true;
         this.unlockedBuildings.tower = this.hasUnlockedBuilding('tower') || this.unlockedBuildings.tower;
-
         console.log('🧱 Xây tường rào tại (' + x + ', ' + y + ')');
         return true;
     },
-    
+
     /**
      * Tạo máy in tiền
-     * @param {number} x - Tọa độ X
-     * @param {number} y - Tọa độ Y
-     * @returns {boolean} Thành công?
      */
     buildMinter: function(x, y) {
         const def = this.getBuildingDef('minter');
         if (!this.canBuildBuilding('minter')) {
-            console.log('❌ Không thể xây máy in tiền. Mở khóa theo dependency tree.');
+            console.log('❌ Không thể xây máy in tiền.');
             return false;
         }
-
         if (!this.spendMoney(def.cost)) {
             console.log('❌ Không đủ tiền để xây máy in');
             return false;
         }
-
         const minter = new Minter(x, y);
         this.minters.push(minter);
         this.builtBuildings.minter += 1;
         this.buildingsBuilt++;
         this.totalScore += 40;
-
         this.unlockedBuildings.minter = true;
         console.log('💵 Xây máy in tiền tại (' + x + ', ' + y + ')');
         return true;
     },
-    
+
     /**
      * Gây sát thương cho pháo đài
-     * @param {number} damage - Lượng sát thương
      */
     damagesFortress: function(damage) {
-        this.fortressHP -= damage;
-        console.log('💥 Pháo đài bị sát thương ' + damage + ', còn ' + this.fortressHP + ' HP');
-        
+        this.fortressHP = Math.max(0, this.fortressHP - damage);
         if (this.fortressHP <= 0) {
             this.endGame();
         }
     },
 
     /**
-     * Player nhận sát thương từ zombie: mất HP hiện tại và mất luôn cùng lượng HP
-     * ở trần hồi phục. Không có natural regen cho HP.
+     * Player nhận sát thương từ zombie bite.
+     * Mất HP hiện tại theo damage.
+     * Có 5% cơ hội giảm playerMaxHP đi 1 (không bao giờ xuống dưới 1).
+     * 95% trường hợp maxHP không bị ảnh hưởng.
      */
     damagePlayerFromZombie: function(damage = 10) {
         if (this.playerHP <= 0) return;
-        const amount = Math.max(1, Math.min(10, Math.round(damage)));
+        const amount = Math.max(1, Math.round(damage));
         this.playerHP = Math.max(0, this.playerHP - amount);
-        this.playerMaxHP = Math.max(0, this.playerMaxHP - amount);
-        this.playerHP = Math.min(this.playerHP, this.playerMaxHP);
-        this.playerBiteCooldownUntil = Date.now() + 1000;
-
-        if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
-            Game.showMilitaryToast({ title: '🧟 ZOMBIE BITE', message: `-1 thanh HP • ${this.playerMaxHP} HP còn hồi được`, success: false });
+        if (Math.random() < 0.05) {
+            this.playerMaxHP = Math.max(1, this.playerMaxHP - 1);
+            this.playerHP = Math.min(this.playerHP, this.playerMaxHP);
+            if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
+                Game.showMilitaryToast({ title: '🧟 ZOMBIE BITE', message: `Nhiễm khuẩn! Max HP giảm còn ${this.playerMaxHP}`, success: false });
+            }
         }
-
-        if (this.playerHP <= 0 || this.playerMaxHP <= 0) {
+        this.playerBiteCooldownUntil = Date.now() + 1000;
+        if (this.playerHP <= 0) {
             this.endGame();
         }
     },
-
     useBandage: function() {
         if (this.bandages <= 0) return { success: false, message: 'Hết bandage.' };
         if (this.playerMaxHP >= this.playerBaseMaxHP && this.playerHP >= this.playerMaxHP) {

@@ -153,8 +153,8 @@ const Game = {
 
         document.addEventListener('keydown', (event) => {
             if (event.repeat) return;
-            if (event.key === '1') useMedical('bandage');
-            if (event.key === '2') useMedical('medkit');
+            if (event.key === '4' || event.key === 'z' || event.key === 'Z') useMedical('bandage');
+            if (event.key === '5' || event.key === 'x' || event.key === 'X') useMedical('medkit');
         });
     },
     

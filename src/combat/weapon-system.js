@@ -1,4 +1,4 @@
-﻿/**
+/**
  * WEAPON-SYSTEM.JS - He thong vu khi hoan chinh
  * Ho tro: Melee | Semi-Auto | Full-Auto | Burst
  * Tich hop Free-Aim TPS, Fixed-Aim FPS, Crouch Zero-Spread (Phim C), 3D Tracers & Hit Marker
@@ -148,12 +148,20 @@ const WeaponSystem = {
             if (typeof WeaponRenderer !== 'undefined' && hitInfo && hitInfo.point) {
                 WeaponRenderer.createHitSpark(hitInfo.point);
             }
+            if (hitInfo && hitInfo.damage != null) {
+                WeaponSystem.spawnDamageNumber(hitInfo.damage, hitInfo.isHeadshot, hitInfo.point);
+            }
         };
         this.onMeleeHit = function(def, hitInfo) {
             if (typeof WeaponRenderer !== 'undefined' && hitInfo && hitInfo.zombie && hitInfo.zombie.mesh3D) {
                 WeaponRenderer.createHitSpark(hitInfo.zombie.mesh3D.position);
             }
+            if (hitInfo && hitInfo.damage != null) {
+                const pos = hitInfo.zombie && hitInfo.zombie.mesh3D ? hitInfo.zombie.mesh3D.position : null;
+                WeaponSystem.spawnDamageNumber(hitInfo.damage, false, pos);
+            }
         };
+
 
         this.equip('pistol');
         console.log('\u2705 WeaponSystem san sang. Vu khi:', this.currentId);
@@ -567,7 +575,7 @@ const WeaponSystem = {
         if (hitObject) {
             const zombie = this._findZombieFromMesh(hitObject, zombies);
             if (zombie) {
-                const headshot = this._isHeadshot(hitObject);
+                const headshot = this._isHeadshot(hitObject, aimPoint, zombie);
                 const damage = this._calculateDamage(def, hitDistance, headshot);
 
                 zombie.takeDamage(damage);
@@ -586,9 +594,11 @@ const WeaponSystem = {
     },
 
     _findZombieFromMesh: function(mesh, zombies) {
+        if (!zombies || !mesh) return null;
         for (let i = 0; i < zombies.length; i++) {
             const z = zombies[i];
-            if (!z || !z.mesh3D) continue;
+            if (!z.mesh3D) continue;
+            if (z.mesh3D === mesh) return z;
             let found = false;
             z.mesh3D.traverse(function(child) { if (child === mesh) found = true; });
             if (found) return z;
@@ -596,14 +606,19 @@ const WeaponSystem = {
         return null;
     },
 
-    _isHeadshot: function(hitMesh) {
+    _isHeadshot: function(hitMesh, hitPoint, zombie) {
         if (!hitMesh) return false;
         let obj = hitMesh;
         while (obj) {
             const name = (obj.name || '').toLowerCase();
-            if (name.includes('head') || name.includes('skull')) return true;
+            if (name.includes('head') || name.includes('skull') || name.includes('hat')) return true;
             obj = obj.parent;
             if (!obj || obj.type === 'Scene') break;
+        }
+        // Fallback: If hit point Y is at upper 25% of zombie body height (>= 1.25m above ground)
+        if (hitPoint && zombie && zombie.mesh3D) {
+            const relativeY = hitPoint.y - zombie.mesh3D.position.y;
+            if (relativeY >= 1.25) return true;
         }
         return false;
     },
@@ -675,25 +690,50 @@ const WeaponSystem = {
         const def   = this.getCurrentDef();
         const state = this.getCurrentState();
         if (!def) return;
+
+        const isMelee = def.fireMode === FIRE_MODE.MELEE;
+        const modeName = def.fireMode === FIRE_MODE.SEMI_AUTO ? 'SEMI'
+                       : def.fireMode === FIRE_MODE.FULL_AUTO ? 'AUTO'
+                       : def.fireMode === FIRE_MODE.BURST     ? 'BURST'
+                       : 'MELEE';
+
+        // ── New HUD elements ──
+        const elName = document.getElementById('weapon-name');
+        const elMode = document.getElementById('weapon-mode');
+        const elCurr = document.getElementById('ammo-current');
+        const elMax  = document.getElementById('ammo-max');
+
+        if (elName) elName.textContent = def.name;
+        if (elMode) elMode.textContent = isReloading ? 'RELOAD...' : modeName;
+        if (elCurr) elCurr.textContent = isMelee ? '∞' : (isReloading ? '—' : state.currentAmmo);
+        if (elMax)  elMax.textContent  = isMelee ? ''  : state.reserveAmmo;
+
+        // ── Legacy fallback elements (in case still present) ──
         const ammoEl = document.getElementById('ammo-display');
         if (ammoEl) {
-            if (def.fireMode === FIRE_MODE.MELEE)      ammoEl.textContent = 'MELEE';
-            else if (isReloading)                       ammoEl.textContent = 'RELOAD...';
-            else                                        ammoEl.textContent = state.currentAmmo + '/' + state.reserveAmmo;
+            if (isMelee)          ammoEl.textContent = 'MELEE';
+            else if (isReloading) ammoEl.textContent = 'RELOAD...';
+            else                  ammoEl.textContent = state.currentAmmo + '/' + state.reserveAmmo;
         }
         const weaponEl = document.getElementById('weapon-display');
-        if (weaponEl) {
-            const modeName = def.fireMode === FIRE_MODE.SEMI_AUTO ? 'SEMI'
-                           : def.fireMode === FIRE_MODE.FULL_AUTO ? 'AUTO'
-                           : def.fireMode === FIRE_MODE.BURST     ? 'BURST'
-                           : 'MELEE';
-            weaponEl.textContent = def.name + ' [' + modeName + ']';
+        if (weaponEl) weaponEl.textContent = def.name + ' [' + modeName + ']';
+
+        // ── Stamina bar sync ──
+        if (typeof GameState !== 'undefined') {
+            const staminaBar = document.getElementById('stamina-bar');
+            const staminaDisp = document.getElementById('stamina-display');
+            const pct = (GameState.stamina / GameState.maxStamina) * 100;
+            if (staminaBar) staminaBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+            if (staminaDisp) staminaDisp.textContent = Math.ceil(GameState.stamina);
         }
+
+        // ── Hotbar slot active state ──
         ['sword', 'pistol', 'ak'].forEach(id => {
             const slot = document.getElementById('slot-' + id);
             if (slot) slot.classList.toggle('active', this.currentId === id);
         });
     },
+
 
     getCurrentDef:   function() { return WEAPON_DEFS[this.currentId] || null; },
     getCurrentState: function() { return this._state[this.currentId] || null; },
@@ -704,6 +744,64 @@ const WeaponSystem = {
         if (def.fireMode === FIRE_MODE.MELEE) return 'MELEE';
         if (this._reloading) return 'RELOAD...';
         return state.currentAmmo + '/' + state.reserveAmmo;
+    },
+
+    /**
+     * Spawn a floating damage number in screen-space.
+     * @param {number} damage - Damage amount dealt
+     * @param {boolean} isHeadshot - Gold color for headshot
+     * @param {THREE.Vector3|null} worldPos - 3D world position to project, or null for center
+     */
+    spawnDamageNumber: function(damage, isHeadshot, worldPos) {
+        const container = document.getElementById('damage-container');
+        if (!container) return;
+
+        // --- Determine screen position ---
+        let screenX = window.innerWidth / 2;
+        let screenY = window.innerHeight / 2;
+
+        if (worldPos && typeof THREE !== 'undefined' &&
+            typeof Renderer3D !== 'undefined' && Renderer3D.camera) {
+            try {
+                const cam = Renderer3D.camera;
+                const vec = new THREE.Vector3(worldPos.x, worldPos.y + 1.2, worldPos.z);
+                vec.project(cam);
+                screenX = (vec.x *  0.5 + 0.5) * window.innerWidth;
+                screenY = (vec.y * -0.5 + 0.5) * window.innerHeight;
+                // Clamp to visible area
+                screenX = Math.max(60, Math.min(window.innerWidth  - 60, screenX));
+                screenY = Math.max(60, Math.min(window.innerHeight - 60, screenY));
+            } catch(e) { /* fallback to center */ }
+        }
+
+        // Add small random offset so numbers don't stack
+        screenX += (Math.random() - 0.5) * 60;
+        screenY += (Math.random() - 0.5) * 30;
+
+        // --- Create element ---
+        const el = document.createElement('div');
+        el.className = 'damage-number' + (isHeadshot ? ' crit' : '');
+        el.textContent = '-' + Math.round(damage);
+        el.style.left = screenX + 'px';
+        el.style.top  = screenY + 'px';
+        el.style.opacity = '1';
+        el.style.transform = 'translate(-50%, -50%) scale(1)';
+        container.appendChild(el);
+
+        // Animate: float up and fade out
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                el.style.transition = 'top 0.8s ease-out, opacity 0.8s ease-out, transform 0.8s ease-out';
+                el.style.top = (screenY - 80) + 'px';
+                el.style.opacity = '0';
+                el.style.transform = 'translate(-50%, -50%) scale(' + (isHeadshot ? '1.4' : '1.1') + ')';
+            });
+        });
+
+        // Auto-remove after animation
+        setTimeout(() => {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        }, 900);
     }
 };
 

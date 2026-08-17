@@ -232,6 +232,65 @@
             box-shadow: 0 0 8px rgba(255, 42, 95, 0.5);
         }
 
+        /* ===== STAMINA BAR ===== */
+        .resource-stamina {
+            align-items: flex-start;
+            margin-top: 4px;
+        }
+
+        .stamina-track {
+            position: relative;
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+        }
+
+        .stamina-current {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #fbc531, #00d2d3);
+            transition: width 0.1s linear;
+            border-radius: 999px;
+            box-shadow: 0 0 6px rgba(0, 210, 211, 0.5);
+        }
+
+        /* ===== FLOATING DAMAGE NUMBERS ===== */
+        #damage-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 999;
+        }
+
+        .damage-number {
+            position: absolute;
+            font-family: 'Orbitron', monospace;
+            font-size: 18px;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 0 12px rgba(255, 71, 87, 0.8);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: transform 0.65s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.65s ease-out;
+            will-change: transform, opacity;
+        }
+
+        .damage-number.crit {
+            font-size: 24px;
+            color: #ffd32a;
+            text-shadow: 0 0 8px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 211, 42, 1.0);
+        }
+
         /* ===== WEAPON INFO PANEL ===== */
         #weapon-panel {
             top: 155px;
@@ -1024,6 +1083,17 @@
                         </div>
                     </div>
                 </div>
+                <div class="resource resource-stamina">
+                    <span class="icon">⚡</span>
+                    <div class="resource-main">
+                        <div class="resource-head">
+                            <span class="amount" id="stamina-display" style="font-size:11px;color:#00d2d3;">100</span>
+                        </div>
+                        <div class="stamina-track">
+                            <div class="stamina-current" id="stamina-bar"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- WEAPON INFO PANEL -->
@@ -1044,14 +1114,14 @@
                 <div class="med-item" id="btn-bandage">
                     <div class="med-icon">🩹</div>
                     <div class="med-info">
-                        <span class="med-name">Băng gạc (1)</span>
+                        <span class="med-name">Băng gạc (Z)</span>
                         <span class="med-count" id="count-bandage">x0</span>
                     </div>
                 </div>
                 <div class="med-item" id="btn-medkit">
                     <div class="med-icon">🧰</div>
                     <div class="med-info">
-                        <span class="med-name">Hộp y tế (2)</span>
+                        <span class="med-name">Hộp y tế (X)</span>
                         <span class="med-count" id="count-medkit">x0</span>
                     </div>
                 </div>
@@ -1147,6 +1217,9 @@
                 <div class="hm-tick hm-left"></div>
                 <div class="hm-tick hm-right"></div>
             </div>
+
+            <!-- DAMAGE NUMBERS CONTAINER -->
+            <div id="damage-container"></div>
 
             <!-- HEADSHOT TOAST -->
             <div id="headshot-toast">💥 HEADSHOT!</div>

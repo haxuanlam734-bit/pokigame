@@ -152,30 +152,36 @@ const GameLoop = {
         // ---- Combat / Weapon stats ----
         const ammoDisplay = document.getElementById('ammo-display');
         const weaponDisplay = document.getElementById('weapon-display');
+        // New HUD elements
+        const elWeaponName = document.getElementById('weapon-name');
+        const elWeaponMode = document.getElementById('weapon-mode');
+        const elAmmoCurr   = document.getElementById('ammo-current');
+        const elAmmoMax    = document.getElementById('ammo-max');
+
         if (typeof WeaponSystem !== 'undefined') {
             const def = WeaponSystem.getCurrentDef();
             const state = WeaponSystem.getCurrentState();
+            const isRld = WeaponSystem.isReloading();
             if (def && state) {
-                if (ammoDisplay) {
-                    if (def.fireMode === 'MELEE') {
-                        ammoDisplay.textContent = 'MELEE';
-                    } else if (WeaponSystem.isReloading()) {
-                        ammoDisplay.textContent = 'RELOAD...';
-                    } else {
-                        ammoDisplay.textContent = `${state.currentAmmo}/${state.reserveAmmo}`;
-                    }
-                }
-                if (weaponDisplay) {
-                    const modeName = def.fireMode === 'SEMI_AUTO' ? 'SEMI'
-                                   : def.fireMode === 'FULL_AUTO' ? 'AUTO'
-                                   : def.fireMode === 'BURST'     ? 'BURST'
-                                   : 'MELEE';
-                    weaponDisplay.textContent = `${def.name} [${modeName}]`;
-                }
+                const isMelee  = def.fireMode === 'MELEE';
+                const modeName = def.fireMode === 'SEMI_AUTO' ? 'SEMI'
+                               : def.fireMode === 'FULL_AUTO' ? 'AUTO'
+                               : def.fireMode === 'BURST'     ? 'BURST'
+                               : 'MELEE';
+                // Legacy
+                if (ammoDisplay)  ammoDisplay.textContent  = isMelee ? 'MELEE' : isRld ? 'RELOAD...' : `${state.currentAmmo}/${state.reserveAmmo}`;
+                if (weaponDisplay) weaponDisplay.textContent = `${def.name} [${modeName}]`;
+                // New
+                if (elWeaponName) elWeaponName.textContent = def.name;
+                if (elWeaponMode) elWeaponMode.textContent = isRld ? 'RELOAD...' : modeName;
+                if (elAmmoCurr)   elAmmoCurr.textContent   = isMelee ? '\u221e' : (isRld ? '\u2014' : state.currentAmmo);
+                if (elAmmoMax)    elAmmoMax.textContent    = isMelee ? '' : state.reserveAmmo;
             }
         } else {
-            if (ammoDisplay) ammoDisplay.textContent = `${Math.floor(GameState.ammo)}/${Math.floor(GameState.maxAmmo)}`;
-            if (weaponDisplay) weaponDisplay.textContent = `T${GameState.weaponTier} • ${GameState.weaponDamage} DMG`;
+            if (ammoDisplay)  ammoDisplay.textContent  = `${Math.floor(GameState.ammo)}/${Math.floor(GameState.maxAmmo)}`;
+            if (weaponDisplay) weaponDisplay.textContent = `T${GameState.weaponTier} \u2022 ${GameState.weaponDamage} DMG`;
+            if (elAmmoCurr)   elAmmoCurr.textContent   = Math.floor(GameState.ammo);
+            if (elAmmoMax)    elAmmoMax.textContent    = Math.floor(GameState.maxAmmo);
         }
 
         // ---- Update Buttons ----
@@ -201,8 +207,8 @@ const GameLoop = {
             const def = GameState.getBuildingDef(type);
             const unlocked = GameState.hasUnlockedBuilding(type);
             const affordable = GameState.money >= def.cost;
-            const isDay = GameState.phase === CONFIG.PHASE_DAY;
-            const canUse = unlocked && affordable && isDay;
+            // Shop accessible day AND night
+            const canUse = unlocked && affordable;
 
             if (type === 'turel') {
                 btn.textContent = `${def.emoji} ${def.name} ${GameState.builtBuildings.turel}/${def.maxCount} - ${Utils.formatMoney(def.cost)}`;

@@ -1374,6 +1374,145 @@ let Renderer3D = {
         this.scene.add(beacon);
     },
 
+    _createCommsTower: function(cx, cz) {
+        const towerMat = new THREE.MeshPhongMaterial({ color: 0x6d777d });
+        for (const [dx, dz] of [[-1.4,-1.4],[1.4,-1.4],[1.4,1.4],[-1.4,1.4]]) {
+            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 18, 6), towerMat);
+            leg.position.set(cx + dx, 9, cz + dz);
+            leg.castShadow = true;
+            this.scene.add(leg);
+        }
+        for (let i = 1; i <= 5; i++) {
+            const cross = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.07, 3.3), towerMat);
+            cross.position.set(cx, i * 3.0, cz);
+            cross.rotation.y = Math.PI / 4;
+            cross.castShadow = true;
+            this.scene.add(cross);
+        }
+        const light = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8),
+            new THREE.MeshPhongMaterial({ color: 0xff3b30, emissive: 0xff3b30, emissiveIntensity: 0.9 }));
+        light.position.set(cx, 18.4, cz);
+        this.scene.add(light);
+    },
+
+    _createPerimeterLighting: function(cx, cz) {
+        const poleMat = new THREE.MeshPhongMaterial({ color: 0x5d666b });
+        const glowMat = new THREE.MeshPhongMaterial({ color: 0xffdd88, emissive: 0xffcc66, emissiveIntensity: 0.55 });
+        const points = [
+            [-55,-86], [-20,-86], [20,-86], [55,-86],
+            [-86,-50], [-86,0], [-86,50],
+            [86,-50], [86,0], [86,50],
+            [-55,86], [-20,86], [20,86], [55,86]
+        ];
+        points.forEach(([dx,dz]) => {
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7.0, 8), poleMat);
+            pole.position.set(cx + dx, 3.5, cz + dz);
+            pole.castShadow = true;
+            this.scene.add(pole);
+
+            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), glowMat);
+            lamp.position.set(cx + dx, 7.1, cz + dz);
+            this.scene.add(lamp);
+        });
+    },
+
+    _createPerimeterDefense: function(cx, cz, radius) {
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x687177 });
+        const braceMat = new THREE.MeshPhongMaterial({ color: 0x3a4145 });
+        const segments = 72;
+
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const next = ((i + 1) / segments) * Math.PI * 2;
+            const x1 = cx + Math.cos(angle) * radius;
+            const z1 = cz + Math.sin(angle) * radius;
+            const x2 = cx + Math.cos(next) * radius;
+            const z2 = cz + Math.sin(next) * radius;
+            const midX = (x1 + x2) / 2;
+            const midZ = (z1 + z2) / 2;
+            const dist = Math.hypot(x2-x1, z2-z1);
+
+            const wall = new THREE.Mesh(new THREE.BoxGeometry(dist, 4.2, 0.55), wallMat);
+            wall.position.set(midX, 2.1, midZ);
+            wall.lookAt(x2, 2.1, z2);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+            this.scene.add(wall);
+            this._addCollisionMesh(wall);
+
+            if (i % 3 === 0) {
+                const brace = new THREE.Mesh(new THREE.BoxGeometry(0.18, 5.0, 0.18), braceMat);
+                brace.position.set(x1, 2.5, z1);
+                brace.castShadow = true;
+                this.scene.add(brace);
+                this._addCollisionMesh(brace);
+            }
+        }
+
+        const inner = radius - 3.5;
+        for (let i = 0; i < segments; i += 2) {
+            const angle = (i / segments) * Math.PI * 2;
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 2.6, 6),
+                new THREE.MeshPhongMaterial({ color: 0x9aa2a7 }));
+            post.position.set(cx + Math.cos(angle) * inner, 1.3, cz + Math.sin(angle) * inner);
+            post.castShadow = true;
+            this.scene.add(post);
+        }
+    },
+
+    _createSecondaryGate: function(cx, cz) {
+        const group = new THREE.Group();
+        const gateMat = new THREE.MeshPhongMaterial({ color: 0x4b555a });
+        const left = new THREE.Mesh(new THREE.BoxGeometry(7, 3.8, 0.45), gateMat);
+        left.position.set(-3.7, 1.9, 0);
+        const right = left.clone();
+        right.position.x = 3.7;
+        group.add(left, right);
+
+        const sign = new THREE.Mesh(new THREE.BoxGeometry(12, 1.5, 0.5),
+            new THREE.MeshPhongMaterial({ color: 0x1f272b }));
+        sign.position.set(0, 5.0, 0);
+        group.add(sign);
+
+        const postMat = new THREE.MeshPhongMaterial({ color: 0x7b858a });
+        for (const dx of [-8,8]) {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.6, 5.8, 0.6), postMat);
+            post.position.set(dx, 2.9, 0);
+            group.add(post);
+        }
+
+        group.position.set(cx, 0, cz);
+        this.scene.add(group);
+    },
+
+    _createBaseProps: function(cx, cz) {
+        const sandbagMat = new THREE.MeshPhongMaterial({ color: 0x75644d });
+        const points = [
+            [cx - 68, cz + 42], [cx + 67, cz + 43],
+            [cx - 66, cz - 42], [cx + 65, cz - 43],
+            [cx - 23, cz + 71], [cx + 24, cz + 71]
+        ];
+        points.forEach(([x,z]) => {
+            for (let i = -2; i <= 2; i++) {
+                const bag = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 0.75), sandbagMat);
+                bag.position.set(x + i * 1.6, 0.28, z);
+                bag.rotation.y = i * 0.06;
+                bag.castShadow = true;
+                this.scene.add(bag);
+            }
+        });
+
+        const crateMat = new THREE.MeshPhongMaterial({ color: 0x735d3e });
+        for (let i = 0; i < 12; i++) {
+            const crate = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.0, 1.25), crateMat);
+            const x = cx - 69 + (i % 4) * 2.0;
+            const z = cz + 53 + Math.floor(i / 4) * 1.8;
+            crate.position.set(x, 0.5, z);
+            crate.castShadow = true;
+            this.scene.add(crate);
+        }
+    },
+
     preloadCharacterModels: function() {
         if (!this._gltfLoader) {
             if (typeof GLTFLoader !== 'undefined') this._gltfLoader = new GLTFLoader();
@@ -1423,17 +1562,17 @@ let Renderer3D = {
         rig.name = 'playerRig';
         group.add(rig);
 
+        this.scene.add(group);
+        this.player = group;
+        this.player.rig = rig;
+
         // Build procedural fallback rig immediately
         this._buildProceduralPlayerRig(rig);
 
         // Asynchronously load the upgraded Roblox player model GLB
         this._loadPlayerGLB(rig);
 
-        this.scene.add(group);
-        this.player = group;
-        this.player.rig = rig;
-
-        console.log('ðŸ§ NhÃ¢n váº­t Player 3D Ä‘Æ°á»£c khá»Ÿi táº¡o');
+        console.log('🚶 NhÃ¢n váº­t Player 3D Ä‘Æ°á»£c khá»Ÿi táº¡o');
     },
 
     _buildProceduralPlayerRig: function(rig) {
@@ -1501,11 +1640,11 @@ let Renderer3D = {
         rightHandSocket.position.set(0, -0.65, 0.2);
         rArmPivot.add(rightHandSocket);
         rig.rightHandSocket = rightHandSocket;
-        this.player.rightHandSocket = rightHandSocket;
-
-        // Backwards compatibility references
-        this.player.body = torso;
-        this.player.head = head;
+        if (this.player) {
+            this.player.rightHandSocket = rightHandSocket;
+            this.player.body = torso;
+            this.player.head = head;
+        }
     },
 
     _loadPlayerGLB: function(rig) {
@@ -1604,11 +1743,11 @@ let Renderer3D = {
                 rightHandSocket.position.set(0, -1.8, 0.8);
                 rArmPivot.add(rightHandSocket);
                 rig.rightHandSocket = rightHandSocket;
-                this.player.rightHandSocket = rightHandSocket;
+                if (this.player) this.player.rightHandSocket = rightHandSocket;
 
                 rig.add(glbContainer);
-                this.player.body = torsoPivot;
-                this.player.head = headPivot;
+                if (this.player) this.player.body = torsoPivot;
+                if (this.player) this.player.head = headPivot;
 
                 // Re-bind weapon holder if WeaponRenderer exists
                 if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
@@ -1632,7 +1771,7 @@ let Renderer3D = {
                 while (rig.children.length > 0) rig.remove(rig.children[0]);
                 rig.add(root);
                 rig.torso = root;
-                this.player.body = root;
+                if (this.player) this.player.body = root;
                 console.log('ðŸ§ ÄÃ£ load model player (toÃ n bá»™ scene)');
             }
         }, undefined, (err) => {
@@ -1804,6 +1943,14 @@ let Renderer3D = {
 
         if (this._zombieModelTemplate) {
             const zombieModel = this._zombieModelTemplate.clone(true);
+            zombieModel.traverse(child => {
+                if (child.isMesh) {
+                    child.frustumCulled = false;
+                    if (child.material) {
+                        child.material = child.material.clone();
+                    }
+                }
+            });
             group.add(zombieModel);
             group.model = zombieModel;
             group.body = zombieModel;
@@ -2225,13 +2372,13 @@ let Renderer3D = {
             ));
             const effectiveHeightOffset = this.cameraHeightOffset * fadeT;
             const horizontalDist = this.cameraDistance * cosPitch;
-            const verticalOffset = this.cameraDistance * sinPitch + effectiveHeightOffset;
+            const verticalOffset = py + this.cameraDistance * sinPitch + effectiveHeightOffset;
             const offsetX = horizontalDist * sinYaw;
             const offsetZ = horizontalDist * cosYaw;
 
             // VÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ camera mong muÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“n
             let rawCamX = playerX - offsetX;
-            let rawCamY = verticalOffset;
+            let rawCamY = Math.max(py + 0.5, verticalOffset);
             let rawCamZ = playerZ - offsetZ;
 
             // ÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚ÂiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n camera
@@ -2239,13 +2386,13 @@ let Renderer3D = {
             const toPos = new THREE.Vector3(rawCamX, rawCamY, rawCamZ);
 
             // ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âp dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥ng collision ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ an toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n
-            const safePos = this._getSafeCameraPosition(fromPos, toPos, new THREE.Vector3(playerX, this.cameraLookAtHeight, playerZ));
+            const safePos = this._getSafeCameraPosition(fromPos, toPos, new THREE.Vector3(playerX, py + this.cameraLookAtHeight, playerZ));
             targetCamX = safePos.x;
             targetCamY = safePos.y;
             targetCamZ = safePos.z;
 
             targetLookX = playerX;
-            targetLookY = this.cameraLookAtHeight;
+            targetLookY = py + this.cameraLookAtHeight;
             targetLookZ = playerZ;
         }
 
@@ -3551,6 +3698,10 @@ Renderer3D.create3DMinigun = function(x, z) {
         }
     };
 })();
+
+Renderer3D.getPlayerFloorHeight = function(x, z) {
+    return 0;
+};
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
