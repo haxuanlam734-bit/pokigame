@@ -1069,8 +1069,17 @@ let Renderer3D = {
         rightHandSocket.position.set(0, -0.65, 0.2);
         rArmPivot.add(rightHandSocket);
         rig.rightHandSocket = rightHandSocket;
+
+        // Left Hand Socket for support grip (rifles)
+        const leftHandSocket = new THREE.Group();
+        leftHandSocket.name = 'leftHandSocket';
+        leftHandSocket.position.set(0, -0.55, 0.15);
+        lArmPivot.add(leftHandSocket);
+        rig.leftHandSocket = leftHandSocket;
+
         if (this.player) {
             this.player.rightHandSocket = rightHandSocket;
+            this.player.leftHandSocket = leftHandSocket;
             this.player.body = torso;
             this.player.head = head;
         }
@@ -1230,6 +1239,7 @@ let Renderer3D = {
             });
 
             let rightHandSocket = null;
+            let leftHandSocket = null;
 
             if (torsoMesh && headMesh && rArmMesh && lArmMesh && rLegMesh && lLegMesh) {
                 while (rig.children.length > 0) {
@@ -1294,11 +1304,19 @@ let Renderer3D = {
                 rightHandSocket.position.set(0, -1.8, 0.8);
                 rArmPivot.add(rightHandSocket);
 
+                // Left Hand Socket for support grip
+                const leftHandSocketGLB = new THREE.Group();
+                leftHandSocketGLB.name = 'leftHandSocket';
+                leftHandSocketGLB.position.set(0, -1.6, 0.6);
+                lArmPivot.add(leftHandSocketGLB);
+
                 rig.add(glbContainer);
                 if (this.player) {
                     this.player.body = torsoPivot;
                     this.player.head = headPivot;
+                    this.player.leftHandSocket = leftHandSocketGLB;
                 }
+                rig.leftHandSocket = leftHandSocketGLB;
 
                 console.log('✅ Đã ghép model Roblox Player vào Procedural Rig với Right Hand Socket');
             } else {
@@ -1315,6 +1333,13 @@ let Renderer3D = {
                 rig.torso = root;
                 if (this.player) this.player.body = root;
 
+                const scaledHeight = size.y * scale;
+                const scaledWidth = size.x * scale;
+                const scaledDepth = size.z * scale;
+                const fallbackX = Math.max(scaledWidth * 0.25, scaledHeight * 0.25);
+                const fallbackY = scaledHeight * 0.33;
+                const fallbackZ = Math.max(scaledDepth * 0.15, scaledHeight * 0.08);
+
                 if (targetBone) {
                     console.log('✅ Dynamic Bone Matching: Gắn vũ khí vào bone ->', targetBone.name);
                     rightHandSocket = new THREE.Group();
@@ -1326,23 +1351,22 @@ let Renderer3D = {
                     console.warn('⚠️ Dynamic Bone Matching: Không tìm thấy bone tay phải chuẩn, fallback gắn vào Root Model bằng toạ độ động');
                     rightHandSocket = new THREE.Group();
                     rightHandSocket.name = 'rightHandSocket';
-                    
-                    // Fallback Layer 2: Tính toán vị trí dựa trên kích thước bounding box thực tế của model (sau khi scale)
-                    const scaledHeight = size.y * scale;
-                    const scaledWidth = size.x * scale;
-                    const scaledDepth = size.z * scale;
-                    
-                    const fallbackX = Math.max(scaledWidth * 0.25, scaledHeight * 0.25);
-                    const fallbackY = scaledHeight * 0.33;
-                    const fallbackZ = Math.max(scaledDepth * 0.15, scaledHeight * 0.08);
-                    
                     rightHandSocket.position.set(fallbackX, fallbackY, fallbackZ);
                     root.add(rightHandSocket);
                 }
+
+                leftHandSocket = new THREE.Group();
+                leftHandSocket.name = 'leftHandSocket';
+                leftHandSocket.position.set(fallbackX ? fallbackX + 0.15 : 0.25, fallbackY ? fallbackY - 0.05 : scaledHeight * 0.30, fallbackZ ? fallbackZ + 0.05 : scaledDepth * 0.10);
+                root.add(leftHandSocket);
             }
 
             rig.rightHandSocket = rightHandSocket;
-            if (this.player) this.player.rightHandSocket = rightHandSocket;
+            rig.leftHandSocket = leftHandSocket;
+            if (this.player) {
+                this.player.rightHandSocket = rightHandSocket;
+                this.player.leftHandSocket = leftHandSocket;
+            }
 
             // Re-bind weapon holder if WeaponRenderer exists
             if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
@@ -1388,6 +1412,25 @@ let Renderer3D = {
         const isAttacking = opts.isAttacking || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim);
         const currentWeapon = opts.currentWeapon || (typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol');
 
+        const WEAPON_ARM_POSE = {
+            ak: {
+                rightArm: { x: -Math.PI / 2.05, z: 0.06, y: 0 },
+                leftArm:  { x: -Math.PI / 2.2,  z: -0.08, y: 0 },
+                leftActive: true
+            },
+            pistol: {
+                rightArm: { x: -Math.PI / 2.25, z: 0.03, y: 0 },
+                leftArm:  { x: -0.2, z: 0.05, y: 0 },
+                leftActive: false
+            },
+            sword: {
+                rightArm: { x: -0.45, z: -0.25, y: 0 },
+                leftArm:  { x: -0.15, z: 0.1, y: 0 },
+                leftActive: true
+            }
+        };
+        const pose = WEAPON_ARM_POSE[currentWeapon] || WEAPON_ARM_POSE['pistol'];
+
         if (isMoving) {
             const freq = isSprinting ? 1.6 : 1.0;
             const amp = isSprinting ? 0.75 : 0.50;
@@ -1398,18 +1441,23 @@ let Renderer3D = {
                 if (rig.leftLeg) rig.leftLeg.rotation.x = Math.sin(time * freq) * amp;
                 if (rig.rightLeg) rig.rightLeg.rotation.x = -Math.sin(time * freq) * amp;
 
-                // Swing left arm
-                if (rig.leftArm) rig.leftArm.rotation.x = -Math.sin(time * freq) * amp;
-
-                // Right arm: if not attacking, weapon stance or swing
+                // Right arm pose
                 if (rig.rightArm && !isAttacking) {
-                    if (currentWeapon === 'sword') {
-                        rig.rightArm.rotation.x = -0.4 + Math.sin(time * freq) * 0.2;
-                        rig.rightArm.rotation.z = -0.2;
+                    rig.rightArm.rotation.x = pose.rightArm.x + Math.sin(time * freq) * 0.06;
+                    rig.rightArm.rotation.z = pose.rightArm.z;
+                    rig.rightArm.rotation.y = pose.rightArm.y;
+                }
+
+                // Left arm pose
+                if (rig.leftArm && !isAttacking) {
+                    if (pose.leftActive) {
+                        rig.leftArm.rotation.x = pose.leftArm.x + Math.sin(time * freq) * 0.05;
+                        rig.leftArm.rotation.z = pose.leftArm.z;
+                        rig.leftArm.rotation.y = pose.leftArm.y;
                     } else {
-                        // Gun aim forward
-                        rig.rightArm.rotation.x = -Math.PI / 2.2 + Math.sin(time * freq) * 0.08;
-                        rig.rightArm.rotation.z = 0;
+                        rig.leftArm.rotation.x = -0.2 + Math.sin(time * freq) * 0.1;
+                        rig.leftArm.rotation.z = 0.05;
+                        rig.leftArm.rotation.y = 0;
                     }
                 }
 
@@ -1428,16 +1476,23 @@ let Renderer3D = {
                 if (rig.torso) rig.torso.rotation.x = breath;
                 if (rig.head) rig.head.rotation.x = -breath * 0.5;
 
-                if (rig.leftArm) rig.leftArm.rotation.x = breath * 2;
-
+                // Right arm idle pose
                 if (rig.rightArm && !isAttacking) {
-                    if (currentWeapon === 'sword') {
-                        rig.rightArm.rotation.x = -0.3 + breath;
-                        rig.rightArm.rotation.z = -0.15;
+                    rig.rightArm.rotation.x = pose.rightArm.x + breath;
+                    rig.rightArm.rotation.z = pose.rightArm.z;
+                    rig.rightArm.rotation.y = pose.rightArm.y;
+                }
+
+                // Left arm idle pose
+                if (rig.leftArm && !isAttacking) {
+                    if (pose.leftActive) {
+                        rig.leftArm.rotation.x = pose.leftArm.x + breath;
+                        rig.leftArm.rotation.z = pose.leftArm.z;
+                        rig.leftArm.rotation.y = pose.leftArm.y;
                     } else {
-                        // Holding gun forward
-                        rig.rightArm.rotation.x = -Math.PI / 2.2 + breath;
-                        rig.rightArm.rotation.z = 0;
+                        rig.leftArm.rotation.x = -0.2 + breath;
+                        rig.leftArm.rotation.z = 0.03;
+                        rig.leftArm.rotation.y = 0;
                     }
                 }
             }
@@ -1449,6 +1504,11 @@ let Renderer3D = {
             const slashPhase = Math.sin(swingTimer * Math.PI * 3);
             rig.rightArm.rotation.x = -Math.PI / 2 - slashPhase * 0.8;
             rig.rightArm.rotation.y = slashPhase * 0.6;
+            if (rig.leftArm) {
+                rig.leftArm.rotation.x = -0.2;
+                rig.leftArm.rotation.z = 0.15;
+                rig.leftArm.rotation.y = 0;
+            }
         }
     },
 

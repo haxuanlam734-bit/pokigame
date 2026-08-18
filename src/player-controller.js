@@ -369,7 +369,8 @@ const PlayerController = {
                 isCrouching: this.isCrouching,
                 isAttacking: isAttacking,
                 currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol',
-                aimPitch: InputManager ? InputManager.cameraPitch : 0
+                aimPitch: InputManager ? InputManager.cameraPitch : 0,
+                isFiring: typeof WeaponSystem !== 'undefined' ? WeaponSystem.isFiring : false
             }
         );
     },

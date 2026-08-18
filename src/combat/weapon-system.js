@@ -25,9 +25,10 @@ const WEAPON_DEFS = {
         hitWindowEnd:    0.38,
         crosshairType:   'melee',
         modelPath:       'src/assets/weapon/MeleeWeapon.js/katana_low_poly.glb',
-        // Visual-only attachment data. targetSize normalizes the GLB's native
-        // units so it remains visible and proportional to the 1.6-unit player.
-        attach: { px: 0.48, py: 0.58, pz: 0.12, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 1.25 }
+        attach: { px: 0.48, py: 0.58, pz: 0.12, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 1.0 },
+        grips: {
+            primary: { x: 0, y: -0.08, z: 0.03 }
+        }
     },
     pistol: {
         id:              'pistol',
@@ -39,10 +40,9 @@ const WEAPON_DEFS = {
         magazineSize:    8,
         reserveAmmo:     40,
         reloadTime:      1.60,
-        // Độ lệch tâm rất nhỏ, bắn cực kỳ chuẩn
         baseSpread:      0.002,
         movementSpread:  0.004,
-        fireSpread:      0.005,
+        fireSpread:      0.0012,
         maxSpread:       0.014,
         spreadRecoveryRate: 0.08,
         recoil:          { vertical: 0.008, horizontal: 0.002 },
@@ -57,7 +57,10 @@ const WEAPON_DEFS = {
         },
         crosshairType:   'gun',
         modelPath:       'src/assets/weapon/RangedWeapon.js/free_fire_gun_desert_eagle.glb',
-        attach: { px: 0.50, py: 0.60, pz: 0.16, rx: 0, ry: Math.PI / 2, rz: 0, targetSize: 0.72 }
+        attach: { px: 0.50, py: 0.60, pz: 0.16, rx: 0, ry: Math.PI / 2, rz: 0, targetSize: 0.72 },
+        grips: {
+            primary: { x: 0, y: -0.06, z: 0.02 }
+        }
     },
     ak: {
         id:              'ak',
@@ -69,7 +72,6 @@ const WEAPON_DEFS = {
         magazineSize:    30,
         reserveAmmo:     120,
         reloadTime:      2.20,
-        // Độ lệch tâm rất nhỏ, sấy chụm và rõ ràng
         baseSpread:      0.0025,
         movementSpread:  0.005,
         fireSpread:      0.0012,
@@ -88,9 +90,23 @@ const WEAPON_DEFS = {
         },
         crosshairType:   'gun',
         modelPath:       'src/assets/weapon/RangedWeapon.js/gun_m4a1.glb',
-        attach: { px: 0.50, py: 0.60, pz: 0.16, rx: 0, ry: Math.PI / 2, rz: 0, targetSize: 1.10 }
+        attach: { px: 0.50, py: 0.60, pz: 0.16, rx: 0, ry: Math.PI / 2, rz: 0, targetSize: 1.3 },
+        grips: {
+            primary: { x: 0, y: -0.10, z: 0.03 },
+            support: { x: 0.30, y: -0.08, z: 0.03 }
+        }
     }
 };
+
+const WEAPON_GRIPS = {};
+for (const id in WEAPON_DEFS) {
+    const g = WEAPON_DEFS[id].grips;
+    if (!g) continue;
+    const out = {};
+    if (g.primary) out.primary = { x: g.primary.x || 0, y: g.primary.y || 0, z: g.primary.z || 0 };
+    if (g.support) out.support = { x: g.support.x || 0, y: g.support.y || 0, z: g.support.z || 0 };
+    WEAPON_GRIPS[id] = out;
+}
 
 const WeaponSystem = {
     currentId:          'pistol',
@@ -116,6 +132,9 @@ const WeaponSystem = {
     // Hit Marker State
     _hitMarkerTimer:    0,
     _hitMarkerDuration: 0.12,
+
+    // Firing state for animation
+    isFiring:           false,
 
     // Callbacks
     onShoot:            null,
@@ -190,11 +209,11 @@ const WeaponSystem = {
         this._firingContinuous = false;
         this._semiConsumed     = false;
         this._burstActive      = false;
-        this._burstShotsLeft   = 0;
         this._burstTimer       = 0;
         this._meleeAttacking   = false;
         this._meleeAttackTimer = 0;
         if (this._meleeHitDealt) this._meleeHitDealt.clear();
+        this.isFiring = false;
     },
 
     update: function(deltaSec) {
@@ -205,6 +224,9 @@ const WeaponSystem = {
         this._recoverRecoil(deltaSec);
         this._updateDynamicSpread(def, deltaSec);
         this._updateHitMarker(deltaSec);
+
+        // Update firing state for animation
+        this.isFiring = (InputManager.isMouseDown && !this._reloading && state.currentAmmo > 0 && def.fireMode !== FIRE_MODE.MELEE);
 
         if (this._reloading) {
             this._reloadTimer -= deltaSec;
@@ -220,8 +242,6 @@ const WeaponSystem = {
             case FIRE_MODE.FULL_AUTO: this._updateFullAuto(def, state, deltaSec); break;
             case FIRE_MODE.BURST:     this._updateBurst(def, state, deltaSec);    break;
         }
-
-        if (InputManager.isKeyPressed('r')) this.tryReload();
     },
 
     // ─── Dynamic Spread & Crouch Calculation ──────────
@@ -297,55 +317,15 @@ const WeaponSystem = {
         ch.style.setProperty('--crosshair-gap', gapPx + 'px');
     },
 
-    // ─── Hit Marker System ───────────────────
     showHitMarker: function(isHeadshot) {
         this._hitMarkerTimer = this._hitMarkerDuration;
-        const hm = document.getElementById('hit-marker');
-        if (hm) {
-            // Position hit marker at current crosshair location
-            const isFPS = (typeof PlayerController !== 'undefined' && PlayerController.isFirstPersonMode);
-            const isLocked = (typeof InputManager !== 'undefined' && InputManager.isPointerLocked);
-            if (isFPS || isLocked) {
-                hm.style.left = '50%';
-                hm.style.top  = '50%';
-            } else {
-                const mx = (typeof InputManager !== 'undefined' && InputManager.mouseX) || (window.innerWidth / 2);
-                const my = (typeof InputManager !== 'undefined' && InputManager.mouseY) || (window.innerHeight / 2);
-                hm.style.left = mx + 'px';
-                hm.style.top  = my + 'px';
-            }
-
-            hm.classList.remove('active', 'headshot');
-            void hm.offsetWidth;
-            hm.classList.add('active');
-            if (isHeadshot) {
-                hm.classList.add('headshot');
-                this._showHeadshotToast();
-            }
-        }
-    },
-
-    _showHeadshotToast: function() {
-        const toast = document.getElementById('headshot-toast');
-        if (toast) {
-            const isFPS = (typeof PlayerController !== 'undefined' && PlayerController.isFirstPersonMode);
-            const isLocked = (typeof InputManager !== 'undefined' && InputManager.isPointerLocked);
-            if (isFPS || isLocked) {
-                toast.style.left = '50%';
-                toast.style.top  = 'calc(50% - 35px)';
-            } else {
-                const mx = (typeof InputManager !== 'undefined' && InputManager.mouseX) || (window.innerWidth / 2);
-                const my = (typeof InputManager !== 'undefined' && InputManager.mouseY) || (window.innerHeight / 2);
-                toast.style.left = mx + 'px';
-                toast.style.top  = (my - 35) + 'px';
-            }
-
-            toast.classList.remove('show');
-            void toast.offsetWidth;
-            toast.classList.add('show');
-            setTimeout(function() {
-                if (toast) toast.classList.remove('show');
-            }, 600);
+        const el = document.getElementById('hit-marker');
+        if (!el) return;
+        el.classList.add('hit');
+        if (isHeadshot) {
+            el.classList.add('headshot');
+        } else {
+            el.classList.remove('headshot');
         }
     },
 
@@ -353,8 +333,9 @@ const WeaponSystem = {
         if (this._hitMarkerTimer > 0) {
             this._hitMarkerTimer -= deltaSec;
             if (this._hitMarkerTimer <= 0) {
-                const hm = document.getElementById('hit-marker');
-                if (hm) hm.classList.remove('active', 'headshot');
+                this._hitMarkerTimer = 0;
+                const el = document.getElementById('hit-marker');
+                if (el) el.classList.remove('hit');
             }
         }
     },
@@ -432,7 +413,7 @@ const WeaponSystem = {
         }
     },
 
-    // ─────────────── BURST ───────────────────
+    // ─────────────── BURST ───────────────
     _updateBurst: function(def, state, deltaSec) {
         if (this._burstActive) {
             this._burstTimer -= deltaSec;
@@ -693,9 +674,9 @@ const WeaponSystem = {
 
         const isMelee = def.fireMode === FIRE_MODE.MELEE;
         const modeName = def.fireMode === FIRE_MODE.SEMI_AUTO ? 'SEMI'
-                       : def.fireMode === FIRE_MODE.FULL_AUTO ? 'AUTO'
-                       : def.fireMode === FIRE_MODE.BURST     ? 'BURST'
-                       : 'MELEE';
+                        : def.fireMode === FIRE_MODE.FULL_AUTO ? 'AUTO'
+                        : def.fireMode === FIRE_MODE.BURST     ? 'BURST'
+                        : 'MELEE';
 
         // ── New HUD elements ──
         const elName = document.getElementById('weapon-name');
@@ -733,7 +714,6 @@ const WeaponSystem = {
             if (slot) slot.classList.toggle('active', this.currentId === id);
         });
     },
-
 
     getCurrentDef:   function() { return WEAPON_DEFS[this.currentId] || null; },
     getCurrentState: function() { return this._state[this.currentId] || null; },
@@ -806,5 +786,5 @@ const WeaponSystem = {
 };
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { WeaponSystem: WeaponSystem, WEAPON_DEFS: WEAPON_DEFS, FIRE_MODE: FIRE_MODE };
+    module.exports = { WeaponSystem: WeaponSystem, WEAPON_DEFS: WEAPON_DEFS, WEAPON_GRIPS: WEAPON_GRIPS, FIRE_MODE: FIRE_MODE };
 }

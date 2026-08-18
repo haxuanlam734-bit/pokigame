@@ -24,6 +24,12 @@ const WeaponRenderer = {
     _activeTracers:   [],
     _maxTracers:      30,
 
+    // Grip system
+    _gripMarkers:     {},
+    _weaponScales:    {},
+    _showGripDebug:   false,
+    _pendingEquip:    null,
+
     init: function() {
         console.log('Khoi tao WeaponRenderer...');
         if (!Renderer3D || !Renderer3D.player) {
@@ -41,6 +47,13 @@ const WeaponRenderer = {
         } else {
             this._weaponHolder.position.set(0.45, 0.60, 0.15);
             Renderer3D.player.add(this._weaponHolder);
+        }
+
+        // Apply any weapon change that arrived before _weaponHolder existed
+        if (this._pendingEquip) {
+            const pending = this._pendingEquip;
+            this._pendingEquip = null;
+            this.onWeaponChanged(null, pending);
         }
 
         // Tao muzzle flash object
@@ -176,7 +189,7 @@ const WeaponRenderer = {
                         if (!child.name) child.name = weaponId + '_mesh';
                     }
                 });
-                self._normalizeModel(model, def.attach);
+                self._normalizeModel(model, def.attach, weaponId);
                 model.visible = false;
                 self._models[weaponId] = model;
                 self._weaponHolder.add(model);
@@ -201,7 +214,7 @@ const WeaponRenderer = {
     // Models in the supplied GLBs use different native unit systems.  Scale
     // from the actual bounding box rather than a guessed number so a sword or
     // gun cannot end up microscopic or off-screen when its source is replaced.
-    _normalizeModel: function(model, attach) {
+    _normalizeModel: function(model, attach, weaponId) {
         const targetSize = attach && attach.targetSize;
         if (!targetSize) return;
 
@@ -216,12 +229,25 @@ const WeaponRenderer = {
 
         const scale = targetSize / largestDimension;
         model.scale.setScalar(scale);
-        // Centre the source model at the grip/attachment point.  This also
-        // fixes GLBs whose geometry is exported far from their local origin.
         model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+        const grips = (typeof WEAPON_GRIPS !== 'undefined' && WEAPON_GRIPS[weaponId]) ? WEAPON_GRIPS[weaponId] : null;
+        const primary = grips && grips.primary;
+        if (primary) {
+            model.position.set(
+                model.position.x - primary.x * scale,
+                model.position.y - primary.y * scale,
+                model.position.z - primary.z * scale
+            );
+        }
+
         model.traverse(function(child) {
             if (child.isMesh) child.frustumCulled = false;
         });
+
+        this._weaponScales = this._weaponScales || {};
+        this._weaponScales[weaponId] = scale;
+        this._createGripMarkers(weaponId, model, grips, scale);
     },
 
     _createFallbackModel: function(weaponId, def) {
@@ -242,6 +268,7 @@ const WeaponRenderer = {
             group.visible = false;
             this._models[weaponId] = group;
             this._weaponHolder.add(group);
+            this._createFallbackGripMarkers(weaponId, group);
         } else {
             geo  = new THREE.BoxGeometry(0.1, 0.12, 0.45);
             mat  = new THREE.MeshPhongMaterial({ color: weaponId === 'pistol' ? 0x333333 : 0x224422 });
@@ -250,11 +277,96 @@ const WeaponRenderer = {
             mesh.visible = false;
             this._models[weaponId] = mesh;
             this._weaponHolder.add(mesh);
+            this._createFallbackGripMarkers(weaponId, mesh);
         }
 
         if (typeof WeaponSystem !== 'undefined' && WeaponSystem.currentId === weaponId) {
             this._showModel(weaponId);
         }
+    },
+
+    _createGripMarkers: function(weaponId, model, grips, scale) {
+        const markers = {};
+        const primaryMarker = new THREE.Object3D();
+        primaryMarker.name = 'PrimaryGrip';
+        primaryMarker.position.set(0, 0, 0);
+        this._weaponHolder.add(primaryMarker);
+        markers.primary = primaryMarker;
+
+        if (this._showGripDebug) {
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.03, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 })
+            );
+            primaryMarker.add(sphere);
+        }
+
+        if (grips && grips.support) {
+            const supportMarker = new THREE.Object3D();
+            supportMarker.name = 'SecondaryGrip';
+            const sx = (grips.support.x - (grips.primary ? grips.primary.x : 0)) * scale;
+            const sy = (grips.support.y - (grips.primary ? grips.primary.y : 0)) * scale;
+            const sz = (grips.support.z - (grips.primary ? grips.primary.z : 0)) * scale;
+            supportMarker.position.set(sx, sy, sz);
+            this._weaponHolder.add(supportMarker);
+            markers.support = supportMarker;
+
+            if (this._showGripDebug) {
+                const sphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.03, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x0088ff, transparent: true, opacity: 0.6 })
+                );
+                supportMarker.add(sphere);
+            }
+        }
+
+        this._gripMarkers[weaponId] = markers;
+    },
+
+    _createFallbackGripMarkers: function(weaponId, model) {
+        const markers = {};
+        const marker = new THREE.Object3D();
+        marker.name = 'PrimaryGrip';
+        marker.position.set(0, 0, 0);
+        this._weaponHolder.add(marker);
+        markers.primary = marker;
+
+        if (this._showGripDebug) {
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.03, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 })
+            );
+            marker.add(sphere);
+        }
+
+        this._gripMarkers[weaponId] = markers;
+    },
+
+    getGripWorldPosition: function(weaponId, gripType) {
+        const markers = this._gripMarkers && this._gripMarkers[weaponId];
+        if (!markers || !markers[gripType]) return null;
+        const marker = markers[gripType];
+        const pos = new THREE.Vector3();
+        marker.getWorldPosition(pos);
+        return pos;
+    },
+
+    refreshGripDebug: function() {
+        Object.values(this._gripMarkers).forEach(markers => {
+            Object.values(markers).forEach(marker => {
+                while (marker.children.length > 0) {
+                    marker.remove(marker.children[0]);
+                }
+                if (this._showGripDebug) {
+                    const color = marker.name === 'PrimaryGrip' ? 0xff0000 : 0x0088ff;
+                    const sphere = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.03, 8, 8),
+                        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 })
+                    );
+                    marker.add(sphere);
+                }
+            });
+        });
     },
 
     _useFallbackForAll: function() {
@@ -265,11 +377,16 @@ const WeaponRenderer = {
     },
 
     onWeaponChanged: function(prevId, newId) {
+        if (!this._weaponHolder) {
+            this._pendingEquip = newId;
+            return;
+        }
         if (prevId && this._models[prevId]) {
             this._models[prevId].visible = false;
         }
         this._showModel(newId);
         this.resetMeleeAnim();
+        console.log('[WEAPON] Switch:', prevId, '->', newId, 'holderParent=', this._weaponHolder.parent ? this._weaponHolder.parent.name : 'null');
     },
 
     _showModel: function(weaponId) {
@@ -277,12 +394,11 @@ const WeaponRenderer = {
         const def   = (typeof WEAPON_DEFS !== 'undefined') ? WEAPON_DEFS[weaponId] : null;
         if (!model || !def) return;
 
-        // Re-parent vao rightHandSocket neu model player da load
-        if (Renderer3D && Renderer3D.player && Renderer3D.player.rightHandSocket) {
-            if (this._weaponHolder && this._weaponHolder.parent !== Renderer3D.player.rightHandSocket) {
-                Renderer3D.player.rightHandSocket.add(this._weaponHolder);
-                this._weaponHolder.position.set(0, 0, 0);
-            }
+        const rightSocket = (Renderer3D && Renderer3D.player && Renderer3D.player.rightHandSocket) ? Renderer3D.player.rightHandSocket : null;
+        if (rightSocket && this._weaponHolder && this._weaponHolder.parent !== rightSocket) {
+            rightSocket.add(this._weaponHolder);
+            this._weaponHolder.position.set(0, 0, 0);
+            this._weaponHolder.rotation.set(0, 0, 0);
         }
 
         model.visible = true;
@@ -290,19 +406,17 @@ const WeaponRenderer = {
         const a = def.attach;
         if (a) {
             model.rotation.set(a.rx || 0, a.ry || 0, a.rz || 0);
-            if (!Renderer3D.player || !Renderer3D.player.rightHandSocket) {
-                this._weaponHolder.position.set(a.px || 0, a.py || 0, a.pz || 0);
-            } else {
-                this._weaponHolder.position.set(0, 0, 0);
-            }
         }
 
         if (weaponId !== 'sword' && this._muzzleFlashObj) {
-            model.add(this._muzzleFlashObj);
-            this._muzzleFlashObj.position.set(0, 0, 0.45);
+            if (this._muzzleFlashObj.parent !== model) {
+                model.add(this._muzzleFlashObj);
+                this._muzzleFlashObj.position.set(0, 0, 0.45);
+            }
         }
 
-        console.log('Hien thi model: ' + weaponId);
+        this._currentModel = model;
+        console.log('[WEAPON] Hien thi model: ' + weaponId + ' parent=' + (this._weaponHolder.parent ? this._weaponHolder.parent.name : 'null') + ' visible=' + model.visible);
     },
 
     playMeleeSwingAnim: function() {
@@ -368,6 +482,19 @@ const WeaponRenderer = {
     update: function(deltaSec) {
         if (!this._weaponHolder) return;
 
+        if (!this._weaponHolder.parent) {
+            const rightSocket = (Renderer3D && Renderer3D.player && Renderer3D.player.rightHandSocket) ? Renderer3D.player.rightHandSocket : null;
+            if (rightSocket) {
+                rightSocket.add(this._weaponHolder);
+                this._weaponHolder.position.set(0, 0, 0);
+            }
+        }
+
+        const model = this._currentModel || (typeof WeaponSystem !== 'undefined' ? this._models[WeaponSystem.currentId] : null);
+        if (model && !model.visible) {
+            model.visible = true;
+        }
+
         // 1. Swing animation (melee)
         if (this._swingAnim) {
             this._swingTimer += deltaSec;
@@ -406,18 +533,48 @@ const WeaponRenderer = {
             }
         }
 
-        // 4. Vu khi theo camera direction trong FPS mode & Crouch adjustment
+        // 4. Compensate for parent scale and set weaponHolder position
+        let parentScale = new THREE.Vector3(1, 1, 1);
+        if (this._weaponHolder.parent) {
+            this._weaponHolder.parent.getWorldScale(parentScale);
+        }
+        // Avoid division by zero
+        const safeScale = new THREE.Vector3(
+            parentScale.x === 0 ? 1 : parentScale.x,
+            parentScale.y === 0 ? 1 : parentScale.y,
+            parentScale.z === 0 ? 1 : parentScale.z
+        );
+        // Set weaponHolder's local scale so that its world scale is 1
+        this._weaponHolder.scale.set(
+            1 / safeScale.x,
+            1 / safeScale.y,
+            1 / safeScale.z
+        );
+
+        // Now set the weaponHolder's local position so that its world position offset from parent is the attach config's position
         const isFPS = typeof PlayerController !== 'undefined' && PlayerController.isFirstPersonMode;
         const isCrouch = typeof PlayerController !== 'undefined' && PlayerController.isCrouching;
 
         const def = (typeof WeaponSystem !== 'undefined' && WeaponSystem.getCurrentDef)
             ? WeaponSystem.getCurrentDef() : null;
         const a = def && def.attach ? def.attach : { px: 0.45, py: 0.60, pz: 0.15 };
+        let offsetX = a.px || 0;
+        let offsetY = a.py || 0;
+        let offsetZ = a.pz || 0;
         if (isFPS) {
-            this._weaponHolder.position.set(0.32, -0.22, -0.32);
+            offsetX = 0.32;
+            offsetY = -0.22;
+            offsetZ = -0.32;
         } else {
-            this._weaponHolder.position.set(a.px || 0, isCrouch ? (a.py || 0) - 0.18 : (a.py || 0), a.pz || 0);
+            if (isCrouch) {
+                offsetY -= 0.18;
+            }
         }
+        this._weaponHolder.position.set(
+            offsetX / safeScale.x,
+            offsetY / safeScale.y,
+            offsetZ / safeScale.z
+        );
     }
 };
 

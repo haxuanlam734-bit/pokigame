@@ -25,11 +25,11 @@ const Game = {
             PlayerController.init();
             
             // 5. Khởi tạo Combat System (WeaponSystem + WeaponRenderer)
-            if (typeof WeaponSystem !== 'undefined') {
-                WeaponSystem.init();
-            }
             if (typeof WeaponRenderer !== 'undefined') {
                 WeaponRenderer.init();
+            }
+            if (typeof WeaponSystem !== 'undefined') {
+                WeaponSystem.init();
             }
             
             // 6. Khởi tạo GameState
