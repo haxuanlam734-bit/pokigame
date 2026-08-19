@@ -15,6 +15,11 @@ const GameState = {
     phaseTimeRemaining: CONFIG.DAY_DURATION,
 
     // =====================
+    // TIME CYCLE INTEGRATION
+    // =====================
+    _timeCycleSubscribed: false,
+
+    // =====================
     // ADMIN MODE
     // =====================
     isAdmin: false,
@@ -194,18 +199,20 @@ const GameState = {
     init: function() {
         console.log('🎮 Khởi tạo GameState...');
 
-        // Load save data nếu có, nhưng vẫn reset trạng thái cơ bản trước
         const saved = this.loadGame();
 
-        // Reset trạng thái
         this.isRunning = true;
         this.isGameOver = false;
-        this.phase = CONFIG.PHASE_DAY;
         this.currentWave = 1;
-        this.phaseTime = CONFIG.DAY_DURATION;
-        this.phaseTimeRemaining = CONFIG.DAY_DURATION;
 
-        // Reset tài nguyên
+        if (typeof TimeCycle !== 'undefined' && TimeCycle.isRunning) {
+            this.phase = TimeCycle.currentPhase;
+            this.phaseTimeRemaining = TimeCycle.phaseTimeRemaining;
+        } else {
+            this.phase = CONFIG.PHASE_DAY;
+            this.phaseTimeRemaining = CONFIG.DAY_DURATION;
+        }
+
         this.money = saved && typeof saved.money === 'number' ? saved.money : CONFIG.STARTING_MONEY;
         this.fortressHP = saved && typeof saved.fortressHP === 'number' ? saved.fortressHP : CONFIG.FORTRESS_MAX_HP;
 
@@ -224,7 +231,6 @@ const GameState = {
             minigun: 0
         };
 
-        // Reset entities
         this.towers = [];
         this.turelList = [];
         this.walls = [];
@@ -233,7 +239,6 @@ const GameState = {
         this.minigunList = [];
         this.bullets = [];
 
-        // Reset stats
         this.totalScore = saved && typeof saved.totalScore === 'number' ? saved.totalScore : 0;
         this.zombiesKilled = saved && typeof saved.zombiesKilled === 'number' ? saved.zombiesKilled : 0;
         this.moneyEarned = saved && typeof saved.moneyEarned === 'number' ? saved.moneyEarned : 0;
@@ -266,12 +271,10 @@ const GameState = {
         this.commsReady = true;
         this.lastServiceAction = {};
 
-        // Reset timing
         this.gameStartTime = Date.now();
         this.lastMoneyRegenTime = Date.now();
         this.lastZombieSpawnTime = Date.now();
 
-        // Nếu có dữ liệu lưu nhưng không khôi phục chi tiết xây dựng, giữ an toàn
         if (saved && Array.isArray(saved.buildings)) {
             saved.buildings.forEach(item => {
                 if (item.type === 'wall') this.builtBuildings.wall = item.count || 0;
@@ -280,6 +283,18 @@ const GameState = {
                 if (item.type === 'turel') this.builtBuildings.turel = Math.min(item.count || 0, CONFIG.BUILDING_DEFS.turel.maxCount);
                 if (item.type === 'minigun') this.builtBuildings.minigun = item.count || 0;
             });
+        }
+
+        if (!this._timeCycleSubscribed && typeof TimeCycle !== 'undefined') {
+            TimeCycle.onPhaseChanged(function(oldPhase, newPhase) {
+                GameState.handlePhaseChange(oldPhase, newPhase);
+            });
+            this._timeCycleSubscribed = true;
+
+            if (TimeCycle.isRunning) {
+                this.phase = TimeCycle.currentPhase;
+                this.phaseTimeRemaining = TimeCycle.phaseTimeRemaining;
+            }
         }
 
         console.log('✅ GameState khởi tạo xong');
@@ -292,8 +307,15 @@ const GameState = {
     update: function(deltaTime) {
         if (!this.isRunning) return;
 
-        // Cập nhật thời gian pha
-        this.phaseTimeRemaining -= deltaTime / 1000;
+        if (typeof TimeCycle !== 'undefined' && TimeCycle.isRunning) {
+            this.phase = TimeCycle.currentPhase;
+            this.phaseTimeRemaining = TimeCycle.phaseTimeRemaining;
+        } else {
+            this.phaseTimeRemaining -= deltaTime / 1000;
+            if (this.phaseTimeRemaining <= 0) {
+                this._legacySwitchPhase();
+            }
+        }
 
         // Stamina tự hồi chỉ khi không sprint
         if (typeof PlayerController !== 'undefined' && !PlayerController.isSprinting) {
@@ -309,11 +331,6 @@ const GameState = {
             }
         }
 
-        // Chuyển pha nếu hết thời gian
-        if (this.phaseTimeRemaining <= 0) {
-            this.switchPhase();
-        }
-
         // Regen tiền
         this.updateMoneyRegen();
         
@@ -322,13 +339,13 @@ const GameState = {
         
         // Cập nhật tháp pháo do người chơi xây
         this.updateTowers(deltaTime);
-
+    
         // Cập nhật Turel (tháp pháo model 3D)
         this.updateTurelList(deltaTime);
-
-        // Cập nhật Minigun (hộp súng máy)
+    
+        // Cập nhật Minigun (hộp súng máu)
         this.updateMinigunList(deltaTime);
-
+    
         // Cập nhật mạng súng máy tự động của đại bản doanh
         if (typeof Renderer3D !== 'undefined' && Renderer3D.updateAutomatedDefenses) {
             Renderer3D.updateAutomatedDefenses(deltaTime, this.zombies);
@@ -343,9 +360,24 @@ const GameState = {
         // Kiểm tra va chạm
         this.checkCollisions();
         
-        // Sinh zombie nếu đang đêm
-        if (this.phase === CONFIG.PHASE_NIGHT) {
-            this.spawnZombies(deltaTime);
+        // Sinh zombie liên tục (không phụ thuộc wave)
+        this.spawnZombies(deltaTime);
+    },
+
+    handlePhaseChange: function(oldPhase, newPhase) {
+        this.phase = newPhase;
+        this.lastZombieSpawnTime = Date.now();
+    },
+
+    _legacySwitchPhase: function() {
+        if (this.phase === CONFIG.PHASE_DAY || this.phase === CONFIG.PHASE_DAY_LEGACY) {
+            this.phase = CONFIG.PHASE_NIGHT;
+            this.phaseTimeRemaining = CONFIG.NIGHT_DURATION_LEGACY;
+        } else {
+            this.phase = CONFIG.PHASE_DAY;
+            this.phaseTimeRemaining = CONFIG.DAY_DURATION_LEGACY;
+            this.currentWave++;
+            this.saveGame();
         }
     },
     
@@ -443,7 +475,7 @@ const GameState = {
     },
 
     /**
-     * Chuyển sang pha tiếp theo
+     * Chuyển sang pha tiếp theo - legacy fallback
      */
     switchPhase: function() {
         if (this.phase === CONFIG.PHASE_DAY) {
@@ -460,6 +492,18 @@ const GameState = {
             this.currentWave++;
 
             // Lưu game
+            this.saveGame();
+        }
+    },
+
+    _legacySwitchPhase: function() {
+        if (this.phase === CONFIG.PHASE_DAY) {
+            this.phase = CONFIG.PHASE_NIGHT;
+            this.phaseTimeRemaining = CONFIG.NIGHT_DURATION_LEGACY;
+        } else {
+            this.phase = CONFIG.PHASE_DAY;
+            this.phaseTimeRemaining = CONFIG.DAY_DURATION_LEGACY;
+            this.currentWave++;
             this.saveGame();
         }
     },
@@ -663,15 +707,24 @@ const GameState = {
     },
     
     /**
-     * Sinh zombie 3D từ 4 rìa ngoài bản đồ ngẫu nhiên
+     * Sinh zombie 3D liên tục từ 4 rìa ngoài bản đồ
+     * Không dựa trên wave, spawn đều đặn trong mọi phase
      * @param {number} deltaTime - Thời gian delta
      */
     spawnZombies: function(deltaTime) {
         const now = Date.now();
-        const spawnInterval = 1000 / CONFIG.ZOMBIE_SPAWN_RATE;
+
+        let spawnRate = CONFIG.ZOMBIE_SPAWN_RATE;
+        if (typeof TimeCycle !== 'undefined' && TimeCycle.isRunning) {
+            const modifiers = CONFIG.ZOMBIE_PHASE_MODIFIERS[TimeCycle.currentPhase] || CONFIG.ZOMBIE_PHASE_MODIFIERS.day;
+            spawnRate = CONFIG.ZOMBIE_SPAWN_RATE * modifiers.speedMultiplier;
+        }
+
+        const spawnInterval = 1000 / spawnRate;
         
         if (now - this.lastZombieSpawnTime >= spawnInterval) {
-            const wave = CONFIG.ZOMBIE_WAVES[Math.min(this.currentWave - 1, CONFIG.ZOMBIE_WAVES.length - 1)];
+            const waveIndex = Math.min(this.currentWave - 1, CONFIG.ZOMBIE_WAVES.length - 1);
+            const wave = CONFIG.ZOMBIE_WAVES[waveIndex] || CONFIG.ZOMBIE_WAVES[0];
 
             const edge = Math.floor(Math.random() * 4);
             const margin = 10;

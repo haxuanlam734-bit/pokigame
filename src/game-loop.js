@@ -9,17 +9,16 @@ const GameLoop = {
     frameRate: 0,
     frameCount: 0,
     lastFpsUpdate: 0,
-    
+    _phaseNotificationTimer: 0,
+    _currentNotificationPhase: null,
+    _notificationHiding: false,
+
     /**
      * Khởi động vòng lặp game
      */
     start: function() {
         console.log('▶️ Khởi động Game Loop...');
         this.isRunning = true;
-        // 0 = "chưa có mốc thời gian" -> loop() sẽ tự khởi tạo bằng timestamp
-        // của requestAnimationFrame ở frame đầu tiên. Không dùng Date.now()
-        // ở đây vì rAF cấp timestamp theo performance.now(), khác epoch với
-        // Date.now() -> trộn 2 mốc thời gian sẽ ra deltaTime sai (rất lớn/âm).
         this.lastFrameTime = 0;
         this.frameCount = 0;
         this.lastFpsUpdate = 0;
@@ -42,7 +41,6 @@ const GameLoop = {
     loop: function(timestamp) {
         if (!this.isRunning) return;
 
-        // Khởi tạo mốc thời gian ở frame đầu tiên
         if (!this.lastFrameTime) {
             this.lastFrameTime = timestamp;
             this.lastFpsUpdate = timestamp;
@@ -51,28 +49,21 @@ const GameLoop = {
         let deltaTime = timestamp - this.lastFrameTime;
         this.lastFrameTime = timestamp;
 
-        // Chặn deltaTime bất thường (đổi tab, dừng debugger, máy lag...)
-        // để tránh vật lý/game logic bị "nhảy" một bước quá lớn
         if (!(deltaTime >= 0)) deltaTime = 0;
         if (deltaTime > 250) deltaTime = 250;
 
-        // 1. Cập nhật logic game (zombie, tháp, pha ngày/đêm, tiền, HP...)
         this.update(deltaTime);
 
-        // 2. Cập nhật người chơi (di chuyển, camera, vũ khí)
         if (typeof PlayerController !== 'undefined' && PlayerController.update) {
             PlayerController.update(deltaTime);
         }
 
-        // 3. Cập nhật HUD
         this.updateUI();
 
-        // 4. Vẽ lại khung hình 3D
         if (typeof Renderer3D !== 'undefined' && Renderer3D.render) {
             Renderer3D.render();
         }
 
-        // 5. Cập nhật FPS counter
         this.updateFPS(timestamp);
 
         requestAnimationFrame(this.loop.bind(this));
@@ -84,7 +75,20 @@ const GameLoop = {
      */
     update: function(deltaTime) {
         if (!GameState.isRunning) return;
+
+        if (typeof TimeCycle !== 'undefined' && TimeCycle.isRunning) {
+            TimeCycle.update(deltaTime);
+        }
+
         GameState.update(deltaTime);
+
+        if (typeof LightingController !== 'undefined' && LightingController.update) {
+            LightingController.update();
+        }
+
+        if (typeof AudioController !== 'undefined' && AudioController.update) {
+            AudioController.update();
+        }
     },
     
     /**
@@ -104,34 +108,41 @@ const GameLoop = {
      * Cập nhật UI display (3D version)
      */
     updateUI: function() {
-        // ---- Phase ----
+        const phaseInfo = (typeof TimeCycle !== 'undefined' && TimeCycle.isRunning)
+            ? TimeCycle.getPhaseInfo()
+            : { currentPhase: GameState.phase, phaseTimeRemaining: GameState.phaseTimeRemaining };
+
+        const currentPhase = phaseInfo.currentPhase || GameState.phase;
+
         const phaseBadge = document.getElementById('phase-badge');
         if (phaseBadge) {
-            const isDay = GameState.phase === CONFIG.PHASE_DAY;
-            phaseBadge.textContent = isDay ? '☀️ NGÀY' : '🌙 ĐÊM';
-            phaseBadge.className = 'phase-badge' + (isDay ? '' : ' night');
+            const displayName = (typeof TimeCycle !== 'undefined')
+                ? TimeCycle.getPhaseDisplayName()
+                : this._getLegacyPhaseDisplayName(currentPhase);
+            phaseBadge.textContent = displayName;
+            phaseBadge.className = 'phase-badge phase-' + currentPhase;
         }
 
-        // ---- Wave ----
         const waveDisplay = document.getElementById('wave-display');
         if (waveDisplay) {
             waveDisplay.textContent = GameState.currentWave;
         }
 
-        // ---- Time ----
         const timeDisplay = document.getElementById('time-display');
         if (timeDisplay) {
-            const timeLeft = Math.ceil(GameState.phaseTimeRemaining);
-            timeDisplay.textContent = timeLeft + 's';
+            const remaining = Math.max(0, phaseInfo.phaseTimeRemaining || 0);
+            const mins = Math.floor(remaining / 60);
+            const secs = Math.floor(remaining % 60);
+            timeDisplay.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
         }
 
-        // ---- Money ----
+        this._updatePhaseNotification(currentPhase);
+
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
             moneyDisplay.textContent = Utils.formatMoney(GameState.money);
         }
 
-        // ---- Player HP / permanent HP loss ----
         const hpDisplay = document.getElementById('hp-display');
         const hpLossDisplay = document.getElementById('hp-loss-display');
         const hpBar = document.getElementById('hp-bar');
@@ -150,13 +161,11 @@ const GameLoop = {
             hpLostBar.style.width = lostPercent + '%';
         }
 
-        // ---- Stamina ----
         const staminaDisplay = document.getElementById('stamina-display');
         const staminaBar = document.getElementById('stamina-bar');
         if (staminaDisplay) staminaDisplay.textContent = `${Math.ceil(GameState.stamina)}`;
         if (staminaBar) staminaBar.style.width = Math.max(0, Math.min(100, (GameState.stamina / GameState.maxStamina) * 100)) + '%';
 
-        // ---- Medical items ----
         const bandageCount = document.getElementById('bandage-count');
         const medkitCount = document.getElementById('medkit-count');
         const bandageBtn = document.getElementById('btn-bandage');
@@ -166,10 +175,8 @@ const GameLoop = {
         if (bandageBtn) bandageBtn.classList.toggle('disabled', GameState.bandages <= 0 || GameState.playerMaxHP >= GameState.playerBaseMaxHP);
         if (medkitBtn) medkitBtn.classList.toggle('disabled', GameState.medkits <= 0);
 
-        // ---- Combat / Weapon stats ----
         const ammoDisplay = document.getElementById('ammo-display');
         const weaponDisplay = document.getElementById('weapon-display');
-        // New HUD elements
         const elWeaponName = document.getElementById('weapon-name');
         const elWeaponMode = document.getElementById('weapon-mode');
         const elAmmoCurr   = document.getElementById('ammo-current');
@@ -185,10 +192,8 @@ const GameLoop = {
                                : def.fireMode === 'FULL_AUTO' ? 'AUTO'
                                : def.fireMode === 'BURST'     ? 'BURST'
                                : 'MELEE';
-                // Legacy
                 if (ammoDisplay)  ammoDisplay.textContent  = isMelee ? 'MELEE' : isRld ? 'RELOAD...' : `${state.currentAmmo}/${state.reserveAmmo}`;
                 if (weaponDisplay) weaponDisplay.textContent = `${def.name} [${modeName}]`;
-                // New
                 if (elWeaponName) elWeaponName.textContent = def.name;
                 if (elWeaponMode) elWeaponMode.textContent = isRld ? 'RELOAD...' : modeName;
                 if (elAmmoCurr)   elAmmoCurr.textContent   = isMelee ? '\u221e' : (isRld ? '\u2014' : state.currentAmmo);
@@ -201,8 +206,45 @@ const GameLoop = {
             if (elAmmoMax)    elAmmoMax.textContent    = Math.floor(GameState.maxAmmo);
         }
 
-        // ---- Update Buttons ----
         this.updateButtonStates();
+    },
+
+    _updatePhaseNotification: function(phase) {
+        if (this._currentNotificationPhase !== phase) {
+            this._currentNotificationPhase = phase;
+            this._phaseNotificationTimer = 180;
+            this._notificationHiding = false;
+        }
+
+        const notif = document.getElementById('phase-notification');
+        if (!notif) return;
+
+        if (this._phaseNotificationTimer > 0) {
+            this._phaseNotificationTimer--;
+            notif.style.display = 'flex';
+            notif.style.opacity = Math.min(1, this._phaseNotificationTimer / 30);
+            const phaseNames = {
+                [CONFIG.PHASE_DAY]: '☀️ NGÀY',
+                [CONFIG.PHASE_SUNSET]: '🌇 SUNSET',
+                [CONFIG.PHASE_NIGHT]: '🌙 ĐÊM',
+                [CONFIG.PHASE_DAWN]: '🌅 DAWN'
+            };
+            notif.textContent = phaseNames[phase] || phase.toUpperCase();
+        } else if (!this._notificationHiding) {
+            this._notificationHiding = true;
+            notif.style.opacity = '0';
+            setTimeout(function() {
+                if (notif.style.opacity === '0') {
+                    notif.style.display = 'none';
+                }
+            }, 300);
+        }
+    },
+
+    _getLegacyPhaseDisplayName: function(phase) {
+        if (phase === CONFIG.PHASE_DAY || phase === CONFIG.PHASE_DAY_LEGACY) return '☀️ NGÀY';
+        if (phase === CONFIG.PHASE_NIGHT || phase === CONFIG.PHASE_NIGHT_LEGACY) return '🌙 ĐÊM';
+        return phase.toUpperCase();
     },
 
     /**
@@ -224,14 +266,12 @@ const GameLoop = {
             const def = GameState.getBuildingDef(type);
             const unlocked = GameState.hasUnlockedBuilding(type);
             const affordable = GameState.money >= def.cost;
-            // Shop accessible day AND night
             const canUse = unlocked && affordable;
 
             if (type === 'turel') {
                 btn.textContent = `${def.emoji} ${def.name} ${GameState.builtBuildings.turel}/${def.maxCount} - ${Utils.formatMoney(def.cost)}`;
             }
 
-            // Xóa các class cũ
             btn.classList.remove('available', 'active', 'disabled');
             
             if (GameState.buildingMode && GameState.buildingType === type) {
@@ -243,7 +283,6 @@ const GameLoop = {
             }
         }
 
-        // Nút quảng cáo luôn sẵn sàng (chỉ disable nếu game over)
         const adsBtn = document.getElementById('btn-ads');
         if (adsBtn) {
             if (GameState.isGameOver) {

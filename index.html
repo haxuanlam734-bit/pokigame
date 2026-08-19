@@ -102,11 +102,25 @@
             box-shadow: 0 0 15px rgba(255, 184, 0, 0.2);
         }
 
+        .phase-badge.sunset {
+            background: rgba(255, 140, 0, 0.15);
+            color: #ff8c00;
+            border: 1px solid rgba(255, 140, 0, 0.3);
+            box-shadow: 0 0 15px rgba(255, 140, 0, 0.2);
+        }
+
         .phase-badge.night {
             background: rgba(255, 46, 99, 0.15);
             color: #ff2e63;
             border: 1px solid rgba(255, 46, 99, 0.3);
             box-shadow: 0 0 15px rgba(255, 46, 99, 0.2);
+        }
+
+        .phase-badge.dawn {
+            background: rgba(180, 130, 255, 0.15);
+            color: #b482ff;
+            border: 1px solid rgba(180, 130, 255, 0.3);
+            box-shadow: 0 0 15px rgba(180, 130, 255, 0.2);
         }
 
         .stat-row {
@@ -1055,6 +1069,7 @@
             <!-- TOP LEFT -->
             <div id="top-panel" class="panel">
                 <div class="phase-badge" id="phase-badge">☀️ NGÀY</div>
+                <div id="phase-notification" style="display:none; opacity:0; font-family:'Orbitron',monospace; font-size:11px; font-weight:700; letter-spacing:1px; text-align:center; padding:4px 0; transition: opacity 0.3s ease;"></div>
                 <div class="stat-row">
                     <span class="label">SÓNG</span>
                     <span class="value" id="wave-display">1</span>
@@ -1259,6 +1274,9 @@
     <script src="src/poki-manager.js"></script>
     <script src="src/input-manager.js"></script>
     <script src="src/player-controller.js"></script>
+    <script src="src/time-cycle-controller.js"></script>
+    <script src="src/lighting-controller.js"></script>
+    <script src="src/audio-controller.js"></script>
     <script src="src/rendering/renderer-3d.js"></script>
     <script src="src/combat/weapon-system.js"></script>
     <script src="src/combat/weapon-renderer.js"></script>

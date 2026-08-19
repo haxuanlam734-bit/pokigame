@@ -15,6 +15,10 @@ let Renderer3D = {
     zombies: [],
     minters: [],
     ground: null,
+    sunMesh: null,
+    starField: null,
+    gradientTexture: null,
+
     player: null,
 
     // External GLB assets loaded from src/assets/models.
@@ -26,9 +30,9 @@ let Renderer3D = {
     turretPreview: null,
     _turretAssets: null,
 
-    cameraDistance: 20,
-    cameraHeightOffset: 8,
-    cameraLookAtHeight: 1.2,
+    cameraDistance: 24,
+    cameraHeightOffset: 10,
+    cameraLookAtHeight: 1.0,
 
     firstPersonThreshold: 0.8,
     eyeHeight: 1.5,
@@ -75,8 +79,8 @@ let Renderer3D = {
         }
 
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color('#1c2a1c');
-        this.scene.fog = new THREE.FogExp2('#1c2a1c', 0.012);
+        this.scene.background = new THREE.Color(CONFIG.LIGHTING.day.background);
+        this.scene.fog = new THREE.Fog(CONFIG.LIGHTING.day.fogColor, CONFIG.LIGHTING.day.fogNear, CONFIG.LIGHTING.day.fogFar);
 
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -92,8 +96,15 @@ let Renderer3D = {
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFShadowMap;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
+        if (THREE.ACESFilmicToneMapping) {
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = CONFIG.LIGHTING.day.exposure;
+        } else if (THREE.LinearToneMapping) {
+            this.renderer.toneMapping = THREE.LinearToneMapping;
+            this.renderer.toneMappingExposure = CONFIG.LIGHTING.day.exposure;
+        }
 
         // KhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng collision
         this._collisionMeshes = [];
@@ -102,6 +113,10 @@ let Renderer3D = {
         this._hqInterior = null;
 
         this.setupLighting();
+        // this.createSkyDome(); // Removed to avoid geometric edge in sky
+        this.createGradientTexture(new THREE.Color('#0f3d6e'), new THREE.Color('#6ab8f0'));
+        this.createSunMesh();
+        this.createStarField();
         this.createGround();
         this.createBoundaryMountains();
         this.createRiver();
@@ -145,13 +160,13 @@ let Renderer3D = {
         directionalLight.target.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(directionalLight.target);
         directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 1024;
-        directionalLight.shadow.mapSize.height = 1024;
-        directionalLight.shadow.camera.far = 700;
-        directionalLight.shadow.camera.left = -320;
-        directionalLight.shadow.camera.right = 320;
-        directionalLight.shadow.camera.top = 320;
-        directionalLight.shadow.camera.bottom = -320;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.far = 1000;
+        directionalLight.shadow.camera.left = -500;
+        directionalLight.shadow.camera.right = 500;
+        directionalLight.shadow.camera.top = 500;
+        directionalLight.shadow.camera.bottom = -500;
         directionalLight.shadow.bias = -0.0005;
         this.scene.add(directionalLight);
 
@@ -159,9 +174,180 @@ let Renderer3D = {
         this.scene.add(hemiLight);
     },
 
+
+    createSunMesh: function() {
+        const daySettings = CONFIG.LIGHTING.day;
+        const size = 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        gradient.addColorStop(0, 'rgba(255,250,240,1)');
+        gradient.addColorStop(0.12, 'rgba(255,246,230,0.98)');
+        gradient.addColorStop(0.3, 'rgba(255,240,215,0.9)');
+        gradient.addColorStop(0.55, 'rgba(255,230,195,0.55)');
+        gradient.addColorStop(0.78, 'rgba(255,215,170,0.12)');
+        gradient.addColorStop(1, 'rgba(255,200,150,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const geo = new THREE.PlaneGeometry(32, 32);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            depthTest: false,
+            fog: false,
+            side: THREE.DoubleSide
+        });
+        this.sunMesh = new THREE.Mesh(geo, mat);
+        this.sunMesh.position.set(
+            daySettings.sunPosition.x,
+            daySettings.sunPosition.y,
+            daySettings.sunPosition.z
+        );
+        this.scene.add(this.sunMesh);
+    },
+
+    createStarField: function() {
+        const count = 600;
+        const positions = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.45;
+            const r = 390;
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = Math.abs(r * Math.cos(phi));
+            positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const mat = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 1.0,
+            transparent: true,
+            opacity: 0,
+            fog: false,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+        this.starField = new THREE.Points(geo, mat);
+        this.scene.add(this.starField);
+    },
+
+    createGradientTexture: function(topColor, bottomColor) {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, size);
+        gradient.addColorStop(0, topColor.getStyle());
+        gradient.addColorStop(1, bottomColor.getStyle());
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+
+        if (this.gradientTexture) {
+            this.gradientTexture.dispose();
+        }
+        this.gradientTexture = texture;
+        this.scene.background = this.gradientTexture;
+    },
+
+    updateGradientTexture: function(phase, phaseProgress) {
+        const t = this._smoothStep(phaseProgress || 0);
+
+        const phases = [CONFIG.PHASE_DAY, CONFIG.PHASE_SUNSET, CONFIG.PHASE_NIGHT, CONFIG.PHASE_DAWN];
+        const currentIndex = phases.indexOf(phase);
+        const nextPhase = phases[(currentIndex + 1) % phases.length];
+        const nextSettings = CONFIG.LIGHTING[nextPhase] || CONFIG.LIGHTING.day;
+        const settings = CONFIG.LIGHTING[phase] || CONFIG.LIGHTING.day;
+
+        // We want to interpolate the sky colors (top and bottom) between the current and next phase.
+        // We have the same colors as before for the skyDome.
+
+        const dayTop = new THREE.Color('#0f3d6e');
+        const dayBottom = new THREE.Color('#6ab8f0');
+        const sunsetTop = new THREE.Color('#0f0820');
+        const sunsetBottom = new THREE.Color('#f8a050');
+        const nightTop = new THREE.Color('#010208');
+        const nightBottom = new THREE.Color('#061420');
+        const dawnTop = new THREE.Color('#081830');
+        const dawnBottom = new THREE.Color('#d8a898');
+
+        const tops = [dayTop, sunsetTop, nightTop, dawnTop];
+        const bottoms = [dayBottom, sunsetBottom, nightBottom, dawnBottom];
+
+        const fromTop = tops[currentIndex];
+        const fromBottom = bottoms[currentIndex];
+        const toTop = tops[(currentIndex + 1) % phases.length];
+        const toBottom = bottoms[(currentIndex + 1) % phases.length];
+
+        const topColor = new THREE.Color().lerpColors(fromTop, toTop, t);
+        const bottomColor = new THREE.Color().lerpColors(fromBottom, toBottom, t);
+
+        // Now create the gradient texture with these two colors.
+        this.createGradientTexture(topColor, bottomColor);
+    },
+
+    updateSky: function(phase, phaseProgress) {
+        const settings = CONFIG.LIGHTING[phase] || CONFIG.LIGHTING.day;
+        const t = this._smoothStep(phaseProgress || 0);
+
+        const phases = [CONFIG.PHASE_DAY, CONFIG.PHASE_SUNSET, CONFIG.PHASE_NIGHT, CONFIG.PHASE_DAWN];
+        const currentIndex = phases.indexOf(phase);
+        const nextPhase = phases[(currentIndex + 1) % phases.length];
+        const nextSettings = CONFIG.LIGHTING[nextPhase] || CONFIG.LIGHTING.day;
+
+        // Update gradient texture (background)
+        this.updateGradientTexture(phase, phaseProgress);
+
+        // Update sunMesh if exists
+        if (this.sunMesh) {
+            const fromPos = settings.sunPosition;
+            const toPos = nextSettings.sunPosition;
+            this.sunMesh.position.set(
+                THREE.MathUtils.lerp(fromPos.x, toPos.x, t),
+                THREE.MathUtils.lerp(fromPos.y, toPos.y, t),
+                THREE.MathUtils.lerp(fromPos.z, toPos.z, t)
+            );
+            const scale = THREE.MathUtils.lerp(settings.sunScale, nextSettings.sunScale, t);
+            this.sunMesh.scale.setScalar(Math.max(0.001, scale));
+            this.sunMesh.visible = scale > 0.01;
+            if (this.sunMesh.visible && this.camera) {
+                this.sunMesh.lookAt(this.camera.position);
+            }
+
+            const intensity = THREE.MathUtils.lerp(settings.sunIntensity, nextSettings.sunIntensity, t);
+            const color = new THREE.Color().lerpColors(
+                new THREE.Color(settings.sunColor),
+                new THREE.Color(nextSettings.sunColor),
+                t
+            ).multiplyScalar(Math.max(0.15, intensity));
+            this.sunMesh.material.color.copy(color);
+        }
+
+        // Update starField if exists
+        if (this.starField) {
+            const opacity = THREE.MathUtils.lerp(settings.starOpacity, nextSettings.starOpacity, t);
+            this.starField.material.opacity = Math.max(0, Math.min(1, opacity));
+        }
+    },
+
+    _smoothStep: function(t) {
+        return t * t * (3 - 2 * t);
+    },
+
     createGround: function() {
         const groundGeometry = new THREE.PlaneGeometry(this.groundSize, this.groundSize);
-        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x1d4a21 });
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x1a5a24 });
         this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
         this.ground.rotation.x = -Math.PI / 2;
         this.ground.position.set(this.worldCenterX, 0, this.worldCenterZ);
@@ -1663,7 +1849,7 @@ let Renderer3D = {
         const tree = new THREE.Group();
         tree.add(trunk);
 
-        const foliageColors = [0x2e7d32, 0x388e3c, 0x1b5e20, 0x43a047];
+        const foliageColors = [0x43a047, 0x4caf50, 0x2e7d32, 0x66bb6a];
         const leafLayers = 2 + Math.floor(Math.random() * 2);
         let currentY = trunkHeight;
         let baseRadius = (0.9 + Math.random() * 0.6) * scale;

@@ -11,12 +11,179 @@ const CONFIG = {
     CANVAS_HEIGHT: 600,
 
     // =====================
-    // GAME PHASES
+    // TIME CYCLE - CHU KỲ NGÀY/ĐÊM 16 PHÚT
     // =====================
     PHASE_DAY: 'day',
+    PHASE_SUNSET: 'sunset',
     PHASE_NIGHT: 'night',
-    DAY_DURATION: 60,
-    NIGHT_DURATION: 45,
+    PHASE_DAWN: 'dawn',
+
+    DAY_DURATION: 420,
+    SUNSET_DURATION: 60,
+    NIGHT_DURATION: 420,
+    DAWN_DURATION: 60,
+
+    TOTAL_CYCLE_DURATION: 960,
+
+    TIME_SCALE: 1,
+
+    DEBUG_MODE: false,
+
+    // =====================
+    // LIGHTING PRESETS - Cài đặt ánh sáng cho từng phase
+    // =====================
+    LIGHTING: {
+        day: {
+            background: '#8aa8c8',
+            fogColor: '#a0b8cc',
+            fogNear: 200,
+            fogFar: 800,
+            ambientColor: '#c8d4dc',
+            ambientIntensity: 0.5,
+            directionalColor: '#fffaf0',
+            directionalIntensity: 1.4,
+            hemiSkyColor: '#c4d4e4',
+            hemiGroundColor: '#6a7a5a',
+            hemiIntensity: 0.3,
+            sunPosition: { x: 150, y: 140, z: 50 },
+            exposure: 1.15,
+            saturation: 1.05,
+            sunColor: '#fffbe6',
+            sunIntensity: 1.5,
+            sunScale: 2.2,
+            starOpacity: 0.0,
+            emissiveBoost: 1.0,
+            shadowBias: -0.0003,
+            shadowNormalBias: 0.01
+        },
+        sunset: {
+            background: '#a08070',
+            fogColor: '#a88878',
+            fogNear: 120,
+            fogFar: 650,
+            ambientColor: '#dcc8a8',
+            ambientIntensity: 0.35,
+            directionalColor: '#ffdd99',
+            directionalIntensity: 1.1,
+            hemiSkyColor: '#e0c8a0',
+            hemiGroundColor: '#4a3828',
+            hemiIntensity: 0.28,
+            sunPosition: { x: 350, y: 18, z: 50 },
+            exposure: 0.95,
+            saturation: 1.05,
+            sunColor: '#ffe4b5',
+            sunIntensity: 1.4,
+            sunScale: 2.3,
+            starOpacity: 0.0,
+            emissiveBoost: 1.5,
+            shadowBias: -0.0002,
+            shadowNormalBias: 0.02
+        },
+        night: {
+            background: '#060a10',
+            fogColor: '#080e16',
+            fogNear: 60,
+            fogFar: 380,
+            ambientColor: '#1a2636',
+            ambientIntensity: 0.2,
+            directionalColor: '#2a3a50',
+            directionalIntensity: 0.1,
+            hemiSkyColor: '#162030',
+            hemiGroundColor: '#080c12',
+            hemiIntensity: 0.16,
+            sunPosition: { x: 250, y: -30, z: 50 },
+            exposure: 0.8,
+            saturation: 0.9,
+            sunColor: '#141e2c',
+            sunIntensity: 0.0,
+            sunScale: 0.0,
+            starOpacity: 0.75,
+            emissiveBoost: 3.2,
+            shadowBias: -0.0006,
+            shadowNormalBias: 0.05
+        },
+        dawn: {
+            background: '#6a7a8a',
+            fogColor: '#7a8a7a',
+            fogNear: 140,
+            fogFar: 700,
+            ambientColor: '#a8b8c8',
+            ambientIntensity: 0.4,
+            directionalColor: '#ffe8cc',
+            directionalIntensity: 0.9,
+            hemiSkyColor: '#a0b0c0',
+            hemiGroundColor: '#3a4a50',
+            hemiIntensity: 0.28,
+            sunPosition: { x: 150, y: 28, z: 50 },
+            exposure: 0.95,
+            saturation: 1.0,
+            sunColor: '#ffd8c0',
+            sunIntensity: 1.2,
+            sunScale: 2.0,
+            starOpacity: 0.2,
+            emissiveBoost: 2.0,
+            shadowBias: -0.0003,
+            shadowNormalBias: 0.02
+        }
+    },
+
+    // =====================
+    // AUDIO - Cấu hình âm thanh phase
+    // =====================
+    AUDIO: {
+        day: {
+            ambience: 'day_ambience',
+            volume: 0.6,
+            fadeTime: 2.0
+        },
+        sunset: {
+            ambience: 'sunset_ambience',
+            volume: 0.5,
+            fadeTime: 2.0
+        },
+        night: {
+            ambience: 'night_ambience',
+            volume: 0.7,
+            fadeTime: 2.0
+        },
+        dawn: {
+            ambience: 'dawn_ambience',
+            volume: 0.5,
+            fadeTime: 2.0
+        }
+    },
+
+    // =====================
+    // ZOMBIE AI - Điều chỉnh theo phase
+    // =====================
+    ZOMBIE_PHASE_MODIFIERS: {
+        day: {
+            detectionRadius: 1.0,
+            speedMultiplier: 1.0,
+            aggressionMultiplier: 1.0
+        },
+        sunset: {
+            detectionRadius: 1.3,
+            speedMultiplier: 1.2,
+            aggressionMultiplier: 1.3
+        },
+        night: {
+            detectionRadius: 1.6,
+            speedMultiplier: 1.4,
+            aggressionMultiplier: 1.6
+        },
+        dawn: {
+            detectionRadius: 1.2,
+            speedMultiplier: 1.1,
+            aggressionMultiplier: 1.1
+        }
+    },
+
+    // Alias giữ tương thích với code cũ
+    PHASE_DAY_LEGACY: 'day',
+    PHASE_NIGHT_LEGACY: 'night',
+    DAY_DURATION_LEGACY: 60,
+    NIGHT_DURATION_LEGACY: 45,
 
     // =====================
     // FORTRESS (PHÁO ĐÀI) - Tọa độ 3D world, trung tâm map 250,250
@@ -95,6 +262,7 @@ const CONFIG = {
 
     // Alias giữ tương thích với code cũ
     COST_WALL: 50,
+    COST_TOWER: 100,
     COST_TOWER: 100,
     COST_MINTER: 80,
 

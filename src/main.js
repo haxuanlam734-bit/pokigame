@@ -21,10 +21,39 @@ const Game = {
             // 3. Khởi tạo 3D Renderer (Three.js)
             Renderer3D.init();
             
-            // 4. Khởi tạo Player Controller
+            // 4. Khởi tạo Time Cycle Controller
+            if (typeof TimeCycle !== 'undefined') {
+                TimeCycle.init();
+            }
+            
+            // 5. Khởi tạo Lighting Controller
+            if (typeof LightingController !== 'undefined') {
+                LightingController.init();
+            }
+            
+            // 6. Khởi tạo Audio Controller
+            if (typeof AudioController !== 'undefined') {
+                AudioController.init();
+            }
+            
+            // 7. Subscribe controllers to TimeCycle
+            if (typeof TimeCycle !== 'undefined') {
+                if (typeof LightingController !== 'undefined') {
+                    TimeCycle.onPhaseChanged(function(oldPhase, newPhase) {
+                        LightingController.onPhaseChanged(oldPhase, newPhase);
+                    });
+                }
+                if (typeof AudioController !== 'undefined') {
+                    TimeCycle.onPhaseChanged(function(oldPhase, newPhase) {
+                        AudioController.onPhaseChanged(oldPhase, newPhase);
+                    });
+                }
+            }
+            
+            // 8. Khởi tạo Player Controller
             PlayerController.init();
             
-            // 5. Khởi tạo Combat System (WeaponSystem + WeaponRenderer)
+            // 8. Khởi tạo Combat System (WeaponSystem + WeaponRenderer)
             if (typeof WeaponRenderer !== 'undefined') {
                 WeaponRenderer.init();
             }
@@ -32,29 +61,32 @@ const Game = {
                 WeaponSystem.init();
             }
             
-            // 6. Khởi tạo GameState
+            // 9. Khởi tạo GameState
             GameState.init();
             
-            // 6. Setup các nút bấm UI
+            // 10. Setup các nút bấm UI
             this.setupButtons();
             
-            // 7. Setup game over screen
+            // 11. Setup game over screen
             this.setupGameOverScreen();
             
-            // 8. Setup build mode input
+            // 12. Setup build mode input
             this.setupBuildModeInput();
             
-            // 9. Báo cho Poki rằng game tải xong
+            // 13. Resume audio on first user interaction
+            this._setupAudioResume();
+            
+            // 14. Báo cho Poki rằng game tải xong
             await this.waitForAssets(startedAt);
             PokiManager.gameLoadingFinished();
             
-            // 10. Ẩn màn hình loading
+            // 15. Ẩn màn hình loading
             this.hideLoadingScreen();
             
-            // 11. Báo cho Poki rằng gameplay bắt đầu
+            // 16. Báo cho Poki rằng gameplay bắt đầu
             PokiManager.gameplayStart();
             
-            // 12. Khởi động game loop
+            // 17. Khởi động game loop
             GameLoop.start();
             // The original turret FBX is a visual enhancement, not a startup
             // dependency. Start its download only after gameplay is live.
@@ -237,6 +269,61 @@ const Game = {
 
         console.log('✅ Build Mode Input đã sẵn sàng');
     },
+
+    _setupAudioResume: function() {
+        const resume = () => {
+            if (typeof AudioController !== 'undefined' && AudioController.resume) {
+                AudioController.resume();
+            }
+            document.removeEventListener('click', resume);
+            document.removeEventListener('keydown', resume);
+            document.removeEventListener('touchstart', resume);
+        };
+        document.addEventListener('click', resume);
+        document.addEventListener('keydown', resume);
+        document.addEventListener('touchstart', resume);
+    },
+
+    // ===================================
+    // DEBUG COMMANDS - CHU KỲ NGÀY/ĐÊM
+    // ===================================
+
+    debugForceDay: function() {
+        if (typeof TimeCycle !== 'undefined') TimeCycle.debugForceDay();
+        if (typeof AudioController !== 'undefined') AudioController.playTransitionSound(CONFIG.PHASE_DAY);
+        console.log('[DEBUG] Force DAY');
+    },
+    debugForceSunset: function() {
+        if (typeof TimeCycle !== 'undefined') TimeCycle.debugForceSunset();
+        if (typeof AudioController !== 'undefined') AudioController.playTransitionSound(CONFIG.PHASE_SUNSET);
+        console.log('[DEBUG] Force SUNSET');
+    },
+    debugForceNight: function() {
+        if (typeof TimeCycle !== 'undefined') TimeCycle.debugForceNight();
+        if (typeof AudioController !== 'undefined') AudioController.playTransitionSound(CONFIG.PHASE_NIGHT);
+        console.log('[DEBUG] Force NIGHT');
+    },
+    debugForceDawn: function() {
+        if (typeof TimeCycle !== 'undefined') TimeCycle.debugForceDawn();
+        if (typeof AudioController !== 'undefined') AudioController.playTransitionSound(CONFIG.PHASE_DAWN);
+        console.log('[DEBUG] Force DAWN');
+    },
+    debugSetCycleTime: function(seconds) {
+        if (typeof TimeCycle !== 'undefined') TimeCycle.setCycleTime(seconds);
+        console.log('[DEBUG] SetCycleTime(' + seconds + ')');
+    },
+    debugSetTimeScale: function(scale) {
+        if (typeof TimeCycle !== 'undefined') TimeCycle.setTimeScale(scale);
+        console.log('[DEBUG] SetTimeScale(' + scale + ')');
+    },
+    debugToggleDebug: function() {
+        CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
+        console.log('[DEBUG] Debug mode: ' + (CONFIG.DEBUG_MODE ? 'ON' : 'OFF'));
+    },
+    debugPrintInfo: function() {
+         if (typeof TimeCycle !== 'undefined') console.log(TimeCycle.getDebugInfo());
+         if (typeof LightingController !== 'undefined') console.log('[LIGHTING] Current phase: ' + TimeCycle.currentPhase);
+     },
 
     updateMilitaryInteraction: function() {
         const prompt = document.getElementById('military-interaction');
