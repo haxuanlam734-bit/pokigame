@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RENDERER-3D.JS - XÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½ render 3D dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ng Three.js
  * TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o scene 3D, camera, lighting, vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c entity
  */
@@ -18,6 +18,18 @@ let Renderer3D = {
     sunMesh: null,
     starField: null,
     gradientTexture: null,
+    skyDome: null,
+    skyUniforms: null,
+
+    _cachedTopColors: [],
+    _cachedHorizonColors: [],
+    _cachedBgFrom: new THREE.Color(),
+    _cachedBgTo: new THREE.Color(),
+    _cachedGroundFrom: new THREE.Color(),
+    _cachedGroundTo: new THREE.Color(),
+    _cachedSunFrom: new THREE.Color(),
+    _cachedSunTo: new THREE.Color(),
+    _cachedSunResult: new THREE.Color(),
 
     player: null,
 
@@ -30,9 +42,9 @@ let Renderer3D = {
     turretPreview: null,
     _turretAssets: null,
 
-    cameraDistance: 24,
-    cameraHeightOffset: 10,
-    cameraLookAtHeight: 1.0,
+    cameraDistance: 14,
+    cameraHeightOffset: 5,
+    cameraLookAtHeight: 1.4,
 
     firstPersonThreshold: 0.8,
     eyeHeight: 1.5,
@@ -42,9 +54,9 @@ let Renderer3D = {
     trees: [],
     rocks: [],
 
-    groundSize: 600,
-    worldCenterX: 250,
-    worldCenterZ: 250,
+    groundSize: 1600,
+    worldCenterX: 800,
+    worldCenterZ: 800,
 
     cameraSmoothness: 10.0,
     _smoothedCameraX: 0,
@@ -61,6 +73,7 @@ let Renderer3D = {
     _hqInterior: null,
     _externalModels: [],
     _gltfLoader: null,
+    _moonLight: null,
 
     // Animation System (Clips, Mixers, Actions)
     playerMixer: null,
@@ -84,20 +97,25 @@ let Renderer3D = {
 
         const width = window.innerWidth;
         const height = window.innerHeight;
-        this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-        this.camera.position.set(250, 10, 290);
-        this.camera.lookAt(250, 1, 280);
+        this.camera = new THREE.PerspectiveCamera(68, width / height, 0.1, 2000);
+        this.camera.position.set(800, 10, 830);
+        this.camera.lookAt(800, 1.4, 800);
 
         this.renderer = new THREE.WebGLRenderer({
-            antialias: false,
+            antialias: true,
             powerPreference: 'high-performance',
             canvas: this.canvas
         });
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
+
+        // Lightweight screen-space art-direction pass. It affects only the 3D
+        // canvas (UI remains crisp), giving the reference-like contrast/color
+        // separation without a heavy post-processing composer.
+        this.canvas.style.filter = 'saturate(1.10) contrast(1.15) brightness(0.98)';
         if (THREE.ACESFilmicToneMapping) {
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             this.renderer.toneMappingExposure = CONFIG.LIGHTING.day.exposure;
@@ -113,12 +131,11 @@ let Renderer3D = {
         this._hqInterior = null;
 
         this.setupLighting();
-        // this.createSkyDome(); // Removed to avoid geometric edge in sky
-        this.createGradientTexture(new THREE.Color('#0f3d6e'), new THREE.Color('#6ab8f0'));
+        this.createSkyDome();
         this.createSunMesh();
+        this.createMoonMesh();
         this.createStarField();
         this.createGround();
-        this.createBoundaryMountains();
         this.createRiver();
 
         // ---- Äáº I Báº¢N DOANH QUÃ‚N Sá»° ----
@@ -126,6 +143,8 @@ let Renderer3D = {
         this.preloadCharacterModels();
         this.createPlayer3D();
         this.createForestEnvironment();
+        this.createWorldZones();
+        this._initSkyColorCache();
 
         const defaultYaw = 0;
         const defaultPitch = 0.3;
@@ -137,43 +156,104 @@ let Renderer3D = {
         // ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â spawn ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi ra sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc HQ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ khoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng, nÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿u vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â«n
         // hardcode 250 ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ camera lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºc khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng sÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i chÃƒÆ’Ã¢â‚¬Å¾Ãƒâ€šÃ‚Â©a ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â o
         // xuyÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn tÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh GLB trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc khi frame update ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u tiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡y.
-        this.camera.position.set(250 - offsetX, verticalOffset, 280 - offsetZ);
-        this.camera.lookAt(250, this.cameraLookAtHeight, 280);
+        this.camera.position.set(800 - offsetX, verticalOffset, 830 - offsetZ);
+        this.camera.lookAt(800, this.cameraLookAtHeight, 800);
 
         this._smoothedCameraX = this.camera.position.x;
         this._smoothedCameraY = this.camera.position.y;
         this._smoothedCameraZ = this.camera.position.z;
-        this._smoothedLookAtX = 250;
+        this._smoothedLookAtX = 800;
         this._smoothedLookAtY = this.cameraLookAtHeight;
-        this._smoothedLookAtZ = 280;
+        this._smoothedLookAtZ = 830;
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
         console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Renderer 3D khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o xong');
     },
 
     setupLighting: function() {
-        const ambientLight = new THREE.AmbientLight(0x4a5d45, 0.85);
+        const day = CONFIG.LIGHTING.day;
+        const ambientLight = new THREE.AmbientLight(day.ambientColor, day.ambientIntensity);
         this.scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffe4b5, 0.95);
-        directionalLight.position.set(this.worldCenterX + 140, 110, this.worldCenterZ + 50);
+        const directionalLight = new THREE.DirectionalLight(day.directionalColor, day.directionalIntensity);
+        directionalLight.position.set(
+            day.sunPosition.x,
+            day.sunPosition.y,
+            day.sunPosition.z
+        );
         directionalLight.target.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(directionalLight.target);
         directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.far = 1000;
-        directionalLight.shadow.camera.left = -500;
-        directionalLight.shadow.camera.right = 500;
-        directionalLight.shadow.camera.top = 500;
-        directionalLight.shadow.camera.bottom = -500;
-        directionalLight.shadow.bias = -0.0005;
+        directionalLight.shadow.mapSize.width = 1536;
+        directionalLight.shadow.mapSize.height = 1536;
+        directionalLight.shadow.camera.near = 10;
+        directionalLight.shadow.camera.far = 1500;
+        directionalLight.shadow.camera.left = -700;
+        directionalLight.shadow.camera.right = 700;
+        directionalLight.shadow.camera.top = 700;
+        directionalLight.shadow.camera.bottom = -700;
+        directionalLight.shadow.bias = day.shadowBias;
+        directionalLight.shadow.normalBias = day.shadowNormalBias;
         this.scene.add(directionalLight);
 
-        const hemiLight = new THREE.HemisphereLight(0x6b8e5a, 0x3d2f1f, 0.5);
+        const hemiLight = new THREE.HemisphereLight(
+            day.hemiSkyColor,
+            day.hemiGroundColor,
+            day.hemiIntensity
+        );
         this.scene.add(hemiLight);
+
+        const moonLight = new THREE.DirectionalLight(day.moonColor || '#b8c8e0', 0);
+        moonLight.position.set(this.worldCenterX, 100, this.worldCenterZ);
+        moonLight.target.position.set(this.worldCenterX, 0, this.worldCenterZ);
+        this.scene.add(moonLight.target);
+        moonLight.castShadow = false;
+        this.scene.add(moonLight);
+        this._moonLight = moonLight;
     },
 
+    createSkyDome: function() {
+        // Camera-centered sky sphere: no visible plane/diagonal edge, and no
+        // per-frame texture allocation. The gradient is rendered with a tiny
+        // shader and follows the four-phase day/night cycle.
+        const geometry = new THREE.SphereGeometry(1100, 32, 18);
+        this.skyUniforms = {
+            topColor: { value: new THREE.Color('#4a7db5') },
+            midColor: { value: new THREE.Color('#8fb5d0') },
+            horizonColor: { value: new THREE.Color('#c8dde8') }
+        };
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.skyUniforms,
+            vertexShader: [
+                'varying float vHeight;',
+                'void main() {',
+                '  vHeight = normalize(position).y * 0.5 + 0.5;',
+                '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+                '}'
+            ].join('\n'),
+            fragmentShader: [
+                'uniform vec3 topColor;',
+                'uniform vec3 midColor;',
+                'uniform vec3 horizonColor;',
+                'varying float vHeight;',
+                'void main() {',
+                '  float upper = smoothstep(0.25, 0.85, vHeight);',
+                '  float lower = smoothstep(0.0, 0.55, vHeight);',
+                '  vec3 c = mix(horizonColor, midColor, lower);',
+                '  c = mix(c, topColor, upper);',
+                '  gl_FragColor = vec4(c, 1.0);',
+                '}'
+            ].join('\n'),
+            side: THREE.BackSide,
+            depthWrite: false,
+            depthTest: false,
+            fog: false
+        });
+        this.skyDome = new THREE.Mesh(geometry, material);
+        this.skyDome.frustumCulled = false;
+        this.skyDome.renderOrder = -1000;
+        this.scene.add(this.skyDome);
+    },
 
     createSunMesh: function() {
         const daySettings = CONFIG.LIGHTING.day;
@@ -183,11 +263,11 @@ let Renderer3D = {
         canvas.height = size;
         const ctx = canvas.getContext('2d');
         const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-        gradient.addColorStop(0, 'rgba(255,250,240,1)');
-        gradient.addColorStop(0.12, 'rgba(255,246,230,0.98)');
-        gradient.addColorStop(0.3, 'rgba(255,240,215,0.9)');
-        gradient.addColorStop(0.55, 'rgba(255,230,195,0.55)');
-        gradient.addColorStop(0.78, 'rgba(255,215,170,0.12)');
+        gradient.addColorStop(0, 'rgba(255,252,245,1)');
+        gradient.addColorStop(0.06, 'rgba(255,248,235,0.98)');
+        gradient.addColorStop(0.18, 'rgba(255,242,220,0.88)');
+        gradient.addColorStop(0.38, 'rgba(255,230,200,0.38)');
+        gradient.addColorStop(0.58, 'rgba(255,218,180,0.06)');
         gradient.addColorStop(1, 'rgba(255,200,150,0)');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, size, size);
@@ -198,7 +278,7 @@ let Renderer3D = {
             map: texture,
             transparent: true,
             depthWrite: false,
-            depthTest: false,
+            depthTest: true,
             fog: false,
             side: THREE.DoubleSide
         });
@@ -208,7 +288,41 @@ let Renderer3D = {
             daySettings.sunPosition.y,
             daySettings.sunPosition.z
         );
+        this.sunMesh.scale.setScalar(Math.max(0.001, daySettings.sunScale));
+        this.sunMesh.visible = daySettings.sunScale > 0.01;
         this.scene.add(this.sunMesh);
+    },
+
+    createMoonMesh: function() {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        gradient.addColorStop(0, 'rgba(232,240,255,1)');
+        gradient.addColorStop(0.08, 'rgba(220,230,245,0.95)');
+        gradient.addColorStop(0.22, 'rgba(200,215,235,0.75)');
+        gradient.addColorStop(0.45, 'rgba(170,190,220,0.18)');
+        gradient.addColorStop(0.7, 'rgba(140,160,200,0.03)');
+        gradient.addColorStop(1, 'rgba(120,140,180,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const geo = new THREE.PlaneGeometry(28, 28);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            depthTest: true,
+            fog: false,
+            side: THREE.DoubleSide
+        });
+        this.moonMesh = new THREE.Mesh(geo, mat);
+        this.moonMesh.position.set(this.worldCenterX, 100, this.worldCenterZ);
+        this.moonMesh.visible = false;
+        this.scene.add(this.moonMesh);
     },
 
     createStarField: function() {
@@ -237,79 +351,64 @@ let Renderer3D = {
         this.scene.add(this.starField);
     },
 
-    createGradientTexture: function(topColor, bottomColor) {
-        const size = 256;
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createLinearGradient(0, 0, 0, size);
-        gradient.addColorStop(0, topColor.getStyle());
-        gradient.addColorStop(1, bottomColor.getStyle());
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, size, size);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.needsUpdate = true;
-
-        if (this.gradientTexture) {
-            this.gradientTexture.dispose();
-        }
-        this.gradientTexture = texture;
-        this.scene.background = this.gradientTexture;
-    },
-
-    updateGradientTexture: function(phase, phaseProgress) {
-        const t = this._smoothStep(phaseProgress || 0);
-
-        const phases = [CONFIG.PHASE_DAY, CONFIG.PHASE_SUNSET, CONFIG.PHASE_NIGHT, CONFIG.PHASE_DAWN];
-        const currentIndex = phases.indexOf(phase);
-        const nextPhase = phases[(currentIndex + 1) % phases.length];
-        const nextSettings = CONFIG.LIGHTING[nextPhase] || CONFIG.LIGHTING.day;
-        const settings = CONFIG.LIGHTING[phase] || CONFIG.LIGHTING.day;
-
-        // We want to interpolate the sky colors (top and bottom) between the current and next phase.
-        // We have the same colors as before for the skyDome.
-
-        const dayTop = new THREE.Color('#0f3d6e');
-        const dayBottom = new THREE.Color('#6ab8f0');
-        const sunsetTop = new THREE.Color('#0f0820');
-        const sunsetBottom = new THREE.Color('#f8a050');
-        const nightTop = new THREE.Color('#010208');
-        const nightBottom = new THREE.Color('#061420');
-        const dawnTop = new THREE.Color('#081830');
-        const dawnBottom = new THREE.Color('#d8a898');
-
-        const tops = [dayTop, sunsetTop, nightTop, dawnTop];
-        const bottoms = [dayBottom, sunsetBottom, nightBottom, dawnBottom];
-
-        const fromTop = tops[currentIndex];
-        const fromBottom = bottoms[currentIndex];
-        const toTop = tops[(currentIndex + 1) % phases.length];
-        const toBottom = bottoms[(currentIndex + 1) % phases.length];
-
-        const topColor = new THREE.Color().lerpColors(fromTop, toTop, t);
-        const bottomColor = new THREE.Color().lerpColors(fromBottom, toBottom, t);
-
-        // Now create the gradient texture with these two colors.
-        this.createGradientTexture(topColor, bottomColor);
+    _initSkyColorCache: function() {
+        this._cachedTopColors = [
+            new THREE.Color('#4a7db5'),
+            new THREE.Color('#4a4060'),
+            new THREE.Color('#162840'),
+            new THREE.Color('#3a5575')
+        ];
+        this._cachedMidColors = [
+            new THREE.Color('#8fb5d0'),
+            new THREE.Color('#9a8090'),
+            new THREE.Color('#1e3d55'),
+            new THREE.Color('#8a7d9a')
+        ];
+        this._cachedHorizonColors = [
+            new THREE.Color('#c8dde8'),
+            new THREE.Color('#e8c49a'),
+            new THREE.Color('#304860'),
+            new THREE.Color('#e8c8c0')
+        ];
     },
 
     updateSky: function(phase, phaseProgress) {
         const settings = CONFIG.LIGHTING[phase] || CONFIG.LIGHTING.day;
         const t = this._smoothStep(phaseProgress || 0);
-
         const phases = [CONFIG.PHASE_DAY, CONFIG.PHASE_SUNSET, CONFIG.PHASE_NIGHT, CONFIG.PHASE_DAWN];
         const currentIndex = phases.indexOf(phase);
         const nextPhase = phases[(currentIndex + 1) % phases.length];
         const nextSettings = CONFIG.LIGHTING[nextPhase] || CONFIG.LIGHTING.day;
 
-        // Update gradient texture (background)
-        this.updateGradientTexture(phase, phaseProgress);
+        this._updateVisualFilter(phase, phaseProgress);
 
-        // Update sunMesh if exists
+        const topFrom = this._cachedTopColors[currentIndex];
+        const topTo = this._cachedTopColors[(currentIndex + 1) % phases.length];
+        const midFrom = this._cachedMidColors[currentIndex];
+        const midTo = this._cachedMidColors[(currentIndex + 1) % phases.length];
+        const horizonFrom = this._cachedHorizonColors[currentIndex];
+        const horizonTo = this._cachedHorizonColors[(currentIndex + 1) % phases.length];
+
+        if (this.skyDome && this.skyUniforms) {
+            this.skyUniforms.topColor.value.lerpColors(topFrom, topTo, t);
+            this.skyUniforms.midColor.value.lerpColors(midFrom, midTo, t);
+            this.skyUniforms.horizonColor.value.lerpColors(horizonFrom, horizonTo, t);
+            if (this.camera) this.skyDome.position.copy(this.camera.position);
+        }
+
+        if (this.ground && this.ground.material && settings.groundColor && nextSettings.groundColor) {
+            this._cachedGroundFrom.set(settings.groundColor);
+            this._cachedGroundTo.set(nextSettings.groundColor);
+            this._cachedGroundFrom.lerp(this._cachedGroundTo, t);
+            this.ground.material.color.copy(this._cachedGroundFrom);
+        }
+
+        if (this.scene.background instanceof THREE.Color) {
+            this._cachedBgFrom.set(settings.background);
+            this._cachedBgTo.set(nextSettings.background);
+            this.scene.background.lerpColors(this._cachedBgFrom, this._cachedBgTo, t);
+        }
+
         if (this.sunMesh) {
             const fromPos = settings.sunPosition;
             const toPos = nextSettings.sunPosition;
@@ -318,27 +417,61 @@ let Renderer3D = {
                 THREE.MathUtils.lerp(fromPos.y, toPos.y, t),
                 THREE.MathUtils.lerp(fromPos.z, toPos.z, t)
             );
-            const scale = THREE.MathUtils.lerp(settings.sunScale, nextSettings.sunScale, t);
+
+            const sunY = this.sunMesh.position.y;
+            const altitudeFade = Math.max(0, Math.min(1, (sunY + 5) / 10));
+
+            const scale = THREE.MathUtils.lerp(settings.sunScale, nextSettings.sunScale, t) * altitudeFade;
             this.sunMesh.scale.setScalar(Math.max(0.001, scale));
             this.sunMesh.visible = scale > 0.01;
-            if (this.sunMesh.visible && this.camera) {
-                this.sunMesh.lookAt(this.camera.position);
-            }
+            if (this.sunMesh.visible && this.camera) this.sunMesh.lookAt(this.camera.position);
 
             const intensity = THREE.MathUtils.lerp(settings.sunIntensity, nextSettings.sunIntensity, t);
-            const color = new THREE.Color().lerpColors(
-                new THREE.Color(settings.sunColor),
-                new THREE.Color(nextSettings.sunColor),
-                t
-            ).multiplyScalar(Math.max(0.15, intensity));
-            this.sunMesh.material.color.copy(color);
+            this._cachedSunFrom.set(settings.sunColor);
+            this._cachedSunTo.set(nextSettings.sunColor);
+            this._cachedSunResult.copy(this._cachedSunFrom).lerp(this._cachedSunTo, t).multiplyScalar(Math.max(0.15, intensity));
+            this.sunMesh.material.color.copy(this._cachedSunResult);
+            this.sunMesh.material.opacity = altitudeFade;
         }
 
-        // Update starField if exists
         if (this.starField) {
             const opacity = THREE.MathUtils.lerp(settings.starOpacity, nextSettings.starOpacity, t);
             this.starField.material.opacity = Math.max(0, Math.min(1, opacity));
         }
+
+        if (this.moonMesh && this._moonLight) {
+            const fromPos = settings.moonPosition || { x: this.worldCenterX, y: -30, z: this.worldCenterZ };
+            const toPos = nextSettings.moonPosition || { x: this.worldCenterX, y: -30, z: this.worldCenterZ };
+            this.moonMesh.position.set(
+                THREE.MathUtils.lerp(fromPos.x, toPos.x, t),
+                THREE.MathUtils.lerp(fromPos.y, toPos.y, t),
+                THREE.MathUtils.lerp(fromPos.z, toPos.z, t)
+            );
+            const moonScale = settings.moonIntensity > 0.01 ? 1.0 : 0.0;
+            const nextMoonScale = nextSettings.moonIntensity > 0.01 ? 1.0 : 0.0;
+            const s = THREE.MathUtils.lerp(moonScale, nextMoonScale, t);
+            this.moonMesh.scale.setScalar(Math.max(0.001, s));
+            this.moonMesh.visible = s > 0.01;
+            if (this.moonMesh.visible && this.camera) this.moonMesh.lookAt(this.camera.position);
+
+            const moonIntensity = THREE.MathUtils.lerp(settings.moonIntensity, nextSettings.moonIntensity, t);
+            this._moonLight.intensity = Math.max(0, moonIntensity);
+            this._moonLight.position.copy(this.moonMesh.position);
+            this._moonLight.color.set(settings.moonColor || '#b8c8e0');
+        }
+    },
+
+    _updateVisualFilter: function(phase, progress) {
+        if (!this.canvas) return;
+        const p = Math.max(0, Math.min(1, progress || 0));
+        const phaseFilters = {
+            day: 'saturate(1.10) contrast(1.15) brightness(0.98)',
+            sunset: 'saturate(1.22) contrast(1.18) brightness(0.94) sepia(0.06)',
+            night: 'saturate(1.08) contrast(1.18) brightness(0.95)',
+            dawn: 'saturate(1.14) contrast(1.14) brightness(0.97) sepia(0.04)'
+        };
+        const current = phaseFilters[phase] || phaseFilters.day;
+        this.canvas.style.filter = current;
     },
 
     _smoothStep: function(t) {
@@ -347,7 +480,12 @@ let Renderer3D = {
 
     createGround: function() {
         const groundGeometry = new THREE.PlaneGeometry(this.groundSize, this.groundSize);
-        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x1a5a24 });
+        const groundMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x52625a, 
+            flatShading: true,
+            specular: 0x111111,
+            shininess: 3
+        });
         this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
         this.ground.rotation.x = -Math.PI / 2;
         this.ground.position.set(this.worldCenterX, 0, this.worldCenterZ);
@@ -355,58 +493,15 @@ let Renderer3D = {
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
 
-        const gridHelper = new THREE.GridHelper(this.groundSize, 60, 0x2a6b30, 0x1b5720);
+        const gridHelper = new THREE.GridHelper(this.groundSize, 60, 0x5a6b60, 0x4d5d54);
+        if (Array.isArray(gridHelper.material)) {
+            gridHelper.material.forEach((m) => { m.transparent = true; m.opacity = 0.025; });
+        } else if (gridHelper.material) {
+            gridHelper.material.transparent = true;
+            gridHelper.material.opacity = 0.02;
+        }
         gridHelper.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(gridHelper);
-    },
-
-    createBoundaryMountains: function() {
-        this.mountains = [];
-        const rockColor = 0x3a3f47;
-        const snowColor = 0x8a929e;
-        const cx = this.worldCenterX;
-        const cz = this.worldCenterZ;
-        const boundaryHalf = 280;
-        const spacing = 20;
-        const jitter = 5;
-
-        const addMountain = (x, z) => {
-            const radius = 14 + Math.random() * 10;
-            const height = 30 + Math.random() * 26;
-            const sides = 5 + Math.floor(Math.random() * 2);
-            const group = new THREE.Group();
-            const bodyGeo = new THREE.ConeGeometry(radius, height, sides);
-            const bodyMat = new THREE.MeshPhongMaterial({ color: rockColor, flatShading: true });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            body.position.y = height / 2;
-            body.castShadow = true;
-            body.receiveShadow = true;
-            group.add(body);
-
-            const snowHeight = height * (0.22 + Math.random() * 0.12);
-            const snowGeo = new THREE.ConeGeometry(radius * 0.55, snowHeight, sides);
-            const snowMat = new THREE.MeshPhongMaterial({ color: snowColor, flatShading: true });
-            const snow = new THREE.Mesh(snowGeo, snowMat);
-            snow.position.y = height - snowHeight * 0.45;
-            snow.castShadow = true;
-            group.add(snow);
-
-            group.position.set(x + (Math.random() - 0.5) * jitter, 0, z + (Math.random() - 0.5) * jitter);
-            group.rotation.y = Math.random() * Math.PI * 2;
-            group.scale.setScalar(0.9 + Math.random() * 0.45);
-            this.scene.add(group);
-            this.mountains.push(group);
-        };
-
-        const min = -boundaryHalf;
-        const max = boundaryHalf;
-        for (let pos = min; pos <= max; pos += spacing) {
-            addMountain(cx + pos, cz + min);
-            addMountain(cx + pos, cz + max);
-            addMountain(cx + min, cz + pos);
-            addMountain(cx + max, cz + pos);
-        }
-        console.log('ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂºÃƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â DÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£y nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºi biÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn map ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o:', this.mountains.length, 'ngÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºi');
     },
 
     createRiver: function() {
@@ -475,7 +570,7 @@ let Renderer3D = {
     // ================================================================
 
     buildGrandBase: function() {
-        const cx = 250, cz = 250;
+        const cx = 700, cz = 700;
         console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â° XÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y dÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±ng Military Complex mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng...');
 
         // BÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ ~180x180, ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£m nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â 
@@ -1151,7 +1246,7 @@ let Renderer3D = {
 
     createPlayer3D: function() {
         const group = new THREE.Group();
-        group.position.set(250, 0, 280);
+        group.position.set(CONFIG.WORLD.BASE_CENTER_X, 0, CONFIG.WORLD.BASE_CENTER_Z + 30);
 
         // Visual Rig Container
         const rig = new THREE.Group();
@@ -1849,7 +1944,7 @@ let Renderer3D = {
         const tree = new THREE.Group();
         tree.add(trunk);
 
-        const foliageColors = [0x43a047, 0x4caf50, 0x2e7d32, 0x66bb6a];
+        const foliageColors = [0x3d8b40, 0x4a9a4d, 0x2d7030, 0x5a9a5d];
         const leafLayers = 2 + Math.floor(Math.random() * 2);
         let currentY = trunkHeight;
         let baseRadius = (0.9 + Math.random() * 0.6) * scale;
@@ -1925,7 +2020,7 @@ let Renderer3D = {
         const tree = new THREE.Group();
         tree.add(trunk);
 
-        const foliageColors = [0x1e3d2f, 0x234a37, 0x17301f];
+        const foliageColors = [0x1a3528, 0x203d2d, 0x152a1c];
         const leafLayers = 3 + Math.floor(Math.random() * 2);
         let currentY = trunkHeight;
         let baseRadius = (0.85 + Math.random() * 0.55) * scale;
@@ -1967,7 +2062,7 @@ let Renderer3D = {
         tree.add(trunk);
 
         const canopyRadius = (1.1 + Math.random() * 0.6) * scale;
-        const canopyMat = new THREE.MeshPhongMaterial({ color: 0x2d5a27, flatShading: true });
+        const canopyMat = new THREE.MeshPhongMaterial({ color: 0x284d22, flatShading: true });
         const canopyGeo = new THREE.DodecahedronGeometry(canopyRadius, 0);
         const canopy = new THREE.Mesh(canopyGeo, canopyMat);
         canopy.position.y = trunkHeight + canopyRadius * 0.6;
@@ -1998,7 +2093,7 @@ let Renderer3D = {
 
     createBush: function(x, z) {
         const radius = 0.5 + Math.random() * 0.4;
-        const bushColors = [0x2d5a27, 0x1e3d2f, 0x3a6b30];
+        const bushColors = [0x284d22, 0x1a3528, 0x325a28];
         const color = bushColors[Math.floor(Math.random() * bushColors.length)];
         const geo = new THREE.SphereGeometry(radius, 7, 5);
         const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
@@ -2037,35 +2132,41 @@ let Renderer3D = {
     },
 
     createForestEnvironment: function() {
-        const centerX = this.worldCenterX;
-        const centerZ = this.worldCenterZ;
-        const safeHalf = 15;
-        const minDistFromCenter = safeHalf + 3;
-        const playFieldSize = 500;
-        const padding = 8;
-        const minX = 0 + padding;
-        const maxX = playFieldSize - padding;
-        const minZ = 0 + padding;
-        const maxZ = playFieldSize - padding;
+        const cx = this.worldCenterX;
+        const cz = this.worldCenterZ;
+        const safeHalf = 20;
+        const minDistFromCenter = safeHalf + 5;
+        const padding = 10;
+        const minX = CONFIG.WORLD.MIN_X + padding;
+        const maxX = CONFIG.WORLD.MAX_X - padding;
+        const minZ = CONFIG.WORLD.MIN_Z + padding;
+        const maxZ = CONFIG.WORLD.MAX_Z - padding;
         const spanX = maxX - minX;
         const spanZ = maxZ - minZ;
 
-        // Keep the environment readable without spending the opening frames
-        // generating hundreds of individual draw calls on mobile browsers.
-        const treeCount = this.webPerformanceMode ? 60 : 110;
-        const rockCount = this.webPerformanceMode ? 20 : 40;
+        const treeCount = this.webPerformanceMode ? 80 : 160;
+        const rockCount = this.webPerformanceMode ? 25 : 50;
         let placed = 0;
         let attempts = 0;
-        const maxAttempts = treeCount * 60;
+        const maxAttempts = treeCount * 80;
         const positions = [];
-        const minSpacing = 2.6;
+        const minSpacing = 2.8;
 
         function isValidPosition(x, z) {
-            const dx = x - centerX;
-            const dz = z - centerZ;
+            const dx = x - cx;
+            const dz = z - cz;
             const distSqCenter = dx * dx + dz * dz;
             if (distSqCenter < minDistFromCenter * minDistFromCenter) return false;
             if (x < minX || x > maxX || z < minZ || z > maxZ) return false;
+            const plots = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.BASE_PLOTS
+                ? CONFIG.WORLD_ZONES.BASE_PLOTS
+                : [];
+            const plotHalf = (CONFIG.WORLD.BASE_PLOT_SIZE || 240) / 2 + (CONFIG.WORLD.BASE_PLOT_BUFFER || 40);
+            for (let i = 0; i < plots.length; i++) {
+                const pdx = x - plots[i].x;
+                const pdz = z - plots[i].z;
+                if (Math.abs(pdx) < plotHalf && Math.abs(pdz) < plotHalf) return false;
+            }
             for (let i = 0; i < positions.length; i++) {
                 const ddx = x - positions[i].x;
                 const ddz = z - positions[i].z;
@@ -2074,16 +2175,11 @@ let Renderer3D = {
             return true;
         }
 
-        function randomPerimeterPosition() {
-            const band = Math.random();
-            if (band < 0.5) {
-                const maxR = Math.min(spanX, spanZ) / 2;
-                const r = minDistFromCenter + Math.random() * Math.max(1, (maxR - minDistFromCenter));
-                const a = Math.random() * Math.PI * 2;
-                return { x: centerX + Math.cos(a) * r, z: centerZ + Math.sin(a) * r };
-            } else {
-                return { x: minX + Math.random() * spanX, z: minZ + Math.random() * spanZ };
-            }
+        function randomPosition() {
+            const maxR = Math.min(spanX, spanZ) * 0.52;
+            const r = minDistFromCenter + Math.random() * Math.max(1, maxR - minDistFromCenter);
+            const a = Math.random() * Math.PI * 2;
+            return { x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r };
         }
 
         const pickFloraCreator = () => {
@@ -2096,7 +2192,7 @@ let Renderer3D = {
 
         while (placed < treeCount && attempts < maxAttempts) {
             attempts++;
-            const pos = randomPerimeterPosition();
+            const pos = randomPosition();
             if (isValidPosition(pos.x, pos.z)) {
                 const creator = pickFloraCreator();
                 const flora = creator.call(this, pos.x, pos.z);
@@ -2111,7 +2207,7 @@ let Renderer3D = {
         attempts = 0;
         while (placed < rockCount && attempts < maxAttempts) {
             attempts++;
-            const pos = randomPerimeterPosition();
+            const pos = randomPosition();
             if (isValidPosition(pos.x, pos.z)) {
                 const rock = this.createLowPolyRock(pos.x, pos.z);
                 this.scene.add(rock);
@@ -2121,7 +2217,302 @@ let Renderer3D = {
             }
         }
 
-        console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã¢â‚¬â„¢Ãƒâ€šÃ‚Â² MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´i trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âng rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â«ng rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­m rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡p ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o:', this.trees.length, 'cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢y/bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥i/gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â,', this.rocks.length, 'ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡');
+        console.log('✅ Môi trường rừng tạo:', this.trees.length, 'cây/bụi/gỗ,', this.rocks.length, 'đá');
+    },
+
+    createWorldZones: function() {
+        this._createBasePlotMarkers();
+        this._createRockyZones();
+        this._createLandmarks();
+        this._createWorldRoads();
+        this._createRiverBanks();
+        this._createTerrainHills();
+    },
+
+    _createTerrainHills: function() {
+        const hillMat = new THREE.MeshPhongMaterial({ color: 0x52625a, flatShading: true });
+        const hillPositions = [
+            { x: 350, z: 600, sx: 55, sy: 6, sz: 45 },
+            { x: 1250, z: 600, sx: 50, sy: 5, sz: 40 },
+            { x: 600, z: 350, sx: 45, sy: 4, sz: 55 },
+            { x: 1000, z: 1250, sx: 48, sy: 5, sz: 42 },
+            { x: 200, z: 1100, sx: 40, sy: 3.5, sz: 35 },
+            { x: 1400, z: 1100, sx: 42, sy: 4, sz: 38 }
+        ];
+        hillPositions.forEach(h => {
+            const geo = new THREE.BoxGeometry(h.sx, h.sy, h.sz);
+            const mesh = new THREE.Mesh(geo, hillMat);
+            mesh.position.set(h.x, h.sy * 0.35, h.z);
+            mesh.rotation.y = Math.random() * Math.PI;
+            mesh.receiveShadow = true;
+            mesh.castShadow = true;
+            this.scene.add(mesh);
+        });
+    },
+
+    _createBasePlotMarkers: function() {
+        const plots = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.BASE_PLOTS
+            ? CONFIG.WORLD_ZONES.BASE_PLOTS
+            : [];
+        const padMat = new THREE.MeshPhongMaterial({ color: 0x353b40, transparent: true, opacity: 0.35 });
+        const markerMat = new THREE.MeshPhongMaterial({ color: 0x8de7ff, emissive: 0x8de7ff, emissiveIntensity: 0.25, transparent: true, opacity: 0.55 });
+        const size = CONFIG.WORLD.BASE_PLOT_SIZE || 240;
+        const half = size / 2;
+
+        plots.forEach(plot => {
+            const pad = new THREE.Mesh(new THREE.BoxGeometry(size, 0.12, size), padMat);
+            pad.position.set(plot.x, 0.06, plot.z);
+            pad.receiveShadow = true;
+            this.scene.add(pad);
+
+            const ring = new THREE.Mesh(new THREE.RingGeometry(half - 0.5, half, 64), markerMat);
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(plot.x, 0.08, plot.z);
+            this.scene.add(ring);
+
+            const poleGeo = new THREE.CylinderGeometry(0.08, 0.08, 3.5, 6);
+            const poleMat = new THREE.MeshPhongMaterial({ color: 0x5d666b });
+            for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.set(plot.x + dx * half, 1.75, plot.z + dz * half);
+                this.scene.add(pole);
+            }
+        });
+    },
+
+    _createRockyZones: function() {
+        const zones = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.ROCKY_ZONES
+            ? CONFIG.WORLD_ZONES.ROCKY_ZONES
+            : [];
+        const rockColors = [0x6b6b6b, 0x575757, 0x7a7a7a, 0x4a4a4a, 0x808070];
+        const countPerZone = this.webPerformanceMode ? 8 : 14;
+
+        zones.forEach(zone => {
+            const radius = zone.radius || 100;
+            for (let i = 0; i < countPerZone; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.random() * radius * 0.8;
+                const x = zone.x + Math.cos(angle) * r;
+                const z = zone.z + Math.sin(angle) * r;
+                const scale = 0.8 + Math.random() * 1.6;
+                const color = rockColors[Math.floor(Math.random() * rockColors.length)];
+                const geo = new THREE.DodecahedronGeometry(scale, 0);
+                const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
+                const rock = new THREE.Mesh(geo, mat);
+                rock.position.set(x, scale * 0.45, z);
+                rock.rotation.set(Math.random() * 0.4, Math.random() * Math.PI * 2, Math.random() * 0.4);
+                rock.scale.y = 0.55 + Math.random() * 0.5;
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                this.scene.add(rock);
+                this.rocks.push(rock);
+            }
+        });
+    },
+
+    _createLandmarks: function() {
+        const landmarks = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.LANDMARKS
+            ? CONFIG.WORLD_ZONES.LANDMARKS
+            : [];
+
+        landmarks.forEach(lm => {
+            switch (lm.type) {
+                case 'lookout':
+                    this._createLookoutTower(lm.x, lm.z);
+                    break;
+                case 'radio_tower':
+                    this._createRadioTower(lm.x, lm.z);
+                    break;
+                case 'water_tower':
+                    this._createWaterTower(lm.x, lm.z);
+                    break;
+                case 'bunker':
+                    this._createBunker(lm.x, lm.z);
+                    break;
+                case 'ruins':
+                    this._createRuins(lm.x, lm.z);
+                    break;
+                case 'bridge':
+                    this._createSmallBridge(lm.x, lm.z);
+                    break;
+            }
+        });
+    },
+
+    _createLookoutTower: function(x, z) {
+        const g = new THREE.Group();
+        const mat = new THREE.MeshPhongMaterial({ color: 0x687177, flatShading: true });
+        const legGeo = new THREE.CylinderGeometry(0.35, 0.5, 12, 8);
+        for (const [dx, dz] of [[-2.2, -2.2], [2.2, -2.2], [2.2, 2.2], [-2.2, 2.2]]) {
+            const leg = new THREE.Mesh(legGeo, mat);
+            leg.position.set(x + dx, 6, z + dz);
+            leg.castShadow = true;
+            this.scene.add(leg);
+            g.add(leg);
+        }
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(7, 3.5, 7), mat);
+        cabin.position.set(x, 13.5, z);
+        cabin.castShadow = true;
+        this.scene.add(cabin);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(5.5, 2.5, 4), new THREE.MeshPhongMaterial({ color: 0x2f3640, flatShading: true }));
+        roof.position.set(x, 16.5, z);
+        roof.rotation.y = Math.PI / 4;
+        roof.castShadow = true;
+        this.scene.add(roof);
+    },
+
+    _createRadioTower: function(x, z) {
+        const g = new THREE.Group();
+        const mat = new THREE.MeshPhongMaterial({ color: 0x6d777d, flatShading: true });
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.45, 22, 8), mat);
+        pole.position.set(x, 11, z);
+        pole.castShadow = true;
+        this.scene.add(pole);
+        g.add(pole);
+        for (let y = 4; y <= 19; y += 3) {
+            const cross = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.12, 0.12), mat);
+            cross.position.set(x, y, z);
+            cross.rotation.y = Math.PI / 4;
+            this.scene.add(cross);
+        }
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8),
+            new THREE.MeshPhongMaterial({ color: 0xff3b30, emissive: 0xff3b30, emissiveIntensity: 0.9 }));
+        beacon.position.set(x, 22.5, z);
+        this.scene.add(beacon);
+    },
+
+    _createWaterTower: function(x, z) {
+        const g = new THREE.Group();
+        const mat = new THREE.MeshPhongMaterial({ color: 0x68747a, flatShading: true });
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.0, 10, 10), mat);
+        pillar.position.set(x, 5, z);
+        pillar.castShadow = true;
+        this.scene.add(pillar);
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 5, 16), mat);
+        tank.position.set(x, 12.5, z);
+        tank.castShadow = true;
+        this.scene.add(tank);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 1.2, 12), new THREE.MeshPhongMaterial({ color: 0x2f3640, flatShading: true }));
+        roof.position.set(x, 16, z);
+        this.scene.add(roof);
+    },
+
+    _createBunker: function(x, z) {
+        const g = new THREE.Group();
+        const mat = new THREE.MeshPhongMaterial({ color: 0x4a555c, flatShading: true });
+        const base = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 6), mat);
+        base.position.set(x, 1.5, z);
+        base.castShadow = true;
+        base.receiveShadow = true;
+        this.scene.add(base);
+        this._addCollisionMesh(base);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(9, 0.6, 7), new THREE.MeshPhongMaterial({ color: 0x2f3640, flatShading: true }));
+        roof.position.set(x, 3.3, z);
+        this.scene.add(roof);
+        const door = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.2, 0.3), new THREE.MeshPhongMaterial({ color: 0x1e272e }));
+        door.position.set(x, 1.1, z + 3.15);
+        this.scene.add(door);
+    },
+
+    _createRuins: function(x, z) {
+        const mat = new THREE.MeshPhongMaterial({ color: 0x5a6b60, flatShading: true });
+        for (let i = 0; i < 5; i++) {
+            const w = 1.5 + Math.random() * 2.5;
+            const h = 1.2 + Math.random() * 2.8;
+            const d = 1.5 + Math.random() * 2.5;
+            const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            block.position.set(x + (Math.random() - 0.5) * 8, h / 2, z + (Math.random() - 0.5) * 8);
+            block.rotation.y = Math.random() * Math.PI;
+            block.castShadow = true;
+            block.receiveShadow = true;
+            this.scene.add(block);
+        }
+    },
+
+    _createSmallBridge: function(x, z) {
+        const mat = new THREE.MeshPhongMaterial({ color: 0x5d666b, flatShading: true });
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 3.5), mat);
+        deck.position.set(x, 1.2, z);
+        deck.castShadow = true;
+        deck.receiveShadow = true;
+        this.scene.add(deck);
+        const railGeo = new THREE.BoxGeometry(6.4, 0.9, 0.18);
+        for (const dz of [-1.6, 1.6]) {
+            const rail = new THREE.Mesh(railGeo, mat);
+            rail.position.set(x, 2.1, z + dz);
+            this.scene.add(rail);
+        }
+    },
+
+    _createWorldRoads: function() {
+        const cx = this.worldCenterX;
+        const cz = this.worldCenterZ;
+        const roadMat = new THREE.MeshPhongMaterial({ color: 0x252b30, flatShading: true });
+        const markerMat = new THREE.MeshPhongMaterial({ color: 0xcfd8dc, emissive: 0x202427, emissiveIntensity: 0.05 });
+        const roads = [];
+        const plots = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.BASE_PLOTS
+            ? CONFIG.WORLD_ZONES.BASE_PLOTS
+            : [];
+
+        plots.forEach(plot => {
+            const dx = plot.x - cx;
+            const dz = plot.z - cz;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 180) return;
+            const len = dist;
+            const nx = dx / dist;
+            const nz = dz / dist;
+            const midX = (cx + plot.x) / 2;
+            const midZ = (cz + plot.z) / 2;
+            const road = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 4.5), roadMat);
+            road.position.set(midX, 0.04, midZ);
+            road.rotation.y = Math.atan2(dz, dx);
+            road.receiveShadow = true;
+            this.scene.add(road);
+
+            const markerCount = Math.max(1, Math.floor(len / 9));
+            for (let i = 0; i < markerCount; i++) {
+                const t = (i + 0.5) / markerCount - 0.5;
+                const marker = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.02, 0.14), markerMat);
+                marker.position.set(midX + nx * t * len, 0.09, midZ + nz * t * len);
+                marker.rotation.y = Math.atan2(dz, dx);
+                this.scene.add(marker);
+            }
+        });
+    },
+
+    _createRiverBanks: function() {
+        const river = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.RIVER_ZONE
+            ? CONFIG.WORLD_ZONES.RIVER_ZONE
+            : { startX: 580, endX: 1020, baseZ: 990, width: 18 };
+        const bankMat = new THREE.MeshPhongMaterial({ color: 0x4a5a52, flatShading: true });
+        const segments = 30;
+        const startX = river.startX;
+        const endX = river.endX;
+        const baseZ = river.baseZ;
+        const width = river.width || 18;
+
+        for (let side = -1; side <= 1; side += 2) {
+            const points = [];
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const x = startX + (endX - startX) * t;
+                const z = baseZ + Math.sin(t * Math.PI * 2.2) * 32 + Math.cos(t * Math.PI * 1.3) * 14;
+                points.push(new THREE.Vector3(x, 0.06, z + side * (width / 2 + 1.2)));
+            }
+            for (let i = 0; i < points.length - 1; i++) {
+                const a = points[i];
+                const b = points[i + 1];
+                const len = a.distanceTo(b);
+                const mid = a.clone().add(b).multiplyScalar(0.5);
+                const dir = b.clone().sub(a).normalize();
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, 0.18, 2.4), bankMat);
+                mesh.position.set(mid.x, 0.09, mid.z);
+                mesh.rotation.y = Math.atan2(dir.x, dir.z);
+                mesh.receiveShadow = true;
+                this.scene.add(mesh);
+            }
+        }
     },
 
     /**
@@ -2162,6 +2553,8 @@ let Renderer3D = {
     },
 
     render: function() {
+        if (this.skyDome && this.camera) this.skyDome.position.copy(this.camera.position);
+        if (this.starField && this.camera) this.starField.position.copy(this.camera.position);
         if (this._radar) {
             this._radar.rotation.y += 0.005;
         }
@@ -2174,7 +2567,7 @@ let Renderer3D = {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
     },
 
     getRaycaster: function(mouseX, mouseY) {
@@ -3309,7 +3702,7 @@ Renderer3D.loadExternalModels = function() {
 };
 
 Renderer3D._applyHQModelOverride = function(hqModel) {
-    const cx = 250, cz = 250 - 18;
+    const cx = this.worldCenterX, cz = this.worldCenterZ - 18;
     try {
         const model = hqModel.clone(true);
         const box = new THREE.Box3().setFromObject(model);

@@ -435,13 +435,16 @@ const WeaponSystem = {
 
     // ─────────────── FIRE (UNIFIED AIM & TRACER) ────────────
     _attemptFire: function(def, state) {
-        if (state.currentAmmo <= 0) {
+        const infiniteAmmo = typeof GameState !== 'undefined' && GameState.adminInfiniteAmmo;
+        if (state.currentAmmo <= 0 && !infiniteAmmo) {
             if (this.onEmptyClick) this.onEmptyClick(def);
             console.log('Het dan! ' + def.name + ' - Nhan R de nap');
             this.tryReload();
             return;
         }
-        state.currentAmmo--;
+        if (!infiniteAmmo) {
+            state.currentAmmo--;
+        }
         this._fireCooldown = def.fireRate;
 
         // Increase spread on shot (tru khi dang cui nguoi)

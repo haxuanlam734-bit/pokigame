@@ -11,6 +11,27 @@ const CONFIG = {
     CANVAS_HEIGHT: 600,
 
     // =====================
+    // WORLD - Open world military base (1600x1600)
+    // =====================
+    WORLD: {
+        SIZE: 1600,
+        MIN_X: 0,
+        MAX_X: 1600,
+        MIN_Z: 0,
+        MAX_Z: 1600,
+        CENTER_X: 800,
+        CENTER_Z: 800,
+        BASE_CENTER_X: 800,
+        BASE_CENTER_Z: 800,
+        HALF: 800,
+        BUILD_BUFFER: 12,
+        BASE_PLOT_SIZE: 240,
+        BASE_PLOT_BUFFER: 40,
+        CENTER_ZONE_RADIUS: 110,
+        SEED: 17092009
+    },
+
+    // =====================
     // TIME CYCLE - CHU KỲ NGÀY/ĐÊM 16 PHÚT
     // =====================
     PHASE_DAY: 'day',
@@ -30,100 +51,116 @@ const CONFIG = {
     DEBUG_MODE: false,
 
     // =====================
-    // LIGHTING PRESETS - Cài đặt ánh sáng cho từng phase
+    // LIGHTING PRESETS - Cinematic low-poly art direction
     // =====================
     LIGHTING: {
         day: {
-            background: '#8aa8c8',
-            fogColor: '#a0b8cc',
-            fogNear: 200,
-            fogFar: 800,
-            ambientColor: '#c8d4dc',
-            ambientIntensity: 0.5,
-            directionalColor: '#fffaf0',
-            directionalIntensity: 1.4,
-            hemiSkyColor: '#c4d4e4',
-            hemiGroundColor: '#6a7a5a',
-            hemiIntensity: 0.3,
-            sunPosition: { x: 150, y: 140, z: 50 },
-            exposure: 1.15,
-            saturation: 1.05,
-            sunColor: '#fffbe6',
-            sunIntensity: 1.5,
+            background: '#6a9abf',
+            fogColor: '#8aa5b8',
+            fogNear: 350,
+            fogFar: 2200,
+            ambientColor: '#8a9aaa',
+            ambientIntensity: 0.12,
+            directionalColor: '#fff2d9',
+            directionalIntensity: 2.0,
+            hemiSkyColor: '#8fafc5',
+            hemiGroundColor: '#4a5a52',
+            hemiIntensity: 0.10,
+            sunPosition: { x: 1010, y: 145, z: 800 },
+            exposure: 1.0,
+            saturation: 1.08,
+            sunColor: '#fff5e6',
+            sunIntensity: 1.3,
             sunScale: 2.2,
+            groundColor: '#4a5a52',
             starOpacity: 0.0,
             emissiveBoost: 1.0,
-            shadowBias: -0.0003,
-            shadowNormalBias: 0.01
+            shadowBias: -0.00025,
+            shadowNormalBias: 0.025,
+            moonPosition: { x: 800, y: -30, z: 800 },
+            moonIntensity: 0.0,
+            moonColor: '#e0e8ff'
         },
         sunset: {
-            background: '#a08070',
-            fogColor: '#a88878',
-            fogNear: 120,
-            fogFar: 650,
-            ambientColor: '#dcc8a8',
-            ambientIntensity: 0.35,
-            directionalColor: '#ffdd99',
-            directionalIntensity: 1.1,
-            hemiSkyColor: '#e0c8a0',
-            hemiGroundColor: '#4a3828',
-            hemiIntensity: 0.28,
-            sunPosition: { x: 350, y: 18, z: 50 },
+            background: '#7a6878',
+            fogColor: '#b0988c',
+            fogNear: 320,
+            fogFar: 2000,
+            ambientColor: '#6e6263',
+            ambientIntensity: 0.10,
+            directionalColor: '#ffd4a0',
+            directionalIntensity: 1.8,
+            hemiSkyColor: '#a89098',
+            hemiGroundColor: '#5a4f42',
+            hemiIntensity: 0.08,
+            sunPosition: { x: 590, y: 26, z: 800 },
             exposure: 0.95,
-            saturation: 1.05,
-            sunColor: '#ffe4b5',
-            sunIntensity: 1.4,
+            saturation: 1.10,
+            sunColor: '#ffe0b8',
+            sunIntensity: 1.3,
             sunScale: 2.3,
+            groundColor: '#5a5548',
             starOpacity: 0.0,
-            emissiveBoost: 1.5,
+            emissiveBoost: 1.3,
             shadowBias: -0.0002,
-            shadowNormalBias: 0.02
+            shadowNormalBias: 0.025,
+            moonPosition: { x: 1010, y: 20, z: 800 },
+            moonIntensity: 0.15,
+            moonColor: '#c8d0e0'
         },
         night: {
-            background: '#060a10',
-            fogColor: '#080e16',
-            fogNear: 60,
-            fogFar: 380,
-            ambientColor: '#1a2636',
-            ambientIntensity: 0.2,
-            directionalColor: '#2a3a50',
-            directionalIntensity: 0.1,
-            hemiSkyColor: '#162030',
-            hemiGroundColor: '#080c12',
-            hemiIntensity: 0.16,
-            sunPosition: { x: 250, y: -30, z: 50 },
-            exposure: 0.8,
-            saturation: 0.9,
-            sunColor: '#141e2c',
+            background: '#162840',
+            fogColor: '#1e3348',
+            fogNear: 280,
+            fogFar: 1900,
+            ambientColor: '#2a3d55',
+            ambientIntensity: 0.35,
+            directionalColor: '#8aa8c4',
+            directionalIntensity: 0.30,
+            hemiSkyColor: '#2a3d55',
+            hemiGroundColor: '#1a2830',
+            hemiIntensity: 0.40,
+            sunPosition: { x: 800, y: -40, z: 800 },
+            exposure: 0.90,
+            saturation: 1.02,
+            sunColor: '#8aa8c4',
             sunIntensity: 0.0,
             sunScale: 0.0,
-            starOpacity: 0.75,
-            emissiveBoost: 3.2,
-            shadowBias: -0.0006,
-            shadowNormalBias: 0.05
+            groundColor: '#252f35',
+            starOpacity: 0.85,
+            emissiveBoost: 2.8,
+            shadowBias: -0.00035,
+            shadowNormalBias: 0.03,
+            moonPosition: { x: 800, y: 100, z: 800 },
+            moonIntensity: 0.55,
+            moonColor: '#b8c8e0'
         },
         dawn: {
-            background: '#6a7a8a',
-            fogColor: '#7a8a7a',
-            fogNear: 140,
-            fogFar: 700,
-            ambientColor: '#a8b8c8',
-            ambientIntensity: 0.4,
-            directionalColor: '#ffe8cc',
-            directionalIntensity: 0.9,
-            hemiSkyColor: '#a0b0c0',
-            hemiGroundColor: '#3a4a50',
-            hemiIntensity: 0.28,
-            sunPosition: { x: 150, y: 28, z: 50 },
-            exposure: 0.95,
-            saturation: 1.0,
-            sunColor: '#ffd8c0',
-            sunIntensity: 1.2,
-            sunScale: 2.0,
-            starOpacity: 0.2,
-            emissiveBoost: 2.0,
-            shadowBias: -0.0003,
-            shadowNormalBias: 0.02
+            background: '#6a7d95',
+            fogColor: '#7a8d9d',
+            fogNear: 320,
+            fogFar: 2100,
+            ambientColor: '#7a8898',
+            ambientIntensity: 0.10,
+            directionalColor: '#ffe0c8',
+            directionalIntensity: 1.4,
+            hemiSkyColor: '#98b0c8',
+            hemiGroundColor: '#4a5a52',
+            hemiIntensity: 0.10,
+            sunPosition: { x: 1010, y: 30, z: 800 },
+            exposure: 0.9,
+            saturation: 1.06,
+            sunColor: '#ffe0c8',
+            sunIntensity: 1.15,
+            sunScale: 2.2,
+            groundColor: '#4d6357',
+            starOpacity: 0.15,
+            emissiveBoost: 1.65,
+            shadowBias: -0.00025,
+            shadowNormalBias: 0.025,
+            moonPosition: { x: 590, y: 10, z: 800 },
+            moonIntensity: 0.1,
+            moonColor: '#c0c8d8'
         }
     },
 
@@ -186,10 +223,10 @@ const CONFIG = {
     NIGHT_DURATION_LEGACY: 45,
 
     // =====================
-    // FORTRESS (PHÁO ĐÀI) - Tọa độ 3D world, trung tâm map 250,250
+    // FORTRESS (PHÁO ĐÀI) - Tọa độ 3D world, trung tâm map 800,800
     // =====================
-    FORTRESS_X: 250,
-    FORTRESS_Y: 250,
+    FORTRESS_X: 800,
+    FORTRESS_Y: 800,
     FORTRESS_WIDTH: 10,
     FORTRESS_HEIGHT: 12,
     FORTRESS_MAX_HP: 100,
@@ -273,10 +310,10 @@ const CONFIG = {
     WALL_HEIGHT: 3,
     WALL_MAX_HP: 30,
     WALL_PLACEMENT_ZONE: {
-        x1: 20,
-        y1: 20,
-        x2: 480,
-        y2: 480
+        x1: 540,
+        y1: 540,
+        x2: 1060,
+        y2: 1060
     },
 
     // =====================
@@ -289,10 +326,10 @@ const CONFIG = {
     TOWER_DAMAGE: 10,
     TOWER_ROTATION_SPEED: 0.1,
     TOWER_PLACEMENT_ZONE: {
-        x1: 20,
-        y1: 20,
-        x2: 480,
-        y2: 480
+        x1: 540,
+        y1: 540,
+        x2: 1060,
+        y2: 1060
     },
 
     // =====================
@@ -308,10 +345,10 @@ const CONFIG = {
     TUREL_UPGRADE_BASE_COST: 180,
     TUREL_SELL_REFUND: 0.65,
     TUREL_PLACEMENT_ZONE: {
-        x1: 162,
-        y1: 162,
-        x2: 338,
-        y2: 338
+        x1: 700,
+        y1: 700,
+        x2: 900,
+        y2: 900
     },
 
     // =====================
@@ -324,10 +361,10 @@ const CONFIG = {
     MINIGUN_DAMAGE: 8,
     MINIGUN_ROTATION_SPEED: 0.3,
     MINIGUN_PLACEMENT_ZONE: {
-        x1: 162,
-        y1: 162,
-        x2: 338,
-        y2: 338
+        x1: 700,
+        y1: 700,
+        x2: 900,
+        y2: 900
     },
 
     // =====================
@@ -351,8 +388,8 @@ const CONFIG = {
     ZOMBIE_MAX_HP: 20,
     ZOMBIE_SPEED: 3,
     ZOMBIE_SPAWN_RATE: 2,
-    ZOMBIE_SPAWN_X: 480,
-    ZOMBIE_TARGET_X: 250,
+    ZOMBIE_SPAWN_X: 1550,
+    ZOMBIE_TARGET_X: 800,
 
     ZOMBIE_WAVES: [
         { count: 3, speed: 2.5 },
@@ -370,10 +407,54 @@ const CONFIG = {
     MINTER_MONEY_PER_CYCLE: 25,
     MINTER_CYCLE_TIME: 3000,
     MINTER_PLACEMENT_ZONE: {
-        x1: 20,
-        y1: 20,
-        x2: 480,
-        y2: 480
+        x1: 540,
+        y1: 540,
+        x2: 1060,
+        y2: 1060
+    },
+
+    // =====================
+    // WORLD ZONES - Future base plots and world layout
+    // =====================
+    WORLD_ZONES: {
+        BASE_PLOTS: [
+            { id: 'P1', x: 280, z: 280, name: 'Base Alpha' },
+            { id: 'P2', x: 1320, z: 280, name: 'Base Bravo' },
+            { id: 'P3', x: 300, z: 800, name: 'Base Charlie' },
+            { id: 'P4', x: 1280, z: 800, name: 'Base Delta' },
+            { id: 'P5', x: 400, z: 1250, name: 'Base Echo' },
+            { id: 'P6', x: 1200, z: 1250, name: 'Base Foxtrot' },
+            { id: 'P7', x: 800, z: 300, name: 'Base Golf' },
+            { id: 'P8', x: 800, z: 1300, name: 'Base Hotel' },
+            { id: 'P9', x: 500, z: 500, name: 'Base India' },
+            { id: 'P10', x: 1100, z: 1100, name: 'Base Juliet' }
+        ],
+        CENTER_ZONE: { x: 800, z: 800, radius: 110 },
+        RIVER_ZONE: { startX: 580, endX: 1020, baseZ: 990, width: 18 },
+        FOREST_ZONES: [
+            { x: 150, z: 150, radius: 180, density: 0.7 },
+            { x: 1450, z: 150, radius: 180, density: 0.7 },
+            { x: 150, z: 1450, radius: 180, density: 0.7 },
+            { x: 1450, z: 1450, radius: 180, density: 0.7 },
+            { x: 300, z: 500, radius: 140, density: 0.5 },
+            { x: 1300, z: 500, radius: 140, density: 0.5 },
+            { x: 500, z: 1300, radius: 140, density: 0.5 },
+            { x: 1100, z: 1300, radius: 140, density: 0.5 }
+        ],
+        ROCKY_ZONES: [
+            { x: 600, z: 400, radius: 90 },
+            { x: 1000, z: 400, radius: 90 },
+            { x: 400, z: 1000, radius: 90 },
+            { x: 1000, z: 1000, radius: 90 }
+        ],
+        LANDMARKS: [
+            { x: 800, z: 100, type: 'lookout', name: 'North Lookout' },
+            { x: 800, z: 1500, type: 'radio_tower', name: 'South Relay' },
+            { x: 100, z: 800, type: 'water_tower', name: 'West Reservoir' },
+            { x: 1500, z: 800, type: 'bunker', name: 'East Bunker' },
+            { x: 500, z: 250, type: 'ruins', name: 'Old Outpost' },
+            { x: 1100, z: 250, type: 'bridge', name: 'Creek Bridge' }
+        ]
     },
 
     // =====================

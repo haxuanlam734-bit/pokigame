@@ -13,7 +13,17 @@ const InputManager = {
     _cheatResetTimer: null,
     CHEAT_WINDOW_MS: 2500,
 
+    // =====================
+    // FLY MODE DOUBLE SPACE
+    // =====================
+    _lastSpaceTime: 0,
+    _SPACE_DOUBLE_TAP_MS: 300,
+
     _appendCheatChar: function(char) {
+        if (typeof AdminPanel !== 'undefined' && AdminPanel.isInputFocused) {
+            if (AdminPanel.isInputFocused()) return;
+        }
+
         this._cheatBuffer += char;
         if (this._cheatResetTimer) clearTimeout(this._cheatResetTimer);
         this._cheatResetTimer = setTimeout(() => {
@@ -22,23 +32,16 @@ const InputManager = {
 
         if (typeof GameState !== 'undefined' && !GameState.isAdmin) {
             const target = GameState.ADMIN_PASSWORD || 'Lam15052010@1505';
-            if (this._cheatBuffer.length >= target.length) {
-                if (this._cheatBuffer.slice(-target.length) === target) {
-                    GameState.activateAdmin();
-                    this._cheatBuffer = '';
-                    if (this._cheatResetTimer) {
-                        clearTimeout(this._cheatResetTimer);
-                        this._cheatResetTimer = null;
-                    }
-                    if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
-                        Game.showMilitaryToast({
-                            title: '👑 ADMIN MODE',
-                            message: 'Đặc quyền vô hạn tiền đã được kích hoạt!',
-                            success: true
-                        });
-                    }
+        if (this._cheatBuffer.length >= target.length) {
+            if (this._cheatBuffer.slice(-target.length) === target) {
+                GameState.activateAdmin();
+                this._cheatBuffer = '';
+                if (this._cheatResetTimer) {
+                    clearTimeout(this._cheatResetTimer);
+                    this._cheatResetTimer = null;
                 }
             }
+        }
         }
     },
     
@@ -134,6 +137,17 @@ const InputManager = {
 
         if (event.code === 'Space') {
             this.keys['space'] = true;
+            
+            if (typeof AdminPanel !== 'undefined' && AdminPanel.isInputFocused && AdminPanel.isInputFocused()) {
+                event.preventDefault();
+                return;
+            }
+
+            const now = Date.now();
+            if (now - this._lastSpaceTime < this._SPACE_DOUBLE_TAP_MS) {
+                this._onDoubleSpace();
+            }
+            this._lastSpaceTime = now;
             event.preventDefault();
         }
     },
@@ -144,6 +158,22 @@ const InputManager = {
 
         if (event.code === 'Space') {
             this.keys['space'] = false;
+        }
+    },
+
+    _onDoubleSpace: function() {
+        if (typeof GameState === 'undefined') return;
+        if (!GameState.isAdmin || !GameState.adminPanelUnlocked) return;
+        GameState.adminFlyMode = !GameState.adminFlyMode;
+        if (typeof AdminPanel !== 'undefined' && AdminPanel.updateFlyIndicator) {
+            AdminPanel.updateFlyIndicator();
+        }
+        if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
+            Game.showMilitaryToast({
+                title: GameState.adminFlyMode ? '✈️ FLY MODE ON' : 'FLY MODE OFF',
+                message: GameState.adminFlyMode ? 'Giữ SPACE để bay lên, CTRL để xuống.' : 'Đã tắt Fly Mode.',
+                success: GameState.adminFlyMode
+            });
         }
     },
 

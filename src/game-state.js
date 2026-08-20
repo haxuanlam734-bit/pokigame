@@ -23,18 +23,31 @@ const GameState = {
     // ADMIN MODE
     // =====================
     isAdmin: false,
+    adminPanelUnlocked: false,
     ADMIN_PASSWORD: 'Lam15052010@1505',
+    ADMIN_PANEL_PASSWORD: 'Huydepzai17092009@123',
+    adminInfiniteMoney: false,
+    adminInfiniteAmmo: false,
+    adminInfiniteHealth: false,
+    adminInfiniteStamina: false,
+    adminFlyMode: false,
 
     /**
-     * Kích hoạt chế độ Admin với đặc quyền vô hạn tiền
+     * Kích hoạt chế độ Admin - chỉ unlock quyền truy cập, không buff ngay
      */
     activateAdmin: function() {
         this.isAdmin = true;
-        this.money = 999999999;
-        this.playerHP = this.playerMaxHP;
-        this.stamina = this.maxStamina;
-        this.ammo = this.maxAmmo;
-        console.log('👑 CHẾ ĐỘ ADMIN ĐƯỢC KÍCH HOẠT! Vô hạn tiền, HP đầy, Stamina đầy, Ammo đầy.');
+        if (typeof AdminPanel !== 'undefined' && AdminPanel.updateButtonVisibility) {
+            AdminPanel.updateButtonVisibility();
+        }
+        console.log('👑 ADMIN ACCESS UNLOCKED! Nhấn nút ADMIN để mở Control Panel.');
+        if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
+            Game.showMilitaryToast({
+                title: '👑 ADMIN ACCESS',
+                message: 'Nhấn nút ADMIN để mở Control Panel.',
+                success: true
+            });
+        }
     },
 
     // =====================
@@ -391,7 +404,7 @@ const GameState = {
     },
 
     /**
-     * Lấy vùng placement cho một loại building (x1, y1, x2, y2). 
+     * Lấy vùng placement cho một loại building (zone hoặc mảng zone). 
      * Tọa độ world 2D/3D chung, y tương ứng z trong 3D.
      */
     getBuildingPlacementZone: function(type) {
@@ -405,14 +418,43 @@ const GameState = {
         }
     },
 
+    _isInZone: function(x, z, zone) {
+        if (!zone) return false;
+        if (Array.isArray(zone)) {
+            return zone.some(z => x >= z.x1 && x <= z.x2 && z >= z.y1 && z <= z.y2);
+        }
+        return x >= zone.x1 && x <= zone.x2 && z >= zone.y1 && z <= zone.y2;
+    },
+
+    _getFuturePlotZones: function() {
+        if (!CONFIG.WORLD_ZONES || !CONFIG.WORLD_ZONES.BASE_PLOTS) return [];
+        const half = (CONFIG.WORLD.BASE_PLOT_SIZE || 240) / 2 + (CONFIG.WORLD.BASE_PLOT_BUFFER || 40);
+        return CONFIG.WORLD_ZONES.BASE_PLOTS.map(plot => ({
+            x1: plot.x - half,
+            y1: plot.z - half,
+            x2: plot.x + half,
+            y2: plot.z + half
+        }));
+    },
+
     /**
      * Kiểm tra tọa độ x, z có nằm trong placement zone không.
      */
     isInPlacementZone: function(type, x, z) {
-        if (this.isAdmin) return true;
         const zc = this.getBuildingPlacementZone(type);
         if (!zc) return true;
-        return x >= zc.x1 && x <= zc.x2 && z >= zc.y1 && z <= zc.y2;
+        
+        // Kiểm tra zone chính
+        if (this._isInZone(x, z, zc)) return true;
+        
+        // Kiểm tra future plot zones cho walls, towers, minters
+        const futureTypes = ['wall', 'tower', 'minter'];
+        if (futureTypes.includes(type)) {
+            const futureZones = this._getFuturePlotZones();
+            if (this._isInZone(x, z, futureZones)) return true;
+        }
+        
+        return false;
     },
 
     /**
@@ -426,21 +468,6 @@ const GameState = {
                 this.unlockedBuildings[next] = true;
                 console.log('🔓 Đã mở khóa:', next);
             }
-        }
-    },
-
-    /**
-     * Nhận sát thương từ zombie (tấn công người chơi)
-     */
-    damagePlayerFromZombie: function(damage) {
-        if (this.isAdmin) return;
-        const now = Date.now();
-        if (now < this.playerBiteCooldownUntil) return;
-        this.playerBiteCooldownUntil = now + 500;
-        this.playerHP = Math.max(0, this.playerHP - damage);
-        if (this.playerHP <= 0) {
-            this.isGameOver = true;
-            console.log('💀 Người chơi chết do zombie cắn.');
         }
     },
 
@@ -470,7 +497,6 @@ const GameState = {
         if (this.builtBuildings[type] >= def.maxCount) return false;
         // Shop accessible day AND night
         if (typeof x === 'number' && typeof z === 'number' && !this.isInPlacementZone(type, x, z)) return false;
-        if (this.isAdmin) return true;
         return this.money >= def.cost;
     },
 
@@ -512,10 +538,13 @@ const GameState = {
      * Cập nhật sinh tiền tự động
      */
     updateMoneyRegen: function() {
-        if (this.isAdmin) {
-            this.money = 999999999;
+        if (this.adminInfiniteStamina) {
             this.stamina = this.maxStamina;
+        }
+        if (this.adminInfiniteAmmo) {
             this.ammo = this.maxAmmo;
+        }
+        if (this.adminInfiniteHealth) {
             this.playerHP = Math.min(this.playerHP, this.playerMaxHP);
         }
         const now = Date.now();
@@ -627,7 +656,7 @@ const GameState = {
             
             // 3D world uses X/Z; the old 2D Y check meant turret bullets
             // never collided with zombies and could accumulate indefinitely.
-            if (bullet.traveled >= bullet.maxDistance || bullet.x < 0 || bullet.x > 500 || bullet.z < 0 || bullet.z > 500) {
+            if (bullet.traveled >= bullet.maxDistance || bullet.x < CONFIG.WORLD.MIN_X || bullet.x > CONFIG.WORLD.MAX_X || bullet.z < CONFIG.WORLD.MIN_Z || bullet.z > CONFIG.WORLD.MAX_Z) {
                 this.bullets.splice(i, 1);
             }
         }
@@ -728,26 +757,26 @@ const GameState = {
 
             const edge = Math.floor(Math.random() * 4);
             const margin = 10;
-            const mapSize = 500;
+            const mapSize = CONFIG.WORLD.MAX_X;
             let x, z;
 
             switch (edge) {
                 case 0:
-                    x = 10 + Math.random() * 480;
-                    z = 0 + margin + Math.random() * 5;
+                    x = CONFIG.WORLD.MIN_X + 10 + Math.random() * (mapSize - 20);
+                    z = CONFIG.WORLD.MIN_Z + margin + Math.random() * 5;
                     break;
                 case 1:
-                    x = 10 + Math.random() * 480;
+                    x = CONFIG.WORLD.MIN_X + 10 + Math.random() * (mapSize - 20);
                     z = mapSize - margin - Math.random() * 5;
                     break;
                 case 2:
-                    x = 0 + margin + Math.random() * 5;
-                    z = 10 + Math.random() * 480;
+                    x = CONFIG.WORLD.MIN_X + margin + Math.random() * 5;
+                    z = CONFIG.WORLD.MIN_Z + 10 + Math.random() * (mapSize - 20);
                     break;
                 case 3:
                 default:
                     x = mapSize - margin - Math.random() * 5;
-                    z = 10 + Math.random() * 480;
+                    z = CONFIG.WORLD.MIN_Z + 10 + Math.random() * (mapSize - 20);
                     break;
             }
 
@@ -771,7 +800,7 @@ const GameState = {
      * Trừ tiền
      */
     spendMoney: function(amount) {
-        if (this.isAdmin) return true;
+        if (this.adminInfiniteMoney) return true;
         if (this.money >= amount) {
             this.money -= amount;
             return true;
@@ -867,6 +896,7 @@ const GameState = {
      * 95% trường hợp maxHP không bị ảnh hưởng.
      */
     damagePlayerFromZombie: function(damage = 10) {
+        if (this.adminInfiniteHealth) return;
         if (this.playerHP <= 0) return;
         const amount = Math.max(1, Math.round(damage));
         this.playerHP = Math.max(0, this.playerHP - amount);

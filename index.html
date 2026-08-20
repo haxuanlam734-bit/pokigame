@@ -992,6 +992,283 @@
             box-shadow: 0 0 35px rgba(255, 46, 99, 0.6);
         }
 
+        /* ===== ADMIN PANEL ===== */
+        #admin-btn {
+            position: absolute;
+            top: 20px;
+            right: 250px;
+            background: rgba(12, 18, 24, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 180, 0.35);
+            border-radius: 10px;
+            padding: 8px 14px;
+            color: #00ffb4;
+            font-family: 'Orbitron', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            pointer-events: auto;
+            z-index: 25;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 15px rgba(0, 255, 180, 0.15);
+        }
+        #admin-btn:hover {
+            background: rgba(0, 255, 180, 0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 255, 180, 0.3);
+        }
+
+        #admin-security-modal {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(0.95);
+            min-width: 380px;
+            max-width: 420px;
+            background: linear-gradient(145deg, rgba(16, 22, 28, 0.98), rgba(8, 12, 16, 0.98));
+            border: 1.5px solid rgba(0, 255, 180, 0.35);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 255, 180, 0.15);
+            z-index: 1002;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            backdrop-filter: blur(14px);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            pointer-events: auto;
+        }
+        #admin-security-modal.visible {
+            display: block;
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        #admin-panel {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 400px;
+            max-width: calc(100vw - 40px);
+            max-height: 80vh;
+            overflow-y: auto;
+            background: linear-gradient(145deg, rgba(16, 22, 28, 0.98), rgba(8, 12, 16, 0.98));
+            border: 1.5px solid rgba(0, 255, 180, 0.35);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 255, 180, 0.15);
+            z-index: 1001;
+            display: none;
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            pointer-events: auto;
+        }
+        #admin-panel.visible {
+            display: block;
+        }
+
+        #fly-indicator {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Orbitron', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: #00ffb4;
+            text-shadow: 0 0 10px rgba(0, 255, 180, 0.5);
+            pointer-events: none;
+            z-index: 50;
+            display: none;
+            letter-spacing: 1px;
+        }
+
+        .admin-section {
+            margin-bottom: 16px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .admin-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .admin-section-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            color: #00ffb4;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .admin-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: rgba(255, 255, 255, 0.8);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-bottom: 6px;
+        }
+        .admin-toggle:hover {
+            border-color: rgba(0, 255, 180, 0.4);
+            background: rgba(0, 255, 180, 0.08);
+        }
+        .admin-toggle.active {
+            background: rgba(0, 255, 180, 0.15);
+            border-color: #00ffb4;
+            color: #00ffb4;
+            box-shadow: 0 0 12px rgba(0, 255, 180, 0.25);
+        }
+        .admin-toggle .toggle-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transition: all 0.15s ease;
+        }
+        .admin-toggle.active .toggle-indicator {
+            background: #00ffb4;
+            box-shadow: 0 0 8px #00ffb4;
+        }
+
+        .admin-phase-btn {
+            flex: 1;
+            min-width: 70px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: rgba(255, 255, 255, 0.8);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .admin-phase-btn:hover {
+            border-color: rgba(0, 255, 180, 0.4);
+            background: rgba(0, 255, 180, 0.08);
+        }
+        .admin-phase-btn.active {
+            border-color: #00ffb4;
+            color: #00ffb4;
+            box-shadow: 0 0 10px rgba(0, 255, 180, 0.25);
+        }
+        .admin-phase-btn.phase-day.active {
+            background: rgba(255, 184, 0, 0.15);
+            border-color: #ffb800;
+            color: #ffb800;
+            box-shadow: 0 0 10px rgba(255, 184, 0, 0.25);
+        }
+        .admin-phase-btn.phase-sunset.active {
+            background: rgba(255, 140, 0, 0.15);
+            border-color: #ff8c00;
+            color: #ff8c00;
+            box-shadow: 0 0 10px rgba(255, 140, 0, 0.25);
+        }
+        .admin-phase-btn.phase-night.active {
+            background: rgba(255, 46, 99, 0.15);
+            border-color: #ff2e63;
+            color: #ff2e63;
+            box-shadow: 0 0 10px rgba(255, 46, 99, 0.25);
+        }
+        .admin-phase-btn.phase-dawn.active {
+            background: rgba(180, 130, 255, 0.15);
+            border-color: #b482ff;
+            color: #b482ff;
+            box-shadow: 0 0 10px rgba(180, 130, 255, 0.25);
+        }
+
+        .admin-scale-btn {
+            flex: 1;
+            min-width: 50px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: rgba(255, 255, 255, 0.8);
+            font-family: 'Orbitron', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .admin-scale-btn:hover {
+            border-color: rgba(0, 255, 180, 0.4);
+            background: rgba(0, 255, 180, 0.08);
+        }
+        .admin-scale-btn.active {
+            background: rgba(0, 255, 180, 0.15);
+            border-color: #00ffb4;
+            color: #00ffb4;
+            box-shadow: 0 0 10px rgba(0, 255, 180, 0.25);
+        }
+
+        .admin-time-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .admin-time-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .admin-time-item .time-val {
+            font-family: 'Orbitron', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            margin-top: 2px;
+        }
+        .admin-time-item .time-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .admin-btn-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        #admin-password-input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        #admin-password-input:focus {
+            border-color: #00ffb4;
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .panel { padding: 12px 14px; border-radius: 12px; }
@@ -1253,6 +1530,117 @@
                 </div>
             </div>
 
+            <!-- ADMIN BUTTON -->
+            <button id="admin-btn" style="display:none;">👑 ADMIN</button>
+
+            <!-- SECURITY MODAL -->
+            <div id="admin-security-modal">
+                <div class="tm-header">
+                    <div class="tm-title" style="color:#00ffb4;">🔐 ADMIN SECURITY</div>
+                    <button class="tm-close" id="admin-sec-close">✕</button>
+                </div>
+                <div style="padding:8px 0 16px;">
+                    <label style="display:block; font-size:13px; font-weight:600; color:rgba(255,255,255,0.7); margin-bottom:8px;">Enter Admin Password:</label>
+                    <div style="position:relative;">
+                        <input type="password" id="admin-password-input" autocomplete="off" />
+                        <button id="admin-pw-toggle-vis" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer; font-size:14px;">👁</button>
+                    </div>
+                    <div id="admin-error-msg" style="display:none; margin-top:8px; font-size:13px; font-weight:700; color:#ff4757;">❌ Invalid admin password</div>
+                </div>
+                <div style="display:flex; gap:10px; justify-content:center;">
+                    <button id="admin-unlock-btn" style="padding:10px 18px; border-radius:10px; border:none; background:linear-gradient(135deg, #00c853, #009624); color:#fff; font-weight:800; cursor:pointer; font-family:'Rajdhani',sans-serif; font-size:14px; box-shadow:0 4px 15px rgba(0,200,83,0.3);">🔓 UNLOCK ADMIN</button>
+                    <button id="admin-cancel-btn" style="padding:10px 18px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:#fff; font-weight:700; cursor:pointer; font-family:'Rajdhani',sans-serif; font-size:14px;">CANCEL</button>
+                </div>
+            </div>
+
+            <!-- ADMIN CONTROL PANEL -->
+            <div id="admin-panel">
+                <div class="tm-header">
+                    <div class="tm-title" style="color:#00ffb4;">👑 ADMIN CONTROL PANEL</div>
+                    <button class="tm-close" id="admin-panel-close">✕</button>
+                </div>
+
+                <!-- RESOURCES -->
+                <div class="admin-section">
+                    <div class="admin-section-title">💰 RESOURCES</div>
+                    <button class="admin-toggle" id="admin-toggle-money">
+                        <span>Infinite Money</span>
+                        <span class="toggle-indicator"></span>
+                    </button>
+                </div>
+
+                <!-- PLAYER -->
+                <div class="admin-section">
+                    <div class="admin-section-title">❤️ PLAYER</div>
+                    <button class="admin-toggle" id="admin-toggle-health">
+                        <span>Infinite Health</span>
+                        <span class="toggle-indicator"></span>
+                    </button>
+                    <button class="admin-toggle" id="admin-toggle-stamina">
+                        <span>Infinite Stamina</span>
+                        <span class="toggle-indicator"></span>
+                    </button>
+                    <button class="admin-toggle" id="admin-toggle-ammo">
+                        <span>Infinite Ammo</span>
+                        <span class="toggle-indicator"></span>
+                    </button>
+                    <button class="admin-toggle" id="admin-toggle-god">
+                        <span>🔥 GOD MODE</span>
+                        <span class="toggle-indicator"></span>
+                    </button>
+                </div>
+
+                <!-- TIME CONTROL -->
+                <div class="admin-section">
+                    <div class="admin-section-title">⏱️ TIME CONTROL</div>
+                    <div class="admin-time-grid">
+                        <div class="admin-time-item">
+                            <div class="time-label">CURRENT PHASE</div>
+                            <div class="time-val" id="admin-current-phase">☀️ NGÀY</div>
+                        </div>
+                        <div class="admin-time-item">
+                            <div class="time-label">CURRENT TIME</div>
+                            <div class="time-val" id="admin-current-time">00:00</div>
+                        </div>
+                        <div class="admin-time-item">
+                            <div class="time-label">TIME REMAINING</div>
+                            <div class="time-val" id="admin-time-remaining">00:00</div>
+                        </div>
+                        <div class="admin-time-item">
+                            <div class="time-label">CYCLE</div>
+                            <div class="time-val" id="admin-cycle-time">00:00</div>
+                        </div>
+                    </div>
+                    <div class="admin-btn-row" style="margin-bottom:10px;">
+                        <button class="admin-phase-btn phase-day active" id="admin-phase-day">☀️ DAY</button>
+                        <button class="admin-phase-btn phase-sunset" id="admin-phase-sunset">🌇 SUNSET</button>
+                        <button class="admin-phase-btn phase-night" id="admin-phase-night">🌙 NIGHT</button>
+                        <button class="admin-phase-btn phase-dawn" id="admin-phase-dawn">🌅 DAWN</button>
+                    </div>
+                    <div style="font-size:11px; font-weight:700; color:rgba(255,255,255,0.5); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">TIME SCALE</div>
+                    <div class="admin-btn-row">
+                        <button class="admin-scale-btn" id="admin-scale-0.1">0.1x</button>
+                        <button class="admin-scale-btn" id="admin-scale-0.5">0.5x</button>
+                        <button class="admin-scale-btn active" id="admin-scale-1">1x</button>
+                        <button class="admin-scale-btn" id="admin-scale-2">2x</button>
+                        <button class="admin-scale-btn" id="admin-scale-5">5x</button>
+                        <button class="admin-scale-btn" id="admin-scale-10">10x</button>
+                    </div>
+                </div>
+
+                <!-- MOVEMENT -->
+                <div class="admin-section">
+                    <div class="admin-section-title">✈️ MOVEMENT</div>
+                    <button class="admin-toggle" id="admin-toggle-fly">
+                        <span>Fly Mode</span>
+                        <span class="toggle-indicator"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- FLY INDICATOR -->
+            <div id="fly-indicator">✈️ FLY MODE ON</div>
+
             <!-- JOYSTICK -->
             <div id="joystick-container">
                 <div id="joystick-thumb"></div>
@@ -1287,6 +1675,7 @@
     <script src="src/entities/minigun-3d.js"></script>
     <script src="src/entities/zombie-3d.js"></script>
     <script src="src/game-state.js"></script>
+    <script src="src/admin-panel.js"></script>
     <script src="src/game-loop.js"></script>
     <script src="src/main.js"></script>
 </body>

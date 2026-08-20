@@ -138,6 +138,10 @@ const GameLoop = {
 
         this._updatePhaseNotification(currentPhase);
 
+        if (typeof AdminPanel !== 'undefined' && AdminPanel.isOpen) {
+            AdminPanel.updateTimeDisplay();
+        }
+
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
             moneyDisplay.textContent = Utils.formatMoney(GameState.money);

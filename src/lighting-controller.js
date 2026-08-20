@@ -9,9 +9,10 @@ const LightingController = {
     _emissiveBaseIntensities: null,
 
     _setSceneBackgroundColor: function(scene, r, g, b) {
-        if (scene.background instanceof THREE.Color) {
-            scene.background.setRGB(r, g, b);
+        if (!(scene.background instanceof THREE.Color)) {
+            scene.background = new THREE.Color();
         }
+        scene.background.setRGB(r, g, b);
     },
 
     init: function() {
@@ -43,6 +44,9 @@ const LightingController = {
             if (child.isHemisphereLight && !LightingController._lights.hemisphere) {
                 LightingController._lights.hemisphere = child;
             }
+            if (child.isDirectionalLight && child !== LightingController._lights.directional && !LightingController._lights.moon) {
+                LightingController._lights.moon = child;
+            }
         });
     },
 
@@ -72,7 +76,10 @@ const LightingController = {
                 starOpacity: s.starOpacity,
                 emissiveBoost: s.emissiveBoost,
                 shadowBias: s.shadowBias,
-                shadowNormalBias: s.shadowNormalBias
+                shadowNormalBias: s.shadowNormalBias,
+                moonPosition: s.moonPosition ? { x: s.moonPosition.x, y: s.moonPosition.y, z: s.moonPosition.z } : (Renderer3D && Renderer3D.worldCenterX !== undefined ? { x: Renderer3D.worldCenterX, y: -30, z: Renderer3D.worldCenterZ } : { x: 500, y: -30, z: 500 }),
+                moonIntensity: s.moonIntensity || 0,
+                moonColor: new THREE.Color(s.moonColor || '#b8c8e0')
             };
         }
     },
@@ -132,33 +139,37 @@ const LightingController = {
         const scene = this._lights.scene;
         if (!scene) return;
 
-        const bgR = Math.round(THREE.MathUtils.lerp(from.background.r, to.background.r, t) * 255);
-        const bgG = Math.round(THREE.MathUtils.lerp(from.background.g, to.background.g, t) * 255);
-        const bgB = Math.round(THREE.MathUtils.lerp(from.background.b, to.background.b, t) * 255);
-        this._setSceneBackgroundColor(scene, bgR / 255, bgG / 255, bgB / 255);
+        this._setSceneBackgroundColor(scene,
+            THREE.MathUtils.lerp(from.background.r, to.background.r, t),
+            THREE.MathUtils.lerp(from.background.g, to.background.g, t),
+            THREE.MathUtils.lerp(from.background.b, to.background.b, t)
+        );
 
         if (scene.fog && scene.fog.color) {
-            const fR = Math.round(THREE.MathUtils.lerp(from.fogColor.r, to.fogColor.r, t) * 255);
-            const fG = Math.round(THREE.MathUtils.lerp(from.fogColor.g, to.fogColor.g, t) * 255);
-            const fB = Math.round(THREE.MathUtils.lerp(from.fogColor.b, to.fogColor.b, t) * 255);
-            scene.fog.color.setRGB(fR / 255, fG / 255, fB / 255);
+            scene.fog.color.setRGB(
+                THREE.MathUtils.lerp(from.fogColor.r, to.fogColor.r, t),
+                THREE.MathUtils.lerp(from.fogColor.g, to.fogColor.g, t),
+                THREE.MathUtils.lerp(from.fogColor.b, to.fogColor.b, t)
+            );
             scene.fog.near = THREE.MathUtils.lerp(from.fogNear, to.fogNear, t);
             scene.fog.far = THREE.MathUtils.lerp(from.fogFar, to.fogFar, t);
         }
 
         if (this._lights.ambient) {
-            const acR = Math.round(THREE.MathUtils.lerp(from.ambientColor.r, to.ambientColor.r, t) * 255);
-            const acG = Math.round(THREE.MathUtils.lerp(from.ambientColor.g, to.ambientColor.g, t) * 255);
-            const acB = Math.round(THREE.MathUtils.lerp(from.ambientColor.b, to.ambientColor.b, t) * 255);
-            this._lights.ambient.color.setRGB(acR / 255, acG / 255, acB / 255);
+            this._lights.ambient.color.setRGB(
+                THREE.MathUtils.lerp(from.ambientColor.r, to.ambientColor.r, t),
+                THREE.MathUtils.lerp(from.ambientColor.g, to.ambientColor.g, t),
+                THREE.MathUtils.lerp(from.ambientColor.b, to.ambientColor.b, t)
+            );
             this._lights.ambient.intensity = THREE.MathUtils.lerp(from.ambientIntensity, to.ambientIntensity, t);
         }
 
         if (this._lights.directional) {
-            const dcR = Math.round(THREE.MathUtils.lerp(from.directionalColor.r, to.directionalColor.r, t) * 255);
-            const dcG = Math.round(THREE.MathUtils.lerp(from.directionalColor.g, to.directionalColor.g, t) * 255);
-            const dcB = Math.round(THREE.MathUtils.lerp(from.directionalColor.b, to.directionalColor.b, t) * 255);
-            this._lights.directional.color.setRGB(dcR / 255, dcG / 255, dcB / 255);
+            this._lights.directional.color.setRGB(
+                THREE.MathUtils.lerp(from.directionalColor.r, to.directionalColor.r, t),
+                THREE.MathUtils.lerp(from.directionalColor.g, to.directionalColor.g, t),
+                THREE.MathUtils.lerp(from.directionalColor.b, to.directionalColor.b, t)
+            );
             this._lights.directional.intensity = THREE.MathUtils.lerp(from.directionalIntensity, to.directionalIntensity, t);
 
             const sunX = THREE.MathUtils.lerp(from.sunPosition.x, to.sunPosition.x, t);
@@ -171,15 +182,17 @@ const LightingController = {
         }
 
         if (this._lights.hemisphere) {
-            const hscR = Math.round(THREE.MathUtils.lerp(from.hemiSkyColor.r, to.hemiSkyColor.r, t) * 255);
-            const hscG = Math.round(THREE.MathUtils.lerp(from.hemiSkyColor.g, to.hemiSkyColor.g, t) * 255);
-            const hscB = Math.round(THREE.MathUtils.lerp(from.hemiSkyColor.b, to.hemiSkyColor.b, t) * 255);
-            this._lights.hemisphere.color.setRGB(hscR / 255, hscG / 255, hscB / 255);
+            this._lights.hemisphere.color.setRGB(
+                THREE.MathUtils.lerp(from.hemiSkyColor.r, to.hemiSkyColor.r, t),
+                THREE.MathUtils.lerp(from.hemiSkyColor.g, to.hemiSkyColor.g, t),
+                THREE.MathUtils.lerp(from.hemiSkyColor.b, to.hemiSkyColor.b, t)
+            );
 
-            const hgcR = Math.round(THREE.MathUtils.lerp(from.hemiGroundColor.r, to.hemiGroundColor.r, t) * 255);
-            const hgcG = Math.round(THREE.MathUtils.lerp(from.hemiGroundColor.g, to.hemiGroundColor.g, t) * 255);
-            const hgcB = Math.round(THREE.MathUtils.lerp(from.hemiGroundColor.b, to.hemiGroundColor.b, t) * 255);
-            this._lights.hemisphere.groundColor.setRGB(hgcR / 255, hgcG / 255, hgcB / 255);
+            this._lights.hemisphere.groundColor.setRGB(
+                THREE.MathUtils.lerp(from.hemiGroundColor.r, to.hemiGroundColor.r, t),
+                THREE.MathUtils.lerp(from.hemiGroundColor.g, to.hemiGroundColor.g, t),
+                THREE.MathUtils.lerp(from.hemiGroundColor.b, to.hemiGroundColor.b, t)
+            );
             this._lights.hemisphere.intensity = THREE.MathUtils.lerp(from.hemiIntensity, to.hemiIntensity, t);
         }
 
@@ -188,6 +201,15 @@ const LightingController = {
         }
 
         this._updateEmissiveIntensity(from, to, t);
+
+        if (this._lights.moon) {
+            const moonX = THREE.MathUtils.lerp(from.moonPosition.x, to.moonPosition.x, t);
+            const moonY = THREE.MathUtils.lerp(from.moonPosition.y, to.moonPosition.y, t);
+            const moonZ = THREE.MathUtils.lerp(from.moonPosition.z, to.moonPosition.z, t);
+            this._lights.moon.position.set(moonX, moonY, moonZ);
+            this._lights.moon.intensity = THREE.MathUtils.lerp(from.moonIntensity, to.moonIntensity, t);
+            this._lights.moon.color.lerpColors(from.moonColor, to.moonColor, t);
+        }
     },
 
     _updateEmissiveIntensity: function(from, to, t) {

@@ -9,9 +9,9 @@
 
 const PlayerController = {
     position: {
-        x: 250,
+        x: CONFIG.WORLD.BASE_CENTER_X,
         y: 0,
-        z: 280
+        z: CONFIG.WORLD.BASE_CENTER_Z + 30
     },
 
     velocity: { x: 0, z: 0 },
@@ -57,6 +57,13 @@ const PlayerController = {
     jumpForce: 10,
     isGrounded: true,
 
+    // --- Fly Mode ---
+    flyMinY: 0.5,
+    flyMaxY: 80,
+    flyAscendSpeed: 14,
+    flyDescendSpeed: 10,
+    flyBoostMultiplier: 2.2,
+
     // ==========================================
     // --- VU KHI (su dung WeaponSystem moi) ---
     // ==========================================
@@ -74,7 +81,7 @@ const PlayerController = {
 
         // Spawn ở khoảng sân trước HQ (cách xa mặt tường của model nhà chính
         // GLB ~15-20 units) để tránh player/camera bị kẹt bên trong khối nhà.
-        this.position = { x: 250, y: 0, z: 280 };
+        this.position = { x: CONFIG.WORLD.BASE_CENTER_X, y: 0, z: CONFIG.WORLD.BASE_CENTER_Z + 30 };
         this.velocity = { x: 0, z: 0 };
         this.targetVelocity = { x: 0, z: 0 };
         this.currentMoveAngle = 0;
@@ -239,6 +246,8 @@ const PlayerController = {
         const inputA = moveInput.x < -0.01;
         const inputD = moveInput.x > 0.01;
 
+        const flyActive = typeof GameState !== 'undefined' && GameState.adminFlyMode && GameState.isAdmin && GameState.adminPanelUnlocked;
+
         this._computeForwardRight();
         this._moveVec.set(0, 0, 0);
         if (inputW) this._moveVec.add(this._forwardVec);
@@ -248,24 +257,30 @@ const PlayerController = {
 
         this.hasMovementInput = this._moveVec.lengthSq() > 0.0001;
 
-        // --- Cúi người (Crouch - phím C) ---
-        this.isCrouching = InputManager.isKeyPressed('c');
-
-        const wantsSprint = this.hasMovementInput && InputManager.isKeyPressed('shift') && !this.isCrouching;
-        const canSprint = typeof GameState !== 'undefined' && GameState.stamina > 0;
-        this.isSprinting = wantsSprint && canSprint;
-
-        if (this.isCrouching) {
-            this.speed = this.normalSpeed * 0.55;
-        } else if (this.isSprinting) {
-            this.speed = this.normalSpeed * this.sprintMultiplier;
+        if (flyActive) {
+            this.isCrouching = false;
+            this.isSprinting = false;
+            const boost = InputManager.isKeyPressed('shift') ? this.flyBoostMultiplier : 1.0;
+            this.speed = this.normalSpeed * boost;
         } else {
-            this.speed = this.normalSpeed;
-        }
+            this.isCrouching = InputManager.isKeyPressed('c');
 
-        if (this.isSprinting && typeof GameState !== 'undefined') {
-            GameState.stamina = Math.max(0, GameState.stamina - this.sprintDrainPerSecond * deltaSec);
-            if (GameState.stamina <= 0) this.isSprinting = false;
+            const wantsSprint = this.hasMovementInput && InputManager.isKeyPressed('shift') && !this.isCrouching;
+            const canSprint = typeof GameState !== 'undefined' && (GameState.stamina > 0 || GameState.adminInfiniteStamina);
+            this.isSprinting = wantsSprint && canSprint;
+
+            if (this.isCrouching) {
+                this.speed = this.normalSpeed * 0.55;
+            } else if (this.isSprinting) {
+                this.speed = this.normalSpeed * this.sprintMultiplier;
+            } else {
+                this.speed = this.normalSpeed;
+            }
+
+            if (this.isSprinting && typeof GameState !== 'undefined' && !GameState.adminInfiniteStamina) {
+                GameState.stamina = Math.max(0, GameState.stamina - this.sprintDrainPerSecond * deltaSec);
+                if (GameState.stamina <= 0) this.isSprinting = false;
+            }
         }
 
         if (this.hasMovementInput) {
@@ -290,32 +305,44 @@ const PlayerController = {
         const dz = this.velocity.z * deltaSec;
         this._moveWithCollision(dx, dz);
 
-        const mapSize = 500;
-        this.position.x = Math.max(0, Math.min(mapSize, this.position.x));
-        this.position.z = Math.max(0, Math.min(mapSize, this.position.z));
+        const mapSize = CONFIG.WORLD.MAX_X;
+        this.position.x = Math.max(CONFIG.WORLD.MIN_X, Math.min(mapSize, this.position.x));
+        this.position.z = Math.max(CONFIG.WORLD.MIN_Z, Math.min(mapSize, this.position.z));
 
         const floorY = (typeof Renderer3D !== 'undefined' && Renderer3D.getPlayerFloorHeight)
             ? Renderer3D.getPlayerFloorHeight(this.position.x, this.position.z) : 0;
 
-        // --- Nhảy (Jump) ---
-        if (InputManager.isKeyPressed('space') && this.isGrounded) {
-            this.velocityY = this.jumpForce;
+        if (flyActive) {
             this.isGrounded = false;
-        }
-
-        // --- Trọng lực (Gravity) ---
-        if (!this.isGrounded) {
-            this.velocityY -= this.gravity * deltaSec;
-            this.position.y += this.velocityY * deltaSec;
-
-            if (this.position.y <= floorY) {
-                this.position.y = floorY;
-                this.velocityY = 0;
-                this.isGrounded = true;
+            this.velocityY = 0;
+            if (InputManager.isKeyPressed('space')) {
+                this.position.y += this.flyAscendSpeed * deltaSec;
             }
+            if (InputManager.isKeyPressed('control') || InputManager.isKeyPressed('c')) {
+                this.position.y -= this.flyDescendSpeed * deltaSec;
+            }
+            this.position.y = Math.max(this.flyMinY, Math.min(this.flyMaxY, this.position.y));
         } else {
-            // Snapping theo sàn/ramp của HQ giúp có thể thực sự leo các cầu thang.
-            this.position.y = floorY;
+            // --- Nhảy (Jump) ---
+            if (InputManager.isKeyPressed('space') && this.isGrounded) {
+                this.velocityY = this.jumpForce;
+                this.isGrounded = false;
+            }
+
+            // --- Trọng lực (Gravity) ---
+            if (!this.isGrounded) {
+                this.velocityY -= this.gravity * deltaSec;
+                this.position.y += this.velocityY * deltaSec;
+
+                if (this.position.y <= floorY) {
+                    this.position.y = floorY;
+                    this.velocityY = 0;
+                    this.isGrounded = true;
+                }
+            } else {
+                // Snapping theo sàn/ramp của HQ giúp có thể thực sự leo các cầu thang.
+                this.position.y = floorY;
+            }
         }
 
         if (this.hasMovementInput) {

@@ -64,7 +64,13 @@ const Game = {
             // 9. Khởi tạo GameState
             GameState.init();
             
-            // 10. Setup các nút bấm UI
+            // 10. Khởi tạo Admin Panel
+            if (typeof AdminPanel !== 'undefined') {
+                AdminPanel.init();
+                AdminPanel.updateButtonVisibility();
+            }
+            
+            // 11. Setup các nút bấm UI
             this.setupButtons();
             
             // 11. Setup game over screen
@@ -547,6 +553,10 @@ const Game = {
         
         // Reset state
         GameState.init();
+        
+        if (typeof AdminPanel !== 'undefined' && AdminPanel.updateButtonVisibility) {
+            AdminPanel.updateButtonVisibility();
+        }
         
         // Báo cho Poki
         PokiManager.gameplayStart();
