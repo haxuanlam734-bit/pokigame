@@ -20,7 +20,9 @@ const SpecialEventManager = {
     peakPulseActive: false,
 
     eclipseVisualScale: 1.0,
+    eclipsePeakIntensity: 0.0,
     bloodMoonColorLerp: 0.0,
+    bloodPeakIntensity: 0.0,
     eventLightIntensity: 1.0,
     eventAmbientBoost: 0.0,
 
@@ -43,7 +45,18 @@ const SpecialEventManager = {
     bloodMoonCorona: null,
     bloodMoonHalo: null,
     bloodMoonParticles: null,
-    bloodMoonAtmosphere: null,
+
+    _visualTime: 0,
+    _moonWasVisible: false,
+    _moonOriginalMaterial: null,
+    _moonOriginalColor: null,
+    _moonOriginalOpacity: 0,
+    _moonOriginalScale: new THREE.Vector3(),
+    _sunWasVisible: false,
+    _sunOriginalMaterial: null,
+    _sunOriginalColor: null,
+    _sunOriginalOpacity: 0,
+    _sunOriginalScale: new THREE.Vector3(),
 
     _particlePositions: null,
     _particleBasePositions: null,
@@ -68,7 +81,9 @@ const SpecialEventManager = {
         this.peakTimer = 0;
         this.peakPulseTimer = 0;
         this.peakPulseActive = false;
-        this.eclipseVisualScale = 1.0;
+        this.eclipseVisualScale = CONFIG.SPECIAL_EVENT_CONFIG.eclipse.visualScaleMultiplier || 1.15;
+        this.eclipsePeakIntensity = 0.0;
+        this.bloodPeakIntensity = 0.0;
         this.bloodMoonColorLerp = 0.0;
         this.eventLightIntensity = 1.0;
         this.eventAmbientBoost = 0.0;
@@ -89,7 +104,17 @@ const SpecialEventManager = {
         this.bloodMoonCorona = null;
         this.bloodMoonHalo = null;
         this.bloodMoonParticles = null;
-        this.bloodMoonAtmosphere = null;
+        this._visualTime = 0;
+        this._moonWasVisible = false;
+        this._moonOriginalMaterial = null;
+        this._moonOriginalColor = null;
+        this._moonOriginalOpacity = 0;
+        this._moonOriginalScale = new THREE.Vector3();
+        this._sunWasVisible = false;
+        this._sunOriginalMaterial = null;
+        this._sunOriginalColor = null;
+        this._sunOriginalOpacity = 0;
+        this._sunOriginalScale = new THREE.Vector3();
         this._particlePositions = null;
         this._particleBasePositions = null;
         this._ribbonBasePositions = [];
@@ -118,9 +143,8 @@ const SpecialEventManager = {
         this.bloodMoonCorona = this._createBloodMoonCorona();
         this.bloodMoonHalo = this._createBloodMoonHalo();
         this.bloodMoonParticles = this._createBloodMoonParticles(cfg.bloodMoon.particleCount || 40);
-        this.bloodMoonAtmosphere = this._createBloodMoonAtmosphere();
 
-        this._setEventVisibility(false);
+        this._disableAllSpecialEventVisuals();
     },
 
     _createEclipseDisc: function() {
@@ -135,26 +159,26 @@ const SpecialEventManager = {
 
         ctx.clearRect(0, 0, size, size);
 
-        const darkGrad = ctx.createRadialGradient(cx, cy, innerR * 0.05, cx, cy, innerR);
+        const darkGrad = ctx.createRadialGradient(cx, cy, innerR * 0.02, cx, cy, innerR);
         darkGrad.addColorStop(0, '#010208');
-        darkGrad.addColorStop(0.3, '#030510');
-        darkGrad.addColorStop(0.6, '#060a18');
-        darkGrad.addColorStop(0.85, '#0c1025');
-        darkGrad.addColorStop(1, '#151a35');
+        darkGrad.addColorStop(0.2, '#02040d');
+        darkGrad.addColorStop(0.5, '#04071a');
+        darkGrad.addColorStop(0.8, '#080d2a');
+        darkGrad.addColorStop(1, '#0c1238');
         ctx.fillStyle = darkGrad;
         ctx.beginPath();
         ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
         ctx.fill();
 
-        const rimGrad = ctx.createRadialGradient(cx, cy, innerR * 0.92, cx, cy, innerR * 1.08);
-        rimGrad.addColorStop(0, 'rgba(25,20,60,0.0)');
-        rimGrad.addColorStop(0.3, 'rgba(45,35,100,0.50)');
-        rimGrad.addColorStop(0.6, 'rgba(70,55,140,0.18)');
-        rimGrad.addColorStop(0.85, 'rgba(90,70,160,0.05)');
-        rimGrad.addColorStop(1, 'rgba(60,40,130,0.0)');
+        const rimGrad = ctx.createRadialGradient(cx, cy, innerR * 0.88, cx, cy, innerR * 1.12);
+        rimGrad.addColorStop(0, 'rgba(20,18,60,0.0)');
+        rimGrad.addColorStop(0.2, 'rgba(40,32,100,0.55)');
+        rimGrad.addColorStop(0.5, 'rgba(60,48,140,0.22)');
+        rimGrad.addColorStop(0.8, 'rgba(80,64,170,0.06)');
+        rimGrad.addColorStop(1, 'rgba(50,38,130,0.0)');
         ctx.fillStyle = rimGrad;
         ctx.beginPath();
-        ctx.arc(cx, cy, innerR * 1.08, 0, Math.PI * 2);
+        ctx.arc(cx, cy, innerR * 1.12, 0, Math.PI * 2);
         ctx.fill();
 
         const texture = new THREE.CanvasTexture(canvas);
@@ -183,36 +207,40 @@ const SpecialEventManager = {
         const cx = size / 2;
         const cy = size / 2;
 
-        const whiteRing = ctx.createRadialGradient(cx, cy, size * 0.16, cx, cy, size * 0.22);
+        const whiteRing = ctx.createRadialGradient(cx, cy, size * 0.14, cx, cy, size * 0.22);
         whiteRing.addColorStop(0, 'rgba(255,255,255,0.0)');
-        whiteRing.addColorStop(0.15, 'rgba(250,248,255,0.70)');
-        whiteRing.addColorStop(0.4, 'rgba(235,225,255,0.35)');
-        whiteRing.addColorStop(0.7, 'rgba(210,195,255,0.08)');
-        whiteRing.addColorStop(1, 'rgba(180,160,240,0.0)');
+        whiteRing.addColorStop(0.10, 'rgba(255,252,255,0.85)');
+        whiteRing.addColorStop(0.25, 'rgba(245,240,255,0.55)');
+        whiteRing.addColorStop(0.45, 'rgba(225,215,255,0.20)');
+        whiteRing.addColorStop(0.70, 'rgba(190,175,245,0.05)');
+        whiteRing.addColorStop(1, 'rgba(160,140,230,0.0)');
         ctx.fillStyle = whiteRing;
         ctx.fillRect(0, 0, size, size);
 
-        const lavenderGrad = ctx.createRadialGradient(cx, cy, size * 0.20, cx, cy, size * 0.30);
-        lavenderGrad.addColorStop(0, 'rgba(230,220,255,0.45)');
-        lavenderGrad.addColorStop(0.3, 'rgba(200,185,255,0.28)');
-        lavenderGrad.addColorStop(0.6, 'rgba(160,140,240,0.10)');
-        lavenderGrad.addColorStop(1, 'rgba(120,100,220,0.0)');
+        const lavenderGrad = ctx.createRadialGradient(cx, cy, size * 0.18, cx, cy, size * 0.30);
+        lavenderGrad.addColorStop(0, 'rgba(235,225,255,0.60)');
+        lavenderGrad.addColorStop(0.20, 'rgba(210,195,255,0.40)');
+        lavenderGrad.addColorStop(0.45, 'rgba(170,150,245,0.15)');
+        lavenderGrad.addColorStop(0.70, 'rgba(130,110,225,0.04)');
+        lavenderGrad.addColorStop(1, 'rgba(100,80,200,0.0)');
         ctx.fillStyle = lavenderGrad;
         ctx.fillRect(0, 0, size, size);
 
-        const violetGrad = ctx.createRadialGradient(cx, cy, size * 0.26, cx, cy, size * 0.42);
-        violetGrad.addColorStop(0, 'rgba(140,120,240,0.18)');
-        violetGrad.addColorStop(0.3, 'rgba(110,90,220,0.10)');
-        violetGrad.addColorStop(0.6, 'rgba(80,60,200,0.04)');
-        violetGrad.addColorStop(1, 'rgba(50,35,160,0.0)');
+        const violetGrad = ctx.createRadialGradient(cx, cy, size * 0.24, cx, cy, size * 0.44);
+        violetGrad.addColorStop(0, 'rgba(150,130,245,0.25)');
+        violetGrad.addColorStop(0.25, 'rgba(120,100,230,0.14)');
+        violetGrad.addColorStop(0.50, 'rgba(90,70,210,0.05)');
+        violetGrad.addColorStop(0.75, 'rgba(60,45,180,0.01)');
+        violetGrad.addColorStop(1, 'rgba(40,28,150,0.0)');
         ctx.fillStyle = violetGrad;
         ctx.fillRect(0, 0, size, size);
 
-        const blueGrad = ctx.createRadialGradient(cx, cy, size * 0.34, cx, cy, size * 0.52);
-        blueGrad.addColorStop(0, 'rgba(60,80,220,0.08)');
-        blueGrad.addColorStop(0.3, 'rgba(45,65,200,0.04)');
-        blueGrad.addColorStop(0.6, 'rgba(30,50,180,0.01)');
-        blueGrad.addColorStop(1, 'rgba(20,35,140,0.0)');
+        const blueGrad = ctx.createRadialGradient(cx, cy, size * 0.32, cx, cy, size * 0.54);
+        blueGrad.addColorStop(0, 'rgba(70,90,230,0.12)');
+        blueGrad.addColorStop(0.25, 'rgba(55,75,215,0.06)');
+        blueGrad.addColorStop(0.55, 'rgba(40,60,190,0.02)');
+        blueGrad.addColorStop(0.80, 'rgba(25,40,160,0.005)');
+        blueGrad.addColorStop(1, 'rgba(15,25,130,0.0)');
         ctx.fillStyle = blueGrad;
         ctx.fillRect(0, 0, size, size);
 
@@ -242,16 +270,17 @@ const SpecialEventManager = {
         const cx = size / 2;
         const cy = size / 2;
 
-        const grad = ctx.createRadialGradient(cx, cy, size * 0.32, cx, cy, size * 0.50);
-        grad.addColorStop(0, 'rgba(100,80,200,0.0)');
-        grad.addColorStop(0.4, 'rgba(80,60,180,0.10)');
-        grad.addColorStop(0.7, 'rgba(60,40,150,0.04)');
-        grad.addColorStop(1, 'rgba(40,20,100,0.0)');
+        const grad = ctx.createRadialGradient(cx, cy, size * 0.28, cx, cy, size * 0.52);
+        grad.addColorStop(0, 'rgba(90,75,210,0.0)');
+        grad.addColorStop(0.30, 'rgba(75,60,190,0.14)');
+        grad.addColorStop(0.55, 'rgba(55,40,160,0.06)');
+        grad.addColorStop(0.75, 'rgba(35,25,120,0.02)');
+        grad.addColorStop(1, 'rgba(20,12,80,0.0)');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, size, size);
 
         const texture = new THREE.CanvasTexture(canvas);
-        const geo = new THREE.PlaneGeometry(72, 72);
+        const geo = new THREE.PlaneGeometry(80, 80);
         const mat = new THREE.MeshBasicMaterial({
             map: texture,
             transparent: true,
@@ -269,27 +298,29 @@ const SpecialEventManager = {
 
     _createEclipseRays: function(count) {
         const rays = [];
+        const sharedCanvas = document.createElement('canvas');
+        sharedCanvas.width = 64;
+        sharedCanvas.height = 256;
+        const ctx = sharedCanvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, 'rgba(255,252,255,0.0)');
+        grad.addColorStop(0.08, 'rgba(245,240,255,0.65)');
+        grad.addColorStop(0.20, 'rgba(210,200,255,0.38)');
+        grad.addColorStop(0.40, 'rgba(150,130,245,0.14)');
+        grad.addColorStop(0.65, 'rgba(100,80,210,0.04)');
+        grad.addColorStop(0.85, 'rgba(60,40,170,0.01)');
+        grad.addColorStop(1, 'rgba(40,25,140,0.0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 256);
+        const sharedTexture = new THREE.CanvasTexture(sharedCanvas);
+
         for (let i = 0; i < count; i++) {
-            const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
-            const length = 16 + Math.random() * 24;
-            const width = 0.20 + Math.random() * 0.55;
+            const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+            const length = 18 + Math.random() * 28;
+            const width = 0.35 + Math.random() * 0.85;
             const geo = new THREE.PlaneGeometry(width, length);
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createLinearGradient(0, 0, 0, 256);
-            grad.addColorStop(0, 'rgba(255,252,255,0.0)');
-            grad.addColorStop(0.10, 'rgba(240,235,255,0.55)');
-            grad.addColorStop(0.25, 'rgba(200,190,255,0.30)');
-            grad.addColorStop(0.50, 'rgba(140,120,240,0.10)');
-            grad.addColorStop(0.75, 'rgba(80,60,200,0.02)');
-            grad.addColorStop(1, 'rgba(50,30,150,0.0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, 64, 256);
-            const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.MeshBasicMaterial({
-                map: texture,
+                map: sharedTexture,
                 transparent: true,
                 depthWrite: false,
                 depthTest: true,
@@ -301,7 +332,7 @@ const SpecialEventManager = {
             mesh.renderOrder = 1;
             Renderer3D.scene.add(mesh);
             rays.push(mesh);
-            this._rayBaseRotations.push({ angle: angle, tilt: (Math.random() - 0.5) * 0.6 });
+            this._rayBaseRotations.push({ angle: angle, tilt: (Math.random() - 0.5) * 0.7 });
             this._rayBaseLengths.push(length);
         }
         return rays;
@@ -309,25 +340,55 @@ const SpecialEventManager = {
 
     _createEclipseRibbons: function(count) {
         const ribbons = [];
-        const geo = new THREE.PlaneGeometry(2.0, 28);
-        for (let i = 0; i < count; i++) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createLinearGradient(0, 0, 0, 256);
-            grad.addColorStop(0, 'rgba(180,200,255,0.0)');
-            grad.addColorStop(0.12, 'rgba(150,170,255,0.55)');
-            grad.addColorStop(0.30, 'rgba(130,150,255,0.32)');
-            grad.addColorStop(0.55, 'rgba(110,120,240,0.12)');
-            grad.addColorStop(0.80, 'rgba(80,70,200,0.03)');
-            grad.addColorStop(1, 'rgba(50,40,160,0.0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, 64, 256);
+        const sharedCanvas = document.createElement('canvas');
+        sharedCanvas.width = 64;
+        sharedCanvas.height = 256;
+        const ctx = sharedCanvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, 'rgba(200,220,255,0.0)');
+        grad.addColorStop(0.10, 'rgba(170,190,255,0.60)');
+        grad.addColorStop(0.25, 'rgba(140,160,255,0.35)');
+        grad.addColorStop(0.45, 'rgba(120,130,245,0.12)');
+        grad.addColorStop(0.70, 'rgba(90,80,215,0.03)');
+        grad.addColorStop(0.90, 'rgba(60,45,180,0.01)');
+        grad.addColorStop(1, 'rgba(40,28,150,0.0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 256);
+        const sharedTexture = new THREE.CanvasTexture(sharedCanvas);
 
-            const texture = new THREE.CanvasTexture(canvas);
+        for (let i = 0; i < count; i++) {
+            const segments = 12;
+            const length = 20 + Math.random() * 16;
+            const widthBase = 1.2 + Math.random() * 2.5;
+            const geo = new THREE.BufferGeometry();
+            const positions = new Float32Array((segments + 1) * 2 * 3);
+            const uvs = new Float32Array((segments + 1) * 2 * 2);
+            const indices = [];
+            for (let s = 0; s <= segments; s++) {
+                const t = s / segments;
+                const y = t * length;
+                const wave = Math.sin(t * Math.PI * 2.5) * 1.8;
+                const w = widthBase * (1.0 - t * 0.5) * (0.7 + 0.3 * Math.sin(t * Math.PI));
+                for (let side = -1; side <= 1; side += 2) {
+                    const idx = (s * 2 + (side === -1 ? 0 : 1));
+                    positions[idx * 3] = wave * side;
+                    positions[idx * 3 + 1] = y;
+                    positions[idx * 3 + 2] = side * w / 2;
+                    uvs[idx * 2] = side === -1 ? 0 : 1;
+                    uvs[idx * 2 + 1] = t;
+                }
+                if (s < segments) {
+                    const a = s * 2, b = s * 2 + 1, c = (s + 1) * 2, d = (s + 1) * 2 + 1;
+                    indices.push(a, c, b, b, c, d);
+                }
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+            geo.setIndex(indices);
+            geo.computeVertexNormals();
+
             const mat = new THREE.MeshBasicMaterial({
-                map: texture,
+                map: sharedTexture,
                 transparent: true,
                 depthWrite: false,
                 depthTest: true,
@@ -344,9 +405,10 @@ const SpecialEventManager = {
                 x: Math.random() * Math.PI * 2,
                 y: Math.random() * Math.PI * 2,
                 z: (Math.random() - 0.5) * 0.9,
-                orbitSpeed: 0.12 + Math.random() * 0.30,
-                waveSpeed: 0.7 + Math.random() * 1.1,
-                waveAmp: 0.4 + Math.random() * 0.8
+                orbitSpeed: 0.08 + Math.random() * 0.22,
+                waveSpeed: 0.5 + Math.random() * 0.9,
+                waveAmp: 0.3 + Math.random() * 0.7,
+                waveFreq: 2.0 + Math.random() * 1.5
             });
         }
         return ribbons;
@@ -361,7 +423,7 @@ const SpecialEventManager = {
         for (let i = 0; i < count; i++) {
             const theta = Math.random() * Math.PI * 2;
             const phi = (Math.random() - 0.5) * Math.PI * 0.9;
-            const r = 8 + Math.random() * 20;
+            const r = 6 + Math.random() * 22;
             const x = Math.cos(theta) * Math.cos(phi) * r;
             const y = Math.sin(phi) * r;
             const z = Math.sin(theta) * Math.cos(phi) * r;
@@ -373,24 +435,24 @@ const SpecialEventManager = {
             basePositions[i * 3 + 2] = z;
 
             const colorChoice = Math.random();
-            if (colorChoice < 0.40) {
-                colors[i * 3] = 0.7 + Math.random() * 0.3;
-                colors[i * 3 + 1] = 0.7 + Math.random() * 0.3;
+            if (colorChoice < 0.35) {
+                colors[i * 3] = 0.75 + Math.random() * 0.25;
+                colors[i * 3 + 1] = 0.75 + Math.random() * 0.25;
                 colors[i * 3 + 2] = 1.0;
-            } else if (colorChoice < 0.70) {
-                colors[i * 3] = 0.6 + Math.random() * 0.3;
-                colors[i * 3 + 1] = 0.5 + Math.random() * 0.3;
+            } else if (colorChoice < 0.60) {
+                colors[i * 3] = 0.65 + Math.random() * 0.35;
+                colors[i * 3 + 1] = 0.55 + Math.random() * 0.35;
                 colors[i * 3 + 2] = 0.95 + Math.random() * 0.05;
-            } else if (colorChoice < 0.90) {
+            } else if (colorChoice < 0.85) {
                 colors[i * 3] = 1.0;
-                colors[i * 3 + 1] = 0.92 + Math.random() * 0.08;
-                colors[i * 3 + 2] = 0.88 + Math.random() * 0.12;
+                colors[i * 3 + 1] = 0.90 + Math.random() * 0.10;
+                colors[i * 3 + 2] = 0.85 + Math.random() * 0.15;
             } else {
-                colors[i * 3] = 0.9 + Math.random() * 0.1;
-                colors[i * 3 + 1] = 0.5 + Math.random() * 0.4;
-                colors[i * 3 + 2] = 0.8 + Math.random() * 0.2;
+                colors[i * 3] = 0.95 + Math.random() * 0.05;
+                colors[i * 3 + 1] = 0.55 + Math.random() * 0.40;
+                colors[i * 3 + 2] = 0.85 + Math.random() * 0.15;
             }
-            sizes[i] = 0.05 + Math.random() * 0.12;
+            sizes[i] = 0.06 + Math.random() * 0.14;
         }
 
         const geo = new THREE.BufferGeometry();
@@ -399,7 +461,7 @@ const SpecialEventManager = {
         geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
         const mat = new THREE.PointsMaterial({
-            size: 0.22,
+            size: 0.24,
             vertexColors: true,
             transparent: true,
             opacity: 0.0,
@@ -431,56 +493,58 @@ const SpecialEventManager = {
 
         ctx.clearRect(0, 0, size, size);
 
-        const coreGrad = ctx.createRadialGradient(cx, cy, r * 0.02, cx, cy, r * 0.90);
-        coreGrad.addColorStop(0, '#2a0303');
-        coreGrad.addColorStop(0.2, '#4a0808');
-        coreGrad.addColorStop(0.45, '#6b1010');
-        coreGrad.addColorStop(0.70, '#8b1a1a');
-        coreGrad.addColorStop(0.88, '#a82020');
-        coreGrad.addColorStop(1, '#5c0a0a');
+        const coreGrad = ctx.createRadialGradient(cx, cy, r * 0.02, cx, cy, r * 0.92);
+        coreGrad.addColorStop(0, '#1a0202');
+        coreGrad.addColorStop(0.15, '#3a0505');
+        coreGrad.addColorStop(0.35, '#5b0c0c');
+        coreGrad.addColorStop(0.55, '#7a1515');
+        coreGrad.addColorStop(0.75, '#951f1f');
+        coreGrad.addColorStop(0.92, '#6b1010');
+        coreGrad.addColorStop(1, '#4a0808');
         ctx.fillStyle = coreGrad;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        const craterGrad = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.20, r * 0.04, cx, cy, r * 0.95);
-        craterGrad.addColorStop(0, 'rgba(20,3,3,0.40)');
-        craterGrad.addColorStop(0.4, 'rgba(50,8,8,0.20)');
-        craterGrad.addColorStop(0.7, 'rgba(30,5,5,0.08)');
+        const craterGrad = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.22, r * 0.05, cx, cy, r * 0.95);
+        craterGrad.addColorStop(0, 'rgba(12,2,2,0.50)');
+        craterGrad.addColorStop(0.35, 'rgba(35,6,6,0.28)');
+        craterGrad.addColorStop(0.65, 'rgba(25,4,4,0.12)');
         craterGrad.addColorStop(1, 'rgba(0,0,0,0.0)');
         ctx.fillStyle = craterGrad;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        const craterGrad2 = ctx.createRadialGradient(cx + r * 0.30, cy + r * 0.15, r * 0.03, cx, cy, r * 0.85);
-        craterGrad2.addColorStop(0, 'rgba(15,2,2,0.35)');
-        craterGrad2.addColorStop(0.5, 'rgba(40,6,6,0.15)');
+        const craterGrad2 = ctx.createRadialGradient(cx + r * 0.32, cy + r * 0.18, r * 0.04, cx, cy, r * 0.88);
+        craterGrad2.addColorStop(0, 'rgba(10,1,1,0.45)');
+        craterGrad2.addColorStop(0.40, 'rgba(30,4,4,0.20)');
+        craterGrad2.addColorStop(0.75, 'rgba(18,2,2,0.06)');
         craterGrad2.addColorStop(1, 'rgba(0,0,0,0.0)');
         ctx.fillStyle = craterGrad2;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        const brightGrad = ctx.createRadialGradient(cx + r * 0.10, cy - r * 0.10, r * 0.05, cx, cy, r * 0.75);
-        brightGrad.addColorStop(0, 'rgba(180,25,25,0.0)');
-        brightGrad.addColorStop(0.3, 'rgba(160,20,20,0.12)');
-        brightGrad.addColorStop(0.6, 'rgba(120,15,15,0.05)');
+        const brightGrad = ctx.createRadialGradient(cx + r * 0.12, cy - r * 0.12, r * 0.06, cx, cy, r * 0.78);
+        brightGrad.addColorStop(0, 'rgba(160,20,20,0.0)');
+        brightGrad.addColorStop(0.25, 'rgba(140,18,18,0.18)');
+        brightGrad.addColorStop(0.55, 'rgba(100,12,12,0.08)');
         brightGrad.addColorStop(1, 'rgba(0,0,0,0.0)');
         ctx.fillStyle = brightGrad;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        const rimGrad = ctx.createRadialGradient(cx, cy, r * 0.88, cx, cy, r * 1.04);
-        rimGrad.addColorStop(0, 'rgba(139,0,0,0.0)');
-        rimGrad.addColorStop(0.4, 'rgba(200,25,25,0.65)');
-        rimGrad.addColorStop(0.7, 'rgba(160,18,18,0.35)');
-        rimGrad.addColorStop(0.9, 'rgba(100,10,10,0.10)');
-        rimGrad.addColorStop(1, 'rgba(40,0,0,0.0)');
+        const rimGrad = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.06);
+        rimGrad.addColorStop(0, 'rgba(100,0,0,0.0)');
+        rimGrad.addColorStop(0.30, 'rgba(180,22,22,0.70)');
+        rimGrad.addColorStop(0.60, 'rgba(140,16,16,0.40)');
+        rimGrad.addColorStop(0.85, 'rgba(90,10,10,0.12)');
+        rimGrad.addColorStop(1, 'rgba(35,0,0,0.0)');
         ctx.fillStyle = rimGrad;
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 1.04, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * 1.06, 0, Math.PI * 2);
         ctx.fill();
 
         const texture = new THREE.CanvasTexture(canvas);
@@ -509,31 +573,32 @@ const SpecialEventManager = {
         const cx = size / 2;
         const cy = size / 2;
 
-        const innerGrad = ctx.createRadialGradient(cx, cy, size * 0.20, cx, cy, size * 0.30);
-        innerGrad.addColorStop(0, 'rgba(220,35,35,0.0)');
-        innerGrad.addColorStop(0.15, 'rgba(240,50,50,0.60)');
-        innerGrad.addColorStop(0.35, 'rgba(200,35,35,0.35)');
-        innerGrad.addColorStop(0.60, 'rgba(150,20,20,0.12)');
-        innerGrad.addColorStop(0.80, 'rgba(100,10,10,0.03)');
-        innerGrad.addColorStop(1, 'rgba(60,0,0,0.0)');
+        const innerGrad = ctx.createRadialGradient(cx, cy, size * 0.18, cx, cy, size * 0.30);
+        innerGrad.addColorStop(0, 'rgba(240,45,45,0.0)');
+        innerGrad.addColorStop(0.10, 'rgba(245,55,55,0.75)');
+        innerGrad.addColorStop(0.30, 'rgba(220,40,40,0.48)');
+        innerGrad.addColorStop(0.55, 'rgba(170,28,28,0.18)');
+        innerGrad.addColorStop(0.75, 'rgba(120,18,18,0.05)');
+        innerGrad.addColorStop(1, 'rgba(80,8,8,0.0)');
         ctx.fillStyle = innerGrad;
         ctx.fillRect(0, 0, size, size);
 
-        const outerGrad = ctx.createRadialGradient(cx, cy, size * 0.28, cx, cy, size * 0.48);
-        outerGrad.addColorStop(0, 'rgba(180,25,25,0.25)');
-        outerGrad.addColorStop(0.25, 'rgba(140,18,18,0.14)');
-        outerGrad.addColorStop(0.50, 'rgba(100,12,20,0.05)');
-        outerGrad.addColorStop(0.75, 'rgba(60,6,15,0.01)');
-        outerGrad.addColorStop(1, 'rgba(30,0,8,0.0)');
-        ctx.fillStyle = outerGrad;
+        const middleGrad = ctx.createRadialGradient(cx, cy, size * 0.26, cx, cy, size * 0.48);
+        middleGrad.addColorStop(0, 'rgba(200,30,30,0.35)');
+        middleGrad.addColorStop(0.20, 'rgba(170,25,25,0.22)');
+        middleGrad.addColorStop(0.45, 'rgba(130,18,22,0.09)');
+        middleGrad.addColorStop(0.70, 'rgba(90,10,16,0.03)');
+        middleGrad.addColorStop(1, 'rgba(50,4,10,0.0)');
+        ctx.fillStyle = middleGrad;
         ctx.fillRect(0, 0, size, size);
 
-        const falloffGrad = ctx.createRadialGradient(cx, cy, size * 0.40, cx, cy, size * 0.58);
-        falloffGrad.addColorStop(0, 'rgba(100,10,30,0.08)');
-        falloffGrad.addColorStop(0.4, 'rgba(60,5,20,0.03)');
-        falloffGrad.addColorStop(0.7, 'rgba(30,2,10,0.01)');
-        falloffGrad.addColorStop(1, 'rgba(15,0,5,0.0)');
-        ctx.fillStyle = falloffGrad;
+        const outerGrad = ctx.createRadialGradient(cx, cy, size * 0.38, cx, cy, size * 0.60);
+        outerGrad.addColorStop(0, 'rgba(120,15,35,0.12)');
+        outerGrad.addColorStop(0.30, 'rgba(90,10,28,0.06)');
+        outerGrad.addColorStop(0.60, 'rgba(60,5,20,0.02)');
+        outerGrad.addColorStop(0.85, 'rgba(35,2,12,0.005)');
+        outerGrad.addColorStop(1, 'rgba(20,0,6,0.0)');
+        ctx.fillStyle = outerGrad;
         ctx.fillRect(0, 0, size, size);
 
         const texture = new THREE.CanvasTexture(canvas);
@@ -562,18 +627,19 @@ const SpecialEventManager = {
         const cx = size / 2;
         const cy = size / 2;
 
-        const grad = ctx.createRadialGradient(cx, cy, size * 0.34, cx, cy, size * 0.56);
-        grad.addColorStop(0, 'rgba(100,12,22,0.0)');
-        grad.addColorStop(0.2, 'rgba(90,10,20,0.10)');
-        grad.addColorStop(0.4, 'rgba(70,8,18,0.06)');
-        grad.addColorStop(0.6, 'rgba(50,5,15,0.03)');
-        grad.addColorStop(0.8, 'rgba(30,2,8,0.01)');
+        const grad = ctx.createRadialGradient(cx, cy, size * 0.30, cx, cy, size * 0.58);
+        grad.addColorStop(0, 'rgba(120,15,25,0.0)');
+        grad.addColorStop(0.15, 'rgba(110,12,22,0.14)');
+        grad.addColorStop(0.35, 'rgba(90,10,20,0.10)');
+        grad.addColorStop(0.55, 'rgba(70,8,18,0.06)');
+        grad.addColorStop(0.75, 'rgba(50,5,14,0.02)');
+        grad.addColorStop(0.90, 'rgba(30,2,8,0.006)');
         grad.addColorStop(1, 'rgba(15,0,4,0.0)');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, size, size);
 
         const texture = new THREE.CanvasTexture(canvas);
-        const geo = new THREE.PlaneGeometry(110, 110);
+        const geo = new THREE.PlaneGeometry(130, 130);
         const mat = new THREE.MeshBasicMaterial({
             map: texture,
             transparent: true,
@@ -598,7 +664,7 @@ const SpecialEventManager = {
         for (let i = 0; i < count; i++) {
             const theta = Math.random() * Math.PI * 2;
             const phi = (Math.random() - 0.5) * Math.PI * 0.7;
-            const r = 4 + Math.random() * 14;
+            const r = 4 + Math.random() * 16;
             const x = Math.cos(theta) * Math.cos(phi) * r;
             const y = Math.sin(phi) * r;
             const z = Math.sin(theta) * Math.cos(phi) * r;
@@ -611,23 +677,23 @@ const SpecialEventManager = {
 
             const colorChoice = Math.random();
             if (colorChoice < 0.35) {
-                colors[i * 3] = 0.65 + Math.random() * 0.25;
-                colors[i * 3 + 1] = 0.08 + Math.random() * 0.12;
+                colors[i * 3] = 0.70 + Math.random() * 0.30;
+                colors[i * 3 + 1] = 0.10 + Math.random() * 0.15;
                 colors[i * 3 + 2] = 0.08 + Math.random() * 0.12;
             } else if (colorChoice < 0.65) {
-                colors[i * 3] = 0.75 + Math.random() * 0.25;
-                colors[i * 3 + 1] = 0.12 + Math.random() * 0.18;
+                colors[i * 3] = 0.80 + Math.random() * 0.20;
+                colors[i * 3 + 1] = 0.15 + Math.random() * 0.20;
                 colors[i * 3 + 2] = 0.08 + Math.random() * 0.12;
             } else if (colorChoice < 0.85) {
-                colors[i * 3] = 0.55 + Math.random() * 0.25;
-                colors[i * 3 + 1] = 0.05 + Math.random() * 0.10;
-                colors[i * 3 + 2] = 0.18 + Math.random() * 0.22;
+                colors[i * 3] = 0.60 + Math.random() * 0.30;
+                colors[i * 3 + 1] = 0.06 + Math.random() * 0.12;
+                colors[i * 3 + 2] = 0.22 + Math.random() * 0.25;
             } else {
-                colors[i * 3] = 0.35 + Math.random() * 0.25;
-                colors[i * 3 + 1] = 0.03 + Math.random() * 0.08;
-                colors[i * 3 + 2] = 0.30 + Math.random() * 0.25;
+                colors[i * 3] = 0.40 + Math.random() * 0.30;
+                colors[i * 3 + 1] = 0.04 + Math.random() * 0.10;
+                colors[i * 3 + 2] = 0.35 + Math.random() * 0.30;
             }
-            sizes[i] = 0.04 + Math.random() * 0.08;
+            sizes[i] = 0.05 + Math.random() * 0.10;
         }
 
         const geo = new THREE.BufferGeometry();
@@ -636,7 +702,7 @@ const SpecialEventManager = {
         geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
         const mat = new THREE.PointsMaterial({
-            size: 0.15,
+            size: 0.18,
             vertexColors: true,
             transparent: true,
             opacity: 0.0,
@@ -656,37 +722,38 @@ const SpecialEventManager = {
         return points;
     },
 
-    _createBloodMoonAtmosphere: function() {
-        const geo = new THREE.PlaneGeometry(160, 160);
-        const mat = new THREE.MeshBasicMaterial({
-            color: 0x1a0208,
-            transparent: true,
-            opacity: 0.0,
-            depthWrite: false,
-            depthTest: false,
-            fog: false,
-            side: THREE.DoubleSide
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.visible = false;
-        mesh.renderOrder = -2;
-        Renderer3D.scene.add(mesh);
-        return mesh;
+    _disableAllSpecialEventVisuals: function() {
+        const set = (obj, v) => { if (obj) obj.visible = v; };
+        set(this.eclipseDisc, false);
+        set(this.eclipseCorona, false);
+        set(this.eclipseHalo, false);
+        this.eclipseRays.forEach(r => set(r, false));
+        this.eclipseRibbons.forEach(r => set(r, false));
+        set(this.eclipseParticles, false);
+        set(this.bloodMoonDisc, false);
+        set(this.bloodMoonCorona, false);
+        set(this.bloodMoonHalo, false);
+        set(this.bloodMoonParticles, false);
     },
 
-    _setEventVisibility: function(visible) {
+    _enableEclipseVisuals: function() {
+        this._disableAllSpecialEventVisuals();
         const set = (obj, v) => { if (obj) obj.visible = v; };
-        set(this.eclipseDisc, visible);
-        set(this.eclipseCorona, visible);
-        set(this.eclipseHalo, visible);
-        this.eclipseRays.forEach(r => set(r, visible));
-        this.eclipseRibbons.forEach(r => set(r, visible));
-        set(this.eclipseParticles, visible);
-        set(this.bloodMoonDisc, visible);
-        set(this.bloodMoonCorona, visible);
-        set(this.bloodMoonHalo, visible);
-        set(this.bloodMoonParticles, visible);
-        set(this.bloodMoonAtmosphere, visible);
+        set(this.eclipseDisc, true);
+        set(this.eclipseCorona, true);
+        set(this.eclipseHalo, true);
+        this.eclipseRays.forEach(r => set(r, true));
+        this.eclipseRibbons.forEach(r => set(r, true));
+        set(this.eclipseParticles, true);
+    },
+
+    _enableBloodMoonVisuals: function() {
+        this._disableAllSpecialEventVisuals();
+        const set = (obj, v) => { if (obj) obj.visible = v; };
+        set(this.bloodMoonDisc, true);
+        set(this.bloodMoonCorona, true);
+        set(this.bloodMoonHalo, true);
+        set(this.bloodMoonParticles, true);
     },
 
     _destroyEventVisuals: function() {
@@ -709,7 +776,6 @@ const SpecialEventManager = {
         dispose(this.bloodMoonCorona);
         dispose(this.bloodMoonHalo);
         dispose(this.bloodMoonParticles);
-        dispose(this.bloodMoonAtmosphere);
         this.eclipseDisc = null;
         this.eclipseCorona = null;
         this.eclipseHalo = null;
@@ -720,7 +786,6 @@ const SpecialEventManager = {
         this.bloodMoonCorona = null;
         this.bloodMoonHalo = null;
         this.bloodMoonParticles = null;
-        this.bloodMoonAtmosphere = null;
         this._particlePositions = null;
         this._particleBasePositions = null;
         this._ribbonBasePositions = [];
@@ -809,6 +874,7 @@ const SpecialEventManager = {
     },
 
     _startEvent: function(eventType) {
+        const previousEvent = this.currentEvent;
         this.currentEvent = eventType;
         this.state = 'WARNING';
         this.eventTimer = 0;
@@ -820,20 +886,31 @@ const SpecialEventManager = {
         this.peakTimer = 0;
         this.peakPulseTimer = 0;
         this.peakPulseActive = false;
-        this.eclipseVisualScale = 1.0;
+        this.eclipseVisualScale = CONFIG.SPECIAL_EVENT_CONFIG.eclipse.visualScaleMultiplier || 1.15;
+        this.eclipsePeakIntensity = 0.0;
+        this.bloodPeakIntensity = 0.0;
         this.bloodMoonColorLerp = 0.0;
         this.eventLightIntensity = 1.0;
         this.eventAmbientBoost = 0.0;
+        this._visualTime = 0;
 
-        this._applyBaseEventLighting(eventType, 0.0);
-        this._setEventVisibility(true);
+        this._disableAllSpecialEventVisuals();
+        if (previousEvent && this._moonOriginalMaterial) {
+            this._restoreCelestialState();
+        }
+        this._preserveCelestialState();
 
         if (eventType === 'ECLIPSE') {
+            this._enableEclipseVisuals();
+            Renderer3D.sunMesh.visible = false;
             this._showNotification('🌘 ECLIPSE APPROACHING');
         } else if (eventType === 'BLOOD_MOON') {
+            this._enableBloodMoonVisuals();
+            Renderer3D.moonMesh.visible = false;
             this._showNotification('🩸 BLOOD MOON APPROACHING');
         }
 
+        this._applyBaseEventLighting(eventType, 0.0);
         this._emit('started', { event: eventType });
         console.log(eventType + ' WARNING started');
     },
@@ -845,6 +922,8 @@ const SpecialEventManager = {
             this._updateIdle(dt);
             return;
         }
+
+        this._visualTime += dt;
 
         if (this.state === 'SCHEDULED') {
             this._updateScheduled(dt);
@@ -929,6 +1008,7 @@ const SpecialEventManager = {
                 this.bloodPulseTimer = 0;
                 this._removeBloodPulseModifiers();
             }
+            this.bloodPeakIntensity = 1.0;
         }
 
         if (this.eventTimer >= this.eventEndTime) {
@@ -946,17 +1026,28 @@ const SpecialEventManager = {
             this.peakTimer = 0;
             this.peakPulseTimer = 0;
             this.peakPulseActive = false;
+            this.eclipseVisualScale = eclipseCfg.visualScaleMultiplier || 1.15;
+            this.eclipsePeakIntensity = 0.0;
             console.log('🌘 Eclipse recovery');
         }
 
+        const localPeakT = Math.min(1, Math.max(0, (this.eventTimer - peakDuration) / peakDuration));
+        this.eclipsePeakIntensity = Math.sin(localPeakT * Math.PI);
+
         this.peakPulseTimer += dt;
-        if (!this.peakPulseActive && this.peakPulseTimer >= 0.5 + Math.random() * 0.5) {
+        if (!this.peakPulseActive && this.peakPulseTimer >= 0.6) {
             this.peakPulseActive = true;
             this.peakPulseTimer = 0;
         }
         if (this.peakPulseActive && this.peakPulseTimer >= eclipseCfg.peakPulseDuration) {
             this.peakPulseActive = false;
             this.peakPulseTimer = 0;
+        }
+
+        if (this.peakPulseActive) {
+            const pulseT = this.peakPulseTimer / eclipseCfg.peakPulseDuration;
+            const pulse = Math.sin(pulseT * Math.PI);
+            this.eclipseVisualScale = (eclipseCfg.visualScaleMultiplier || 1.15) + 0.08 * pulse;
         }
 
         if (this.eventTimer >= this.eventEndTime) {
@@ -974,7 +1065,11 @@ const SpecialEventManager = {
         const smoothT = t * t * (3 - 2 * t);
         this.eclipseVisualScale = 1.0 + 0.15 * (1.0 - smoothT);
         this.eventLightIntensity = 1.0;
-        this.eventAmbientBoost = 0.0;
+        if (this.currentEvent === 'ECLIPSE') {
+            this.eclipsePeakIntensity = Math.max(0, this.eclipsePeakIntensity - smoothT * this.eclipsePeakIntensity);
+        } else if (this.currentEvent === 'BLOOD_MOON') {
+            this.bloodPeakIntensity = Math.max(0, this.bloodPeakIntensity - smoothT * this.bloodPeakIntensity);
+        }
         if (this.bloodPulseActive) {
             this._removeBloodPulseModifiers();
             this.bloodPulseActive = false;
@@ -992,6 +1087,7 @@ const SpecialEventManager = {
     stopEvent: function() {
         const wasActive = this.state === 'ACTIVE' || this.state === 'PEAK' || this.state === 'ENDING' || this.state === 'WARNING';
         this._removeEventModifiers();
+        this._restoreCelestialState();
         this.currentEvent = null;
         this.state = 'IDLE';
         this.eventTimer = 0;
@@ -1004,14 +1100,16 @@ const SpecialEventManager = {
         this.peakTimer = 0;
         this.peakPulseTimer = 0;
         this.peakPulseActive = false;
-        this.eclipseVisualScale = 1.0;
+        this.eclipseVisualScale = CONFIG.SPECIAL_EVENT_CONFIG.eclipse.visualScaleMultiplier || 1.15;
+        this.eclipsePeakIntensity = 0.0;
+        this.bloodPeakIntensity = 0.0;
         this.bloodMoonColorLerp = 0.0;
         this.eventLightIntensity = 1.0;
         this.eventAmbientBoost = 0.0;
         this._scheduledEvent = null;
         this._scheduledPhase = null;
         this._scheduledTime = 0;
-        this._setEventVisibility(false);
+        this._disableAllSpecialEventVisuals();
         if (wasActive) this._emit('stopped', {});
         console.log('⏹ Event stopped');
     },
@@ -1186,10 +1284,11 @@ const SpecialEventManager = {
             this.eclipseHalo.lookAt(lookTarget);
 
             const geometrySize = 32;
-            const scale = sunScale * this.eclipseVisualScale;
-            this.eclipseDisc.scale.setScalar(Math.max(0.001, scale));
-            this.eclipseCorona.scale.setScalar(Math.max(0.001, scale * 1.45));
-            this.eclipseHalo.scale.setScalar(Math.max(0.001, scale * 2.0));
+            const baseScale = sunScale * this.eclipseVisualScale;
+            const discScale = baseScale * (1.0 + this.eclipsePeakIntensity * 0.12);
+            this.eclipseDisc.scale.setScalar(Math.max(0.001, discScale));
+            this.eclipseCorona.scale.setScalar(Math.max(0.001, baseScale * 1.45 * (1.0 + this.eclipsePeakIntensity * 0.20)));
+            this.eclipseHalo.scale.setScalar(Math.max(0.001, baseScale * 2.0 * (1.0 + this.eclipsePeakIntensity * 0.15)));
 
             const t = this.eventTimer / CONFIG.SPECIAL_EVENT_CONFIG.eventDuration;
             let opacity = 0;
@@ -1207,18 +1306,19 @@ const SpecialEventManager = {
             }
             const clampedOpacity = Math.max(0, Math.min(1, opacity));
             this.eclipseDisc.material.opacity = clampedOpacity;
-            this.eclipseCorona.material.opacity = Math.max(0, Math.min(1, clampedOpacity * 0.95));
-            this.eclipseHalo.material.opacity = Math.max(0, Math.min(1, clampedOpacity * 0.60));
+            this.eclipseCorona.material.opacity = Math.max(0, Math.min(1, clampedOpacity * 0.95 * (1.0 + this.eclipsePeakIntensity * 0.30)));
+            this.eclipseHalo.material.opacity = Math.max(0, Math.min(1, clampedOpacity * 0.60 * (1.0 + this.eclipsePeakIntensity * 0.25)));
 
             this.eclipseRays.forEach((ray, i) => {
                 ray.visible = this.eclipseDisc.visible;
                 ray.position.copy(pos);
                 ray.lookAt(lookTarget);
                 const rot = this._rayBaseRotations[i];
-                ray.rotation.z = rot.angle + Math.sin(dt * 0.4 + i) * 0.15;
-                ray.rotation.x = rot.tilt + Math.cos(dt * 0.3 + i * 0.7) * 0.1;
-                const rayOpacity = Math.max(0, Math.min(1, clampedOpacity * (0.5 + 0.5 * Math.sin(dt * 0.9 + i * 1.1))));
+                ray.rotation.z = rot.angle + Math.sin(this._visualTime * 0.4 + i) * 0.15;
+                ray.rotation.x = rot.tilt + Math.cos(this._visualTime * 0.3 + i * 0.7) * 0.1;
+                const rayOpacity = Math.max(0, Math.min(1, clampedOpacity * (0.5 + 0.5 * Math.sin(this._visualTime * 0.9 + i * 1.1)) * (1.0 + this.eclipsePeakIntensity * 0.35)));
                 ray.material.opacity = rayOpacity;
+                ray.scale.set(1, 1 + this.eclipsePeakIntensity * 0.25, 1);
                 if (this.state === 'PEAK' && this.peakPulseActive) {
                     ray.material.opacity = Math.max(0, Math.min(1, ray.material.opacity * 1.4));
                 }
@@ -1229,11 +1329,12 @@ const SpecialEventManager = {
                 ribbon.position.copy(pos);
                 ribbon.lookAt(lookTarget);
                 const rot = this._ribbonBaseRotations[i];
-                ribbon.rotation.x = rot.x + Math.sin(dt * rot.waveSpeed + i) * rot.waveAmp;
-                ribbon.rotation.y = rot.y + dt * rot.orbitSpeed;
-                ribbon.rotation.z = rot.z + Math.cos(dt * 0.7 + i * 1.5) * 0.25;
-                const ribbonOpacity = Math.max(0, Math.min(1, clampedOpacity * 0.7 * (0.5 + 0.5 * Math.sin(dt * 1.0 + i * 1.5))));
+                ribbon.rotation.x = rot.x + Math.sin(this._visualTime * rot.waveSpeed + i) * rot.waveAmp;
+                ribbon.rotation.y = rot.y + this._visualTime * rot.orbitSpeed;
+                ribbon.rotation.z = rot.z + Math.cos(this._visualTime * 0.7 + i * 1.5) * 0.25;
+                const ribbonOpacity = Math.max(0, Math.min(1, clampedOpacity * 0.7 * (0.5 + 0.5 * Math.sin(this._visualTime * 1.0 + i * 1.5)) * (1.0 + this.eclipsePeakIntensity * 0.30)));
                 ribbon.material.opacity = ribbonOpacity;
+                ribbon.scale.set(1 + this.eclipsePeakIntensity * 0.20, 1, 1);
                 if (this.state === 'PEAK' && this.peakPulseActive) {
                     ribbon.material.opacity = Math.max(0, Math.min(1, ribbon.material.opacity * 1.35));
                 }
@@ -1246,17 +1347,18 @@ const SpecialEventManager = {
                     const bx = baseAttr[i * 3];
                     const by = baseAttr[i * 3 + 1];
                     const bz = baseAttr[i * 3 + 2];
-                    const drift = Math.sin(dt * 0.7 + i * 0.25) * 0.6;
-                    const driftY = Math.cos(dt * 0.5 + i * 0.35) * 0.4;
-                    const driftZ = Math.cos(dt * 0.6 + i * 0.3) * 0.5;
+                    const drift = Math.sin(this._visualTime * 0.7 + i * 0.25) * 0.6;
+                    const driftY = Math.cos(this._visualTime * 0.5 + i * 0.35) * 0.4;
+                    const driftZ = Math.cos(this._visualTime * 0.6 + i * 0.3) * 0.5;
                     posAttr.array[i * 3] = bx + drift;
                     posAttr.array[i * 3 + 1] = by + driftY;
                     posAttr.array[i * 3 + 2] = bz + driftZ;
                 }
                 posAttr.needsUpdate = true;
-                const particleOpacity = Math.max(0, Math.min(1, clampedOpacity * 0.85));
+                const particleOpacity = Math.max(0, Math.min(1, clampedOpacity * 0.85 * (1.0 + this.eclipsePeakIntensity * 0.25)));
                 this.eclipseParticles.material.opacity = this.state === 'PEAK' && this.peakPulseActive ?
                     Math.min(1, particleOpacity * 1.2) : particleOpacity;
+                this.eclipseParticles.material.size = 0.24 * (1.0 + this.eclipsePeakIntensity * 0.20);
             }
         }
 
@@ -1272,13 +1374,12 @@ const SpecialEventManager = {
             this.bloodMoonHalo.position.copy(pos);
             this.bloodMoonHalo.lookAt(lookTarget);
 
-            const baseScale = Renderer3D._getWorldSizeForScreenDiameter(pos, Renderer3D.MOON_TARGET_PIXEL_DIAMETER);
-            if (baseScale) {
-                const geometrySize = 28;
-                const scale = (baseScale / geometrySize) * (CONFIG.SPECIAL_EVENT_CONFIG.bloodMoon.moonVisualScaleMultiplier || 1.15);
+            const baseScale = Renderer3D.moonMesh.scale.x;
+            if (baseScale > 0.001) {
+                const scale = baseScale * (CONFIG.SPECIAL_EVENT_CONFIG.bloodMoon.moonVisualScaleMultiplier || 1.15) * (1.0 + this.bloodPeakIntensity * 0.10);
                 this.bloodMoonDisc.scale.setScalar(Math.max(0.001, scale));
-                this.bloodMoonCorona.scale.setScalar(Math.max(0.001, scale * 1.6));
-                this.bloodMoonHalo.scale.setScalar(Math.max(0.001, scale * 2.2));
+                this.bloodMoonCorona.scale.setScalar(Math.max(0.001, scale * 1.6 * (1.0 + this.bloodPeakIntensity * 0.20)));
+                this.bloodMoonHalo.scale.setScalar(Math.max(0.001, scale * 2.2 * (1.0 + this.bloodPeakIntensity * 0.25)));
             }
 
             const warningDur = CONFIG.SPECIAL_EVENT_CONFIG.warningDuration;
@@ -1294,14 +1395,8 @@ const SpecialEventManager = {
                 0.20 * Math.sin((this.eventTimer - (this.bloodPulseEndTime - CONFIG.SPECIAL_EVENT_CONFIG.bloodMoon.pulseDuration)) / CONFIG.SPECIAL_EVENT_CONFIG.bloodMoon.pulseDuration * Math.PI) : 0;
 
             this.bloodMoonDisc.material.opacity = Math.max(0, Math.min(1, bmLerp));
-            this.bloodMoonCorona.material.opacity = Math.max(0, Math.min(1, bmLerp * 0.85 + pulse * 0.3));
-            this.bloodMoonHalo.material.opacity = Math.max(0, Math.min(1, bmLerp * 0.40 + pulse * 0.15));
-            this.bloodMoonAtmosphere.material.opacity = Math.max(0, Math.min(1, bmLerp * 0.04 + pulse * 0.02));
-            this.bloodMoonAtmosphere.position.copy(Renderer3D.camera.position);
-            this.bloodMoonAtmosphere.lookAt(Renderer3D.camera.position);
-            const dist = Renderer3D.cameraDistance * 0.5;
-            this.bloodMoonAtmosphere.position.y -= dist * 0.25;
-            this.bloodMoonAtmosphere.scale.setScalar(Math.max(1, dist * 1.1));
+            this.bloodMoonCorona.material.opacity = Math.max(0, Math.min(1, bmLerp * 0.85 + pulse * 0.3 + this.bloodPeakIntensity * 0.20));
+            this.bloodMoonHalo.material.opacity = Math.max(0, Math.min(1, bmLerp * 0.40 + pulse * 0.15 + this.bloodPeakIntensity * 0.15));
 
             if (this.bloodMoonParticles && this.bloodMoonParticles.visible) {
                 const posAttr = this.bloodMoonParticles.geometry.attributes.position;
@@ -1310,17 +1405,18 @@ const SpecialEventManager = {
                     const bx = baseAttr[i * 3];
                     const by = baseAttr[i * 3 + 1];
                     const bz = baseAttr[i * 3 + 2];
-                    const drift = Math.sin(dt * 0.5 + i * 0.4) * 0.35;
-                    const driftY = Math.cos(dt * 0.4 + i * 0.5) * 0.25;
-                    const driftZ = Math.cos(dt * 0.45 + i * 0.35) * 0.3;
+                    const drift = Math.sin(this._visualTime * 0.5 + i * 0.4) * 0.35;
+                    const driftY = Math.cos(this._visualTime * 0.4 + i * 0.5) * 0.25;
+                    const driftZ = Math.cos(this._visualTime * 0.45 + i * 0.35) * 0.3;
                     posAttr.array[i * 3] = bx + drift;
                     posAttr.array[i * 3 + 1] = by + driftY;
                     posAttr.array[i * 3 + 2] = bz + driftZ;
                 }
                 posAttr.needsUpdate = true;
-                const bpOpacity = Math.max(0, Math.min(1, bmLerp * 0.55));
+                const bpOpacity = Math.max(0, Math.min(1, bmLerp * 0.55 + this.bloodPeakIntensity * 0.20));
                 this.bloodMoonParticles.material.opacity = this.bloodPulseActive ?
                     Math.min(1, bpOpacity * 1.5) : bpOpacity;
+                this.bloodMoonParticles.material.size = 0.18 * (1.0 + this.bloodPeakIntensity * 0.20);
             }
         }
     },
@@ -1341,35 +1437,71 @@ const SpecialEventManager = {
                 const t = Math.min(1, Math.max(0, activeTime / activeDur));
                 const smooth = t * t * (3 - 2 * t);
                 this.eventLightIntensity = 1.0 - 0.75 * smooth;
-                this.eventAmbientBoost = 0.22 * smooth;
+                this.eventAmbientBoost = 0.30 + this.eclipsePeakIntensity * 0.20;
             } else if (this.state === 'PEAK') {
-                this.eventLightIntensity = 0.25;
-                this.eventAmbientBoost = 0.22;
+                this.eventLightIntensity = 0.20;
+                this.eventAmbientBoost = 0.45 + this.eclipsePeakIntensity * 0.20;
             } else if (this.state === 'ENDING') {
                 const endDur = 5.0;
-                const t = Math.min(1, this.eventTimer / endDur);
+                const t = Math.min(1, Math.max(0, this.eventTimer / endDur));
                 const smooth = t * t * (3 - 2 * t);
                 this.eventLightIntensity = 0.25 + 0.75 * smooth;
-                this.eventAmbientBoost = 0.22 * (1.0 - smooth);
+                this.eventAmbientBoost = (0.45 + (this.eclipsePeakIntensity || 0) * 0.20) * (1.0 - smooth);
             }
         } else if (this.currentEvent === 'BLOOD_MOON') {
             if (this.state === 'WARNING') {
                 this.eventLightIntensity = 1.0;
-                this.eventAmbientBoost = 0.08 * Math.min(1, this.eventTimer / 5.0);
+                this.eventAmbientBoost = 0.12 * Math.min(1, this.eventTimer / 5.0);
             } else if (this.state === 'ACTIVE' || this.state === 'PEAK') {
                 this.eventLightIntensity = 1.0;
-                this.eventAmbientBoost = 0.14;
+                this.eventAmbientBoost = 0.45 + this.bloodPeakIntensity * 0.20;
                 if (this.bloodPulseActive) {
-                    this.eventAmbientBoost = Math.min(0.22, this.eventAmbientBoost + 0.08);
+                    this.eventAmbientBoost = Math.min(0.65, this.eventAmbientBoost + 0.20);
                 }
             } else if (this.state === 'ENDING') {
                 const endDur = 5.0;
                 const t = Math.min(1, this.eventTimer / endDur);
                 const smooth = t * t * (3 - 2 * t);
                 this.eventLightIntensity = 1.0;
-                this.eventAmbientBoost = 0.14 * (1.0 - smooth);
+                this.eventAmbientBoost = (0.45 + (this.bloodPeakIntensity || 0) * 0.20) * (1.0 - smooth);
             }
         }
+    },
+
+    _preserveCelestialState: function() {
+        if (Renderer3D.moonMesh) {
+            this._moonWasVisible = Renderer3D.moonMesh.visible;
+            this._moonOriginalMaterial = Renderer3D.moonMesh.material;
+            this._moonOriginalColor = Renderer3D.moonMesh.material.color.getHex();
+            this._moonOriginalOpacity = Renderer3D.moonMesh.material.opacity;
+            this._moonOriginalScale.copy(Renderer3D.moonMesh.scale);
+        }
+        if (Renderer3D.sunMesh) {
+            this._sunWasVisible = Renderer3D.sunMesh.visible;
+            this._sunOriginalMaterial = Renderer3D.sunMesh.material;
+            this._sunOriginalColor = Renderer3D.sunMesh.material.color.getHex();
+            this._sunOriginalOpacity = Renderer3D.sunMesh.material.opacity;
+            this._sunOriginalScale.copy(Renderer3D.sunMesh.scale);
+        }
+    },
+
+    _restoreCelestialState: function() {
+        if (Renderer3D.moonMesh && this._moonOriginalMaterial) {
+            Renderer3D.moonMesh.visible = this._moonWasVisible;
+            Renderer3D.moonMesh.material = this._moonOriginalMaterial;
+            if (this._moonOriginalColor !== null) Renderer3D.moonMesh.material.color.setHex(this._moonOriginalColor);
+            Renderer3D.moonMesh.material.opacity = this._moonOriginalOpacity;
+            Renderer3D.moonMesh.scale.copy(this._moonOriginalScale);
+        }
+        if (Renderer3D.sunMesh && this._sunOriginalMaterial) {
+            Renderer3D.sunMesh.visible = this._sunWasVisible;
+            Renderer3D.sunMesh.material = this._sunOriginalMaterial;
+            if (this._sunOriginalColor !== null) Renderer3D.sunMesh.material.color.setHex(this._sunOriginalColor);
+            Renderer3D.sunMesh.material.opacity = this._sunOriginalOpacity;
+            Renderer3D.sunMesh.scale.copy(this._sunOriginalScale);
+        }
+        this._moonOriginalMaterial = null;
+        this._sunOriginalMaterial = null;
     },
 
     _showNotification: function(text) {

@@ -215,31 +215,42 @@ const LightingController = {
 
         if (event === 'ECLIPSE') {
             if (this._lights.ambient && ambientBoost > 0) {
-                const c = new THREE.Color(0x303050);
-                this._lights.ambient.color.lerp(c, ambientBoost * 0.45);
-                this._lights.ambient.intensity = Math.max(0, this._lights.ambient.intensity + ambientBoost * 0.18);
+                const c = new THREE.Color(0x252545);
+                this._lights.ambient.color.lerp(c, ambientBoost * 0.70);
+                this._lights.ambient.intensity = Math.max(0, this._lights.ambient.intensity + ambientBoost * 0.35);
             }
             if (this._lights.directional && intensity < 1.0) {
-                this._lights.directional.intensity = this._baseEventDirectionalIntensity * intensity;
+                this._lights.directional.intensity = this._baseEventDirectionalIntensity * Math.min(1.0, intensity);
                 const coolFill = new THREE.Color(0x7788aa);
-                this._lights.directional.color.lerp(coolFill, 0.45);
+                this._lights.directional.color.lerp(coolFill, 0.60);
+            }
+            if (this._lights.hemisphere && ambientBoost > 0) {
+                const hemiSky = new THREE.Color('#1a2040');
+                const hemiGround = new THREE.Color('#101825');
+                this._lights.hemisphere.color.lerp(hemiSky, ambientBoost * 0.50);
+                this._lights.hemisphere.groundColor.lerp(hemiGround, ambientBoost * 0.40);
             }
         } else if (event === 'BLOOD_MOON') {
             if (this._lights.ambient && ambientBoost > 0) {
-                const c = new THREE.Color(0x4a0512);
-                this._lights.ambient.color.lerp(c, ambientBoost * 0.50);
-                this._lights.ambient.intensity = Math.max(0, this._lights.ambient.intensity + ambientBoost * 0.12);
+                const c = new THREE.Color(0x6a1020);
+                this._lights.ambient.color.lerp(c, Math.min(1, ambientBoost * 2.0));
+                this._lights.ambient.intensity = Math.max(0, this._lights.ambient.intensity + ambientBoost * 0.40);
             }
-            if (this._lights.moon && intensity < 1.0) {
+            if (this._lights.moon && intensity <= 1.0) {
                 const moonColor = new THREE.Color(CONFIG.SPECIAL_EVENT_CONFIG.bloodMoon.moonColor || '#8b0000');
-                this._lights.moon.color.lerp(moonColor, 0.60);
-                this._lights.moon.intensity = Math.max(0, this._baseEventMoonIntensity * intensity);
+                this._lights.moon.color.lerp(moonColor, 0.95);
+                this._lights.moon.intensity = Math.max(0, this._baseEventMoonIntensity * Math.min(1.0, intensity + 0.5));
             }
             if (this._lights.hemisphere && ambientBoost > 0) {
-                const hemiSky = new THREE.Color('#1a0512');
-                const hemiGround = new THREE.Color('#0f0508');
-                this._lights.hemisphere.color.lerp(hemiSky, ambientBoost * 0.40);
-                this._lights.hemisphere.groundColor.lerp(hemiGround, ambientBoost * 0.35);
+                const hemiSky = new THREE.Color('#3a0820');
+                const hemiGround = new THREE.Color('#1a0508');
+                this._lights.hemisphere.color.lerp(hemiSky, Math.min(1, ambientBoost * 2.0));
+                this._lights.hemisphere.groundColor.lerp(hemiGround, Math.min(1, ambientBoost * 1.8));
+            }
+            if (this._lights.directional && ambientBoost > 0) {
+                const dirColor = new THREE.Color('#4a0818');
+                this._lights.directional.color.lerp(dirColor, Math.min(1, ambientBoost * 0.8));
+                this._lights.directional.intensity = Math.max(0, this._lights.directional.intensity - ambientBoost * 0.25);
             }
         }
     },
