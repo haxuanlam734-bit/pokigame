@@ -118,6 +118,12 @@ const GameState = {
     commsReady: true,
     lastServiceAction: {},
 
+    _specialEventZombieModifiers: null,
+    _specialEventPlayerModifiers: null,
+    _specialEventRewardMultiplier: 1,
+    _bloodPulseActive: false,
+    _bloodPulseZombieModifiers: null,
+
     // =====================
     // TIMING
     // =====================
@@ -284,6 +290,12 @@ const GameState = {
         this.commsReady = true;
         this.lastServiceAction = {};
 
+        this._specialEventZombieModifiers = null;
+        this._specialEventPlayerModifiers = null;
+        this._specialEventRewardMultiplier = 1;
+        this._bloodPulseActive = false;
+        this._bloodPulseZombieModifiers = null;
+
         this.gameStartTime = Date.now();
         this.lastMoneyRegenTime = Date.now();
         this.lastZombieSpawnTime = Date.now();
@@ -330,50 +342,59 @@ const GameState = {
             }
         }
 
-        // Stamina tự hồi chỉ khi không sprint
         if (typeof PlayerController !== 'undefined' && !PlayerController.isSprinting) {
-            this.stamina = Math.min(this.maxStamina, this.stamina + 12 * (deltaTime / 1000));
+            let staminaRegenMult = 1;
+            if (this._specialEventPlayerModifiers && this._specialEventPlayerModifiers.staminaRegen) {
+                staminaRegenMult = this._specialEventPlayerModifiers.staminaRegen;
+            }
+            this.stamina = Math.min(this.maxStamina, this.stamina + 12 * staminaRegenMult * (deltaTime / 1000));
         }
 
-        // HP tự hồi 1 mỗi 5 giây (natural regen)
+        if (typeof PlayerController !== 'undefined' && PlayerController.isSprinting) {
+            let drainMult = 1;
+            if (this._specialEventPlayerModifiers && this._specialEventPlayerModifiers.staminaDrain) {
+                drainMult = this._specialEventPlayerModifiers.staminaDrain;
+            }
+            if (!this.adminInfiniteStamina) {
+                this.stamina = Math.max(0, this.stamina - PlayerController.sprintDrainPerSecond * drainMult * (deltaTime / 1000));
+                if (this.stamina <= 0 && PlayerController.isSprinting) {
+                    PlayerController.isSprinting = false;
+                }
+            }
+        }
+
         this._hpRegenTimer = (this._hpRegenTimer || 0) + deltaTime;
         if (this._hpRegenTimer >= 5000) {
             this._hpRegenTimer = 0;
             if (this.playerHP < this.playerMaxHP) {
-                this.playerHP = Math.min(this.playerMaxHP, this.playerHP + 1);
+                let healMult = 1;
+                if (this._specialEventPlayerModifiers && this._specialEventPlayerModifiers.healingEffectiveness) {
+                    healMult = this._specialEventPlayerModifiers.healingEffectiveness;
+                }
+                this.playerHP = Math.min(this.playerMaxHP, this.playerHP + 1 * healMult);
             }
         }
 
-        // Regen tiền
-        this.updateMoneyRegen();
+        this.updateMoneyRegen(deltaTime);
         
-        // Cập nhật máy in tiền
         this.updateMinters(deltaTime);
         
-        // Cập nhật tháp pháo do người chơi xây
         this.updateTowers(deltaTime);
     
-        // Cập nhật Turel (tháp pháo model 3D)
         this.updateTurelList(deltaTime);
     
-        // Cập nhật Minigun (hộp súng máu)
         this.updateMinigunList(deltaTime);
     
-        // Cập nhật mạng súng máy tự động của đại bản doanh
         if (typeof Renderer3D !== 'undefined' && Renderer3D.updateAutomatedDefenses) {
             Renderer3D.updateAutomatedDefenses(deltaTime, this.zombies);
         }
         
-        // Cập nhật zombie
         this.updateZombies(deltaTime);
         
-        // Cập nhật đạn
         this.updateBullets(deltaTime);
         
-        // Kiểm tra va chạm
         this.checkCollisions();
         
-        // Sinh zombie liên tục (không phụ thuộc wave)
         this.spawnZombies(deltaTime);
     },
 
@@ -599,21 +620,25 @@ const GameState = {
      * @param {number} deltaTime - Thời gian delta
      */
     updateZombies: function(deltaTime) {
+        const phaseMod = CONFIG.ZOMBIE_PHASE_MODIFIERS[this.phase] || CONFIG.ZOMBIE_PHASE_MODIFIERS.day;
+        const eventZombieMod = this._specialEventZombieModifiers || {};
+        const bloodPulseMod = this._bloodPulseActive ? (this._bloodPulseZombieModifiers || {}) : {};
+        const totalSpeedMult = (phaseMod.speedMultiplier || 1) * (eventZombieMod.speed || 1) * (bloodPulseMod.speed ? (1 + bloodPulseMod.speed) : 1);
+        const totalDamageMult = (eventZombieMod.damage || 1) * (bloodPulseMod.damage ? (1 + bloodPulseMod.damage) : 1);
+
         for (let i = this.zombies.length - 1; i >= 0; i--) {
             const zombie = this.zombies[i];
+            zombie._frameSpeedOverride = zombie.speed * totalSpeedMult;
+            zombie._frameDamageOverride = zombie.damage * totalDamageMult;
             zombie.update(deltaTime);
 
-            // Bỏ qua zombie đã chết (đang play death animation)
             if (zombie.isDead) {
-                // Kiểm tra khi nào animation kết thúc để xóa khỏi array
                 if (zombie.isDestroyed && zombie.isDestroyed()) {
                     this.zombies.splice(i, 1);
                 }
                 continue;
             }
 
-            // Zombie có thể cắn player khi ở đủ gần. Mỗi lần cắn làm mất 1 segment HP
-            // (10 HP) và đồng thời giảm trần HP vĩnh viễn cho tới khi dùng vật tư y tế.
             if (typeof PlayerController !== 'undefined' && this.playerHP > 0) {
                 const dx = zombie.x - PlayerController.position.x;
                 const dz = zombie.z - PlayerController.position.z;
@@ -621,26 +646,28 @@ const GameState = {
                 const distSq = dx * dx + dz * dz;
                 if (distSq <= biteRange * biteRange) {
                     if (Date.now() >= this.playerBiteCooldownUntil) {
-                        this.damagePlayerFromZombie(10);
+                        let dmg = CONFIG.ZOMBIE_PLAYER_DAMAGE;
+                        if (eventZombieMod.damage) dmg *= eventZombieMod.damage;
+                        if (bloodPulseMod.damage) dmg *= (1 + bloodPulseMod.damage);
+                        this.damagePlayerFromZombie(dmg);
                     }
                 }
             }
             
-            // Nếu zombie chạm tới pháo đài
             if (zombie.reachedFortress && zombie.reachedFortress()) {
-                this.damagesFortress(zombie.damage);
+                const fortressDmg = zombie._frameDamageOverride || zombie.damage;
+                this.damagesFortress(fortressDmg);
                 zombie.dispose();
                 this.zombies.splice(i, 1);
                 continue;
             }
             
-            // Nếu zombie vừa chết - cộng thưởng ngay lập tức, để animation chết tự play
             if (zombie.hp <= 0) {
-                this.addMoney(CONFIG.MONEY_FROM_KILLED_ZOMBIE);
+                let reward = CONFIG.MONEY_FROM_KILLED_ZOMBIE;
+                if (this._specialEventRewardMultiplier) reward *= this._specialEventRewardMultiplier;
+                this.addMoney(reward);
                 this.zombiesKilled++;
                 this.totalScore += 100;
-                // KHÔNG dispose/splice ngay - zombie.isDead=true sẽ được set bởi zombie.die()
-                // zombie.update() sẽ chạy death animation, rồi isDestroyed() mới return true
             }
         }
     },

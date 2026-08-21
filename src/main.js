@@ -48,6 +48,16 @@ const Game = {
                         AudioController.onPhaseChanged(oldPhase, newPhase);
                     });
                 }
+                if (typeof SpecialEventManager !== 'undefined') {
+                    TimeCycle.onPhaseChanged(function(oldPhase, newPhase) {
+                        SpecialEventManager.onPhaseChanged(oldPhase, newPhase);
+                    });
+                }
+            }
+
+            // 7b. Initialize Special Event Manager
+            if (typeof SpecialEventManager !== 'undefined') {
+                SpecialEventManager.init();
             }
             
             // 8. Khởi tạo Player Controller
@@ -551,17 +561,18 @@ const Game = {
             gameOverScreen.style.display = 'none';
         }
         
-        // Reset state
         GameState.init();
+        
+        if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.stopEvent) {
+            SpecialEventManager.stopEvent();
+        }
         
         if (typeof AdminPanel !== 'undefined' && AdminPanel.updateButtonVisibility) {
             AdminPanel.updateButtonVisibility();
         }
         
-        // Báo cho Poki
         PokiManager.gameplayStart();
         
-        // Khởi động lại game loop
         GameLoop.start();
     }
 };

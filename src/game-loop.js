@@ -82,6 +82,10 @@ const GameLoop = {
 
         GameState.update(deltaTime);
 
+        if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.update) {
+            SpecialEventManager.update(deltaTime);
+        }
+
         if (typeof LightingController !== 'undefined' && LightingController.update) {
             LightingController.update();
         }

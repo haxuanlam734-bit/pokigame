@@ -18,6 +18,7 @@ const PlayerController = {
     targetVelocity: { x: 0, z: 0 },
     speed: 6,
     normalSpeed: 6,
+    flySpeed: 35,
     sprintMultiplier: 1.65,
     sprintDrainPerSecond: 22,
     isSprinting: false,
@@ -60,9 +61,9 @@ const PlayerController = {
     // --- Fly Mode ---
     flyMinY: 0.5,
     flyMaxY: 80,
-    flyAscendSpeed: 14,
-    flyDescendSpeed: 10,
-    flyBoostMultiplier: 2.2,
+    flyAscendSpeed: 35,
+    flyDescendSpeed: 35,
+    flyBoostMultiplier: 2.0,
 
     // ==========================================
     // --- VU KHI (su dung WeaponSystem moi) ---
@@ -261,7 +262,7 @@ const PlayerController = {
             this.isCrouching = false;
             this.isSprinting = false;
             const boost = InputManager.isKeyPressed('shift') ? this.flyBoostMultiplier : 1.0;
-            this.speed = this.normalSpeed * boost;
+            this.speed = this.flySpeed * boost;
         } else {
             this.isCrouching = InputManager.isKeyPressed('c');
 

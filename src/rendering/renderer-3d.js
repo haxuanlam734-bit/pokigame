@@ -51,6 +51,9 @@ let Renderer3D = {
     isFirstPerson: false,
     _fpTransitionRange: 2.0,
 
+    SUN_TARGET_PIXEL_DIAMETER: 75,
+    MOON_TARGET_PIXEL_DIAMETER: 60,
+
     trees: [],
     rocks: [],
 
@@ -74,6 +77,7 @@ let Renderer3D = {
     _externalModels: [],
     _gltfLoader: null,
     _moonLight: null,
+    _bloodMoonHorizonGlow: null,
 
     // Animation System (Clips, Mixers, Actions)
     playerMixer: null,
@@ -100,6 +104,7 @@ let Renderer3D = {
         this.camera = new THREE.PerspectiveCamera(68, width / height, 0.1, 2000);
         this.camera.position.set(800, 10, 830);
         this.camera.lookAt(800, 1.4, 800);
+        this.camera.updateMatrixWorld(true);
 
         this.renderer = new THREE.WebGLRenderer({
             antialias: true,
@@ -129,11 +134,13 @@ let Renderer3D = {
         this._autoDefenseTurrets = [];
         this._autoDefenseTracers = [];
         this._hqInterior = null;
+        this._celestialTempVec = new THREE.Vector3();
 
         this.setupLighting();
         this.createSkyDome();
         this.createSunMesh();
         this.createMoonMesh();
+        this.createBloodMoonHorizonGlow();
         this.createStarField();
         this.createGround();
         this.createRiver();
@@ -195,6 +202,7 @@ let Renderer3D = {
         directionalLight.shadow.bias = day.shadowBias;
         directionalLight.shadow.normalBias = day.shadowNormalBias;
         this.scene.add(directionalLight);
+        this._sunLight = directionalLight;
 
         const hemiLight = new THREE.HemisphereLight(
             day.hemiSkyColor,
@@ -218,9 +226,9 @@ let Renderer3D = {
         // shader and follows the four-phase day/night cycle.
         const geometry = new THREE.SphereGeometry(1100, 32, 18);
         this.skyUniforms = {
-            topColor: { value: new THREE.Color('#4a7db5') },
-            midColor: { value: new THREE.Color('#8fb5d0') },
-            horizonColor: { value: new THREE.Color('#c8dde8') }
+            topColor: { value: new THREE.Color('#5b8db5') },
+            midColor: { value: new THREE.Color('#9fc4d8') },
+            horizonColor: { value: new THREE.Color('#dce9ef') }
         };
         const material = new THREE.ShaderMaterial({
             uniforms: this.skyUniforms,
@@ -325,6 +333,45 @@ let Renderer3D = {
         this.scene.add(this.moonMesh);
     },
 
+    createBloodMoonHorizonGlow: function() {
+        const size = 2048;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+
+        const grad = ctx.createRadialGradient(cx, cy, size * 0.20, cx, cy, size * 0.50);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.30, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.50, 'rgba(90,8,18,0.0)');
+        grad.addColorStop(0.65, 'rgba(140,15,30,0.55)');
+        grad.addColorStop(0.78, 'rgba(160,20,35,0.35)');
+        grad.addColorStop(0.88, 'rgba(120,12,25,0.10)');
+        grad.addColorStop(0.95, 'rgba(80,5,15,0.0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const geo = new THREE.PlaneGeometry(1400, 1400);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            depthTest: false,
+            fog: false,
+            side: THREE.DoubleSide
+        });
+        this._bloodMoonHorizonGlow = new THREE.Mesh(geo, mat);
+        this._bloodMoonHorizonGlow.rotation.x = -Math.PI / 2;
+        this._bloodMoonHorizonGlow.position.set(this.worldCenterX, 0.15, this.worldCenterZ);
+        this._bloodMoonHorizonGlow.renderOrder = -2;
+        this.scene.add(this._bloodMoonHorizonGlow);
+    },
+
     createStarField: function() {
         const count = 600;
         const positions = new Float32Array(count * 3);
@@ -353,19 +400,19 @@ let Renderer3D = {
 
     _initSkyColorCache: function() {
         this._cachedTopColors = [
-            new THREE.Color('#4a7db5'),
-            new THREE.Color('#4a4060'),
-            new THREE.Color('#162840'),
-            new THREE.Color('#3a5575')
+            new THREE.Color('#5b8db5'),
+            new THREE.Color('#5a4a68'),
+            new THREE.Color('#152238'),
+            new THREE.Color('#4a6080')
         ];
         this._cachedMidColors = [
-            new THREE.Color('#8fb5d0'),
-            new THREE.Color('#9a8090'),
+            new THREE.Color('#9fc4d8'),
+            new THREE.Color('#c4a080'),
             new THREE.Color('#1e3d55'),
-            new THREE.Color('#8a7d9a')
+            new THREE.Color('#b8a0b8')
         ];
         this._cachedHorizonColors = [
-            new THREE.Color('#c8dde8'),
+            new THREE.Color('#dce9ef'),
             new THREE.Color('#e8c49a'),
             new THREE.Color('#304860'),
             new THREE.Color('#e8c8c0')
@@ -396,42 +443,129 @@ let Renderer3D = {
             if (this.camera) this.skyDome.position.copy(this.camera.position);
         }
 
+        if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent) {
+            if (SpecialEventManager.currentEvent === 'ECLIPSE') {
+                const eclipseLerp = Math.min(1, SpecialEventManager.eventTimer / 60);
+                const eclipseTop = new THREE.Color('#040510');
+                const eclipseMid = new THREE.Color('#0e0a28');
+                const eclipseHorizon = new THREE.Color('#1a1040');
+                this.skyUniforms.topColor.value.lerp(eclipseTop, eclipseLerp * 0.92);
+                this.skyUniforms.midColor.value.lerp(eclipseMid, eclipseLerp * 0.85);
+                this.skyUniforms.horizonColor.value.lerp(eclipseHorizon, eclipseLerp * 0.70);
+            } else if (SpecialEventManager.currentEvent === 'BLOOD_MOON') {
+                const bmLerp = SpecialEventManager.bloodMoonColorLerp || 0;
+                const bmTop = new THREE.Color('#06020a');
+                const bmMid = new THREE.Color('#1a0512');
+                const bmHorizon = new THREE.Color('#5c0a18');
+                this.skyUniforms.topColor.value.lerp(bmTop, bmLerp * 0.90);
+                this.skyUniforms.midColor.value.lerp(bmMid, bmLerp * 0.80);
+                this.skyUniforms.horizonColor.value.lerp(bmHorizon, bmLerp * 0.85);
+            }
+        }
+
         if (this.ground && this.ground.material && settings.groundColor && nextSettings.groundColor) {
             this._cachedGroundFrom.set(settings.groundColor);
             this._cachedGroundTo.set(nextSettings.groundColor);
             this._cachedGroundFrom.lerp(this._cachedGroundTo, t);
+            if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'ECLIPSE') {
+                const eclipseLerp = Math.min(1, SpecialEventManager.eventTimer / 60);
+                const eclipseGround = new THREE.Color('#10131a');
+                this._cachedGroundFrom.lerp(eclipseGround, eclipseLerp * 0.60);
+            } else if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'BLOOD_MOON') {
+                const bmLerp = SpecialEventManager.bloodMoonColorLerp || 0;
+                const bmGround = new THREE.Color('#1a0a10');
+                this._cachedGroundFrom.lerp(bmGround, bmLerp * 0.50);
+            }
             this.ground.material.color.copy(this._cachedGroundFrom);
+        }
+
+        if (this._groundPatches && this._groundPatches.length && this._cachedGroundFrom) {
+            for (let i = 0; i < this._groundPatches.length; i++) {
+                const c = this._cachedGroundFrom.clone();
+                const off = this._patchOffsets[i];
+                c.r = Math.max(0, Math.min(1, c.r + off.r));
+                c.g = Math.max(0, Math.min(1, c.g + off.g));
+                c.b = Math.max(0, Math.min(1, c.b + off.b));
+                this._groundPatches[i].color.copy(c);
+            }
         }
 
         if (this.scene.background instanceof THREE.Color) {
             this._cachedBgFrom.set(settings.background);
             this._cachedBgTo.set(nextSettings.background);
             this.scene.background.lerpColors(this._cachedBgFrom, this._cachedBgTo, t);
+            if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'ECLIPSE') {
+                const eclipseLerp = Math.min(1, SpecialEventManager.eventTimer / 60);
+                const eclipseBg = new THREE.Color('#06060f');
+                this.scene.background.lerp(eclipseBg, eclipseLerp * 0.80);
+            } else if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'BLOOD_MOON') {
+                const bmLerp = SpecialEventManager.bloodMoonColorLerp || 0;
+                const bmBg = new THREE.Color('#080410');
+                this.scene.background.lerp(bmBg, bmLerp * 0.70);
+            }
+        }
+
+        if (this.scene.fog && this.scene.fog.color) {
+            const fogBase = new THREE.Color(settings.fogColor);
+            const fogNext = new THREE.Color(nextSettings.fogColor);
+            this.scene.fog.color.lerpColors(fogBase, fogNext, t);
+            if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'BLOOD_MOON') {
+                const bmLerp = SpecialEventManager.bloodMoonColorLerp || 0;
+                const bmFog = new THREE.Color('#2a0510');
+                this.scene.fog.color.lerp(bmFog, bmLerp * 0.55);
+            }
+        }
+
+        if (this._bloodMoonHorizonGlow) {
+            const bmLerp = (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'BLOOD_MOON')
+                ? (SpecialEventManager.bloodMoonColorLerp || 0) : 0;
+            const pulse = (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.bloodPulseActive) ? 0.15 : 0;
+            this._bloodMoonHorizonGlow.material.opacity = Math.max(0, Math.min(1, bmLerp * 0.45 + pulse));
+            const glowColor = new THREE.Color('#6b0f1a');
+            this._bloodMoonHorizonGlow.material.color.lerp(glowColor, bmLerp * 0.7);
+            if (this.camera) {
+                this._bloodMoonHorizonGlow.position.x = this.camera.position.x;
+                this._bloodMoonHorizonGlow.position.z = this.camera.position.z;
+            }
         }
 
         if (this.sunMesh) {
-            const fromPos = settings.sunPosition;
-            const toPos = nextSettings.sunPosition;
-            this.sunMesh.position.set(
-                THREE.MathUtils.lerp(fromPos.x, toPos.x, t),
-                THREE.MathUtils.lerp(fromPos.y, toPos.y, t),
-                THREE.MathUtils.lerp(fromPos.z, toPos.z, t)
-            );
+            const sunState = this._computeSunArc(phase, phaseProgress);
 
-            const sunY = this.sunMesh.position.y;
-            const altitudeFade = Math.max(0, Math.min(1, (sunY + 5) / 10));
+            if (sunState.visible) {
+                this.sunMesh.visible = true;
+                this.sunMesh.position.set(sunState.x, sunState.y, sunState.z);
+                if (this.camera) this.sunMesh.lookAt(this.camera.position);
 
-            const scale = THREE.MathUtils.lerp(settings.sunScale, nextSettings.sunScale, t) * altitudeFade;
-            this.sunMesh.scale.setScalar(Math.max(0.001, scale));
-            this.sunMesh.visible = scale > 0.01;
-            if (this.sunMesh.visible && this.camera) this.sunMesh.lookAt(this.camera.position);
+                const phaseScale = THREE.MathUtils.lerp(settings.sunScale, nextSettings.sunScale, t);
+                let eclipseScaleMult = 1.0;
+                if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'ECLIPSE') {
+                    eclipseScaleMult = SpecialEventManager.eclipseVisualScale || 1.0;
+                }
+                this._applyCelestialScreenSize(this.sunMesh, this.SUN_TARGET_PIXEL_DIAMETER, phaseScale * eclipseScaleMult);
 
-            const intensity = THREE.MathUtils.lerp(settings.sunIntensity, nextSettings.sunIntensity, t);
-            this._cachedSunFrom.set(settings.sunColor);
-            this._cachedSunTo.set(nextSettings.sunColor);
-            this._cachedSunResult.copy(this._cachedSunFrom).lerp(this._cachedSunTo, t).multiplyScalar(Math.max(0.15, intensity));
-            this.sunMesh.material.color.copy(this._cachedSunResult);
-            this.sunMesh.material.opacity = altitudeFade;
+                const intensity = THREE.MathUtils.lerp(settings.sunIntensity, nextSettings.sunIntensity, t);
+                this._cachedSunFrom.set(settings.sunColor);
+                this._cachedSunTo.set(nextSettings.sunColor);
+                this._cachedSunResult.copy(this._cachedSunFrom).lerp(this._cachedSunTo, t).multiplyScalar(Math.max(0.15, intensity));
+                if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'ECLIPSE') {
+                    const eclipseLerp = Math.min(1, SpecialEventManager.eventTimer / 60);
+                    const eclipseColor = new THREE.Color('#7788aa');
+                    this._cachedSunResult.lerp(eclipseColor, eclipseLerp * 0.6);
+                }
+                this.sunMesh.material.color.copy(this._cachedSunResult);
+                this.sunMesh.material.opacity = sunState.opacity;
+            } else {
+                this.sunMesh.visible = false;
+            }
+
+            if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'ECLIPSE') {
+                this.sunMesh.visible = false;
+            }
+
+            if (this._sunLight) {
+                this._sunLight.position.copy(this.sunMesh.position);
+            }
         }
 
         if (this.starField) {
@@ -440,24 +574,37 @@ let Renderer3D = {
         }
 
         if (this.moonMesh && this._moonLight) {
-            const fromPos = settings.moonPosition || { x: this.worldCenterX, y: -30, z: this.worldCenterZ };
-            const toPos = nextSettings.moonPosition || { x: this.worldCenterX, y: -30, z: this.worldCenterZ };
-            this.moonMesh.position.set(
-                THREE.MathUtils.lerp(fromPos.x, toPos.x, t),
-                THREE.MathUtils.lerp(fromPos.y, toPos.y, t),
-                THREE.MathUtils.lerp(fromPos.z, toPos.z, t)
-            );
-            const moonScale = settings.moonIntensity > 0.01 ? 1.0 : 0.0;
-            const nextMoonScale = nextSettings.moonIntensity > 0.01 ? 1.0 : 0.0;
-            const s = THREE.MathUtils.lerp(moonScale, nextMoonScale, t);
-            this.moonMesh.scale.setScalar(Math.max(0.001, s));
-            this.moonMesh.visible = s > 0.01;
-            if (this.moonMesh.visible && this.camera) this.moonMesh.lookAt(this.camera.position);
+            const moonState = this._computeMoonArc(phase, phaseProgress);
 
-            const moonIntensity = THREE.MathUtils.lerp(settings.moonIntensity, nextSettings.moonIntensity, t);
-            this._moonLight.intensity = Math.max(0, moonIntensity);
+            const isBloodMoon = typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'BLOOD_MOON';
+
+            if (moonState.visible) {
+                this.moonMesh.position.set(moonState.x, moonState.y, moonState.z);
+                if (this.camera) this.moonMesh.lookAt(this.camera.position);
+
+                const moonPhaseScale = settings.moonIntensity > 0.01 ? 1.0 : 0.0;
+                const nextMoonPhaseScale = nextSettings.moonIntensity > 0.01 ? 1.0 : 0.0;
+                const phaseMoonScale = THREE.MathUtils.lerp(moonPhaseScale, nextMoonPhaseScale, t);
+                this._applyCelestialScreenSize(this.moonMesh, this.MOON_TARGET_PIXEL_DIAMETER, phaseMoonScale);
+
+                const moonIntensity = THREE.MathUtils.lerp(settings.moonIntensity, nextSettings.moonIntensity, t);
+                this._moonLight.intensity = Math.max(0, moonIntensity);
+                const baseMoonColor = new THREE.Color(settings.moonColor || '#b8c8e0');
+                this._moonLight.color.copy(baseMoonColor);
+                this.moonMesh.material.opacity = moonState.opacity;
+                this.moonMesh.material.color.set('#e0e8ff');
+            }
+
+            if (moonState.visible && !isBloodMoon) {
+                this.moonMesh.visible = true;
+            } else {
+                this.moonMesh.visible = false;
+                if (!isBloodMoon) {
+                    this._moonLight.intensity = 0;
+                }
+            }
+
             this._moonLight.position.copy(this.moonMesh.position);
-            this._moonLight.color.set(settings.moonColor || '#b8c8e0');
         }
     },
 
@@ -465,10 +612,10 @@ let Renderer3D = {
         if (!this.canvas) return;
         const p = Math.max(0, Math.min(1, progress || 0));
         const phaseFilters = {
-            day: 'saturate(1.10) contrast(1.15) brightness(0.98)',
-            sunset: 'saturate(1.22) contrast(1.18) brightness(0.94) sepia(0.06)',
-            night: 'saturate(1.08) contrast(1.18) brightness(0.95)',
-            dawn: 'saturate(1.14) contrast(1.14) brightness(0.97) sepia(0.04)'
+            day: 'saturate(1.04) contrast(1.06) brightness(0.98)',
+            sunset: 'saturate(1.04) contrast(1.06) brightness(0.96)',
+            night: 'saturate(1.04) contrast(1.06) brightness(0.96)',
+            dawn: 'saturate(1.04) contrast(1.06) brightness(0.97)'
         };
         const current = phaseFilters[phase] || phaseFilters.day;
         this.canvas.style.filter = current;
@@ -478,10 +625,169 @@ let Renderer3D = {
         return t * t * (3 - 2 * t);
     },
 
+    _computeSunArc: function(phase, progress) {
+        const p = Math.max(0, Math.min(1, progress || 0));
+        const x = this._getSunX(phase, p);
+        const altitude = this._getSunAltitude(phase, p);
+        const maxHeight = 160;
+        const horizonSafe = 8;
+        const fadeZone = 14;
+
+        let y = altitude * maxHeight;
+        let opacity = 1;
+        let visible = altitude > 0.02;
+
+        if (visible) {
+            if (y < horizonSafe) {
+                y = horizonSafe;
+            }
+            if (y < fadeZone) {
+                opacity = Math.max(0, y / fadeZone);
+            }
+            if (altitude < 0.15) {
+                opacity = Math.min(opacity, Math.max(0, altitude / 0.15));
+            }
+        }
+
+        return {
+            x,
+            y,
+            z: 800,
+            altitude,
+            opacity,
+            visible: visible && opacity > 0.01
+        };
+    },
+
+    _getSunX: function(phase, progress) {
+        const p = Math.max(0, Math.min(1, progress || 0));
+        switch (phase) {
+            case CONFIG.PHASE_DAWN:
+                return 1010;
+            case CONFIG.PHASE_DAY:
+                return THREE.MathUtils.lerp(1010, 590, p);
+            case CONFIG.PHASE_SUNSET:
+                return 590;
+            case CONFIG.PHASE_NIGHT:
+                return 590;
+            default:
+                return 1010;
+        }
+    },
+
+    _getSunAltitude: function(phase, progress) {
+        const p = Math.max(0, Math.min(1, progress || 0));
+        switch (phase) {
+            case CONFIG.PHASE_DAWN:
+                return 0.35 * this._smoothStep(p);
+            case CONFIG.PHASE_DAY:
+                return 0.35 + 0.65 * Math.sin(p * Math.PI);
+            case CONFIG.PHASE_SUNSET:
+                return 0.35 * (1 - this._smoothStep(p));
+            case CONFIG.PHASE_NIGHT:
+                return -0.5;
+            default:
+                return 0;
+        }
+    },
+
+    _computeMoonArc: function(phase, progress) {
+        const p = Math.max(0, Math.min(1, progress || 0));
+        const x = this._getMoonX(phase, p);
+        const altitude = this._getMoonAltitude(phase, p);
+        const maxHeight = 140;
+        const horizonSafe = 8;
+        const fadeZone = 12;
+
+        let y = altitude * maxHeight;
+        let opacity = 1;
+        let visible = altitude > 0.02;
+
+        if (visible) {
+            if (y < horizonSafe) {
+                y = horizonSafe;
+            }
+            if (y < fadeZone) {
+                opacity = Math.max(0, y / fadeZone);
+            }
+            if (altitude < 0.15) {
+                opacity = Math.min(opacity, Math.max(0, altitude / 0.15));
+            }
+        }
+
+        return {
+            x,
+            y,
+            z: 800,
+            altitude,
+            opacity,
+            visible: visible && opacity > 0.01
+        };
+    },
+
+    _getMoonX: function(phase, progress) {
+        const p = Math.max(0, Math.min(1, progress || 0));
+        switch (phase) {
+            case CONFIG.PHASE_SUNSET:
+                return 1010;
+            case CONFIG.PHASE_NIGHT:
+                return THREE.MathUtils.lerp(1010, 590, p);
+            case CONFIG.PHASE_DAWN:
+                return THREE.MathUtils.lerp(590, 560, this._smoothStep(p));
+            default:
+                return 560;
+        }
+    },
+
+    _getMoonAltitude: function(phase, progress) {
+        const p = Math.max(0, Math.min(1, progress || 0));
+        switch (phase) {
+            case CONFIG.PHASE_SUNSET:
+                return 0.2 + 0.3 * this._smoothStep(p);
+            case CONFIG.PHASE_NIGHT:
+                return 0.5 + 0.5 * Math.sin(p * Math.PI);
+            case CONFIG.PHASE_DAWN:
+                return 0.5 * (1 - this._smoothStep(p));
+            default:
+                return -0.3;
+        }
+    },
+
+    _getWorldSizeForScreenDiameter: function(worldPosition, targetPixelDiameter) {
+        if (!this.camera || !this.renderer) return null;
+        if (targetPixelDiameter <= 0) return null;
+
+        const cameraSpacePos = this._celestialTempVec.copy(worldPosition).applyMatrix4(this.camera.matrixWorldInverse);
+        const depth = -cameraSpacePos.z;
+        if (depth <= 0.001) return null;
+
+        const fovRad = THREE.MathUtils.degToRad(this.camera.fov);
+        const viewportHeight = this.renderer.domElement.clientHeight;
+        if (viewportHeight <= 0) return null;
+
+        const verticalWorldSpan = 2 * depth * Math.tan(fovRad / 2);
+        const worldUnitsPerPixel = verticalWorldSpan / viewportHeight;
+        const desiredWorldWidth = targetPixelDiameter * worldUnitsPerPixel;
+
+        return desiredWorldWidth;
+    },
+
+    _applyCelestialScreenSize: function(mesh, targetPixelDiameter, phaseVisualMultiplier) {
+        if (!mesh || !this.camera || !this.renderer) return;
+        if (targetPixelDiameter <= 0) return;
+
+        const worldWidth = this._getWorldSizeForScreenDiameter(mesh.position, targetPixelDiameter);
+        if (!worldWidth) return;
+
+        const geometrySize = mesh.geometry.parameters.width || 32;
+        const scale = (worldWidth / geometrySize) * (phaseVisualMultiplier || 1.0);
+        mesh.scale.setScalar(Math.max(0.001, scale));
+    },
+
     createGround: function() {
         const groundGeometry = new THREE.PlaneGeometry(this.groundSize, this.groundSize);
         const groundMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x52625a, 
+            color: 0x4d5c53, 
             flatShading: true,
             specular: 0x111111,
             shininess: 3
@@ -493,12 +799,45 @@ let Renderer3D = {
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
 
+        const patchColors = [0x4a5850, 0x556359, 0x48554d, 0x5a645b];
+        const patchDefs = [
+            { x: 300, z: 300, w: 350, h: 300 },
+            { x: 1100, z: 400, w: 300, h: 350 },
+            { x: 400, z: 1100, w: 320, h: 280 },
+            { x: 1000, z: 1000, w: 280, h: 320 }
+        ];
+        this._groundPatches = [];
+        this._patchOffsets = [];
+        const mainBase = new THREE.Color(0x4d5c53);
+        patchDefs.forEach((def, i) => {
+            const patchGeo = new THREE.BoxGeometry(def.w, 0.02, def.h);
+            const patchMat = new THREE.MeshPhongMaterial({
+                color: patchColors[i],
+                flatShading: true,
+                polygonOffset: true,
+                polygonOffsetFactor: 1,
+                polygonOffsetUnits: 1
+            });
+            const patch = new THREE.Mesh(patchGeo, patchMat);
+            patch.position.set(def.x, 0.01, def.z);
+            patch.rotation.y = Math.random() * Math.PI;
+            patch.receiveShadow = true;
+            this.scene.add(patch);
+            this._groundPatches.push(patchMat);
+            const c = new THREE.Color(patchColors[i]);
+            this._patchOffsets.push({
+                r: c.r - mainBase.r,
+                g: c.g - mainBase.g,
+                b: c.b - mainBase.b
+            });
+        });
+
         const gridHelper = new THREE.GridHelper(this.groundSize, 60, 0x5a6b60, 0x4d5d54);
         if (Array.isArray(gridHelper.material)) {
-            gridHelper.material.forEach((m) => { m.transparent = true; m.opacity = 0.025; });
+            gridHelper.material.forEach((m) => { m.transparent = true; m.opacity = 0.018; });
         } else if (gridHelper.material) {
             gridHelper.material.transparent = true;
-            gridHelper.material.opacity = 0.02;
+            gridHelper.material.opacity = 0.018;
         }
         gridHelper.position.set(this.worldCenterX, 0, this.worldCenterZ);
         this.scene.add(gridHelper);
@@ -1944,7 +2283,7 @@ let Renderer3D = {
         const tree = new THREE.Group();
         tree.add(trunk);
 
-        const foliageColors = [0x3d8b40, 0x4a9a4d, 0x2d7030, 0x5a9a5d];
+        const foliageColors = [0x3a7540, 0x457a45, 0x2a6030, 0x507a50];
         const leafLayers = 2 + Math.floor(Math.random() * 2);
         let currentY = trunkHeight;
         let baseRadius = (0.9 + Math.random() * 0.6) * scale;
@@ -2020,7 +2359,7 @@ let Renderer3D = {
         const tree = new THREE.Group();
         tree.add(trunk);
 
-        const foliageColors = [0x1a3528, 0x203d2d, 0x152a1c];
+        const foliageColors = [0x1e382c, 0x243f30, 0x1a2d22];
         const leafLayers = 3 + Math.floor(Math.random() * 2);
         let currentY = trunkHeight;
         let baseRadius = (0.85 + Math.random() * 0.55) * scale;
@@ -2062,7 +2401,7 @@ let Renderer3D = {
         tree.add(trunk);
 
         const canopyRadius = (1.1 + Math.random() * 0.6) * scale;
-        const canopyMat = new THREE.MeshPhongMaterial({ color: 0x284d22, flatShading: true });
+        const canopyMat = new THREE.MeshPhongMaterial({ color: 0x2a4a20, flatShading: true });
         const canopyGeo = new THREE.DodecahedronGeometry(canopyRadius, 0);
         const canopy = new THREE.Mesh(canopyGeo, canopyMat);
         canopy.position.y = trunkHeight + canopyRadius * 0.6;
@@ -2093,7 +2432,7 @@ let Renderer3D = {
 
     createBush: function(x, z) {
         const radius = 0.5 + Math.random() * 0.4;
-        const bushColors = [0x284d22, 0x1a3528, 0x325a28];
+        const bushColors = [0x264520, 0x1c3226, 0x2e5226];
         const color = bushColors[Math.floor(Math.random() * bushColors.length)];
         const geo = new THREE.SphereGeometry(radius, 7, 5);
         const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
@@ -2230,7 +2569,7 @@ let Renderer3D = {
     },
 
     _createTerrainHills: function() {
-        const hillMat = new THREE.MeshPhongMaterial({ color: 0x52625a, flatShading: true });
+        const hillMat = new THREE.MeshPhongMaterial({ color: 0x4d5c53, flatShading: true });
         const hillPositions = [
             { x: 350, z: 600, sx: 55, sy: 6, sz: 45 },
             { x: 1250, z: 600, sx: 50, sy: 5, sz: 40 },
@@ -2485,7 +2824,7 @@ let Renderer3D = {
         const river = CONFIG.WORLD_ZONES && CONFIG.WORLD_ZONES.RIVER_ZONE
             ? CONFIG.WORLD_ZONES.RIVER_ZONE
             : { startX: 580, endX: 1020, baseZ: 990, width: 18 };
-        const bankMat = new THREE.MeshPhongMaterial({ color: 0x4a5a52, flatShading: true });
+        const bankMat = new THREE.MeshPhongMaterial({ color: 0x4d5c53, flatShading: true });
         const segments = 30;
         const startX = river.startX;
         const endX = river.endX;
@@ -2666,6 +3005,7 @@ let Renderer3D = {
             this._smoothedLookAtY,
             this._smoothedLookAtZ
         );
+        this.camera.updateMatrixWorld(true);
     }
 };
 

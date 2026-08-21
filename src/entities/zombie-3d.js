@@ -60,6 +60,11 @@ class Zombie3D {
 
         // 3D Visual Mesh
         this.mesh3D = Renderer3D.create3DZombie(x, z);
+        this._originalEmissive = {};
+        this._eventColorPhase = 0;
+        this._eclipseEmissive = new THREE.Color(0x220033);
+        this._bloodEmissive = new THREE.Color(0x550000);
+        this._defaultEmissive = new THREE.Color(0x000000);
 
         console.log(`🧟 Zombie 3D xuất hiện tại (${x.toFixed(0)}, ${z.toFixed(0)}) | HP: ${hp}`);
     }
@@ -167,8 +172,8 @@ class Zombie3D {
         const stopDistance = this.chasingPlayer ? (CONFIG.ZOMBIE_PLAYER_ATTACK_RADIUS || 1.6) : 2.0;
 
         if (dist > stopDistance) {
-            moveX = (dx / dist) * this.speed;
-            moveZ = (dz / dist) * this.speed;
+            moveX = (dx / dist) * (this._frameSpeedOverride || this.speed);
+            moveZ = (dz / dist) * (this._frameSpeedOverride || this.speed);
         }
 
         // Tránh tường căn cứ (Steering Avoidance)
@@ -283,7 +288,48 @@ class Zombie3D {
             }
         }
 
-        // ============ XỬ LÝ DAMAGE FLASH ============
+        // ============ XỬ LÝ EVENT VISUAL ============
+        if (!this.isDead && this.mesh3D && typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent) {
+            const event = SpecialEventManager.currentEvent;
+            this._eventColorPhase += deltaSec;
+            if (event === 'ECLIPSE') {
+                this.mesh3D.traverse(child => {
+                    if (child.isMesh && child.material && child.material.emissive) {
+                        if (!this._originalEmissive[child.uuid]) {
+                            this._originalEmissive[child.uuid] = {
+                                emissive: child.material.emissive.getHex(),
+                                emissiveIntensity: child.material.emissiveIntensity || 0
+                            };
+                        }
+                        const pulse = 0.5 + 0.5 * Math.sin(this._eventColorPhase * 2.0);
+                        child.material.emissive.copy(this._eclipseEmissive);
+                        child.material.emissiveIntensity = 0.15 + pulse * 0.10;
+                    }
+                });
+            } else if (event === 'BLOOD_MOON') {
+                this.mesh3D.traverse(child => {
+                    if (child.isMesh && child.material && child.material.emissive) {
+                        if (!this._originalEmissive[child.uuid]) {
+                            this._originalEmissive[child.uuid] = {
+                                emissive: child.material.emissive.getHex(),
+                                emissiveIntensity: child.material.emissiveIntensity || 0
+                            };
+                        }
+                        const pulse = 0.5 + 0.5 * Math.sin(this._eventColorPhase * 1.8);
+                        child.material.emissive.copy(this._bloodEmissive);
+                        child.material.emissiveIntensity = 0.25 + pulse * 0.18;
+                    }
+                });
+            }
+        } else if (!this.isDead && this.mesh3D && this._originalEmissive) {
+            this.mesh3D.traverse(child => {
+                if (child.isMesh && child.material && child.material.emissive && this._originalEmissive[child.uuid]) {
+                    child.material.emissive.setHex(this._originalEmissive[child.uuid].emissive);
+                    child.material.emissiveIntensity = this._originalEmissive[child.uuid].emissiveIntensity;
+                }
+            });
+            this._originalEmissive = {};
+        }
         if (this.damageFlashTime > 0) {
             this.damageFlashTime -= deltaSec;
             if (this.damageFlashTime <= 0 && this.mesh3D) {

@@ -35,6 +35,21 @@ const AdminPanel = {
         this.els.toggleGod = document.getElementById('admin-toggle-god');
         this.els.toggleFly = document.getElementById('admin-toggle-fly');
 
+        this.els.forceEclipse = document.getElementById('admin-force-eclipse');
+        this.els.forceBloodMoon = document.getElementById('admin-force-blood-moon');
+        this.els.stopEvent = document.getElementById('admin-stop-event');
+        this.els.toggleAutoEvents = document.getElementById('admin-toggle-auto-events');
+        this.els.eclipsePeak = document.getElementById('admin-eclipse-peak');
+        this.els.bloodPulse = document.getElementById('admin-blood-pulse');
+
+        this.els.eventCurrent = document.getElementById('admin-event-current');
+        this.els.eventState = document.getElementById('admin-event-state');
+        this.els.eventTimeLeft = document.getElementById('admin-event-time-left');
+        this.els.eventPhase = document.getElementById('admin-event-phase');
+        this.els.eventAuto = document.getElementById('admin-event-auto');
+        this.els.eventEclipseChance = document.getElementById('admin-event-eclipse-chance');
+        this.els.eventBloodChance = document.getElementById('admin-event-blood-chance');
+
         this.els.phaseDay = document.getElementById('admin-phase-day');
         this.els.phaseSunset = document.getElementById('admin-phase-sunset');
         this.els.phaseNight = document.getElementById('admin-phase-night');
@@ -112,6 +127,13 @@ const AdminPanel = {
         if (this.els.toggleAmmo) this.els.toggleAmmo.addEventListener('click', () => this.toggleBuff('ammo'));
         if (this.els.toggleGod) this.els.toggleGod.addEventListener('click', () => this.toggleGodMode());
         if (this.els.toggleFly) this.els.toggleFly.addEventListener('click', () => this.toggleBuff('fly'));
+
+        if (this.els.forceEclipse) this.els.forceEclipse.addEventListener('click', () => this.forceEclipse());
+        if (this.els.forceBloodMoon) this.els.forceBloodMoon.addEventListener('click', () => this.forceBloodMoon());
+        if (this.els.stopEvent) this.els.stopEvent.addEventListener('click', () => this.stopEvent());
+        if (this.els.toggleAutoEvents) this.els.toggleAutoEvents.addEventListener('click', () => this.toggleAutoEvents());
+        if (this.els.eclipsePeak) this.els.eclipsePeak.addEventListener('click', () => this.eclipsePeak());
+        if (this.els.bloodPulse) this.els.bloodPulse.addEventListener('click', () => this.bloodPulse());
 
         if (this.els.phaseDay) this.els.phaseDay.addEventListener('click', () => this.setPhase('day'));
         if (this.els.phaseSunset) this.els.phaseSunset.addEventListener('click', () => this.setPhase('sunset'));
@@ -275,6 +297,47 @@ const AdminPanel = {
         this.updateTimeScaleButtons(scale);
     },
 
+    forceEclipse: function() {
+        if (typeof SpecialEventManager !== 'undefined') {
+            SpecialEventManager.forceStartEclipse();
+            this.updateEventDisplay();
+        }
+    },
+
+    forceBloodMoon: function() {
+        if (typeof SpecialEventManager !== 'undefined') {
+            SpecialEventManager.forceStartBloodMoon();
+            this.updateEventDisplay();
+        }
+    },
+
+    stopEvent: function() {
+        if (typeof SpecialEventManager !== 'undefined') {
+            SpecialEventManager.stopEvent();
+            this.updateEventDisplay();
+        }
+    },
+
+    toggleAutoEvents: function() {
+        if (typeof SpecialEventManager !== 'undefined') {
+            const current = SpecialEventManager.autoMode;
+            SpecialEventManager.setAutoMode(!current);
+            this.updateEventDisplay();
+        }
+    },
+
+    eclipsePeak: function() {
+        if (typeof SpecialEventManager !== 'undefined') {
+            SpecialEventManager.triggerEclipsePeak();
+        }
+    },
+
+    bloodPulse: function() {
+        if (typeof SpecialEventManager !== 'undefined') {
+            SpecialEventManager.triggerBloodPulse();
+        }
+    },
+
     updateButtonVisibility: function() {
         if (this.els.adminBtn && typeof GameState !== 'undefined') {
             this.els.adminBtn.style.display = GameState.isAdmin ? 'flex' : 'none';
@@ -326,6 +389,21 @@ const AdminPanel = {
         }
         this.updatePhaseButtons(info.currentPhase);
         this.updateTimeScaleButtons(info.timeScale);
+        this.updateEventDisplay();
+    },
+
+    updateEventDisplay: function() {
+        if (typeof SpecialEventManager === 'undefined') return;
+        const status = SpecialEventManager.getStatus();
+        const eventNames = { NONE: 'NONE', ECLIPSE: '🌘 ECLIPSE', BLOOD_MOON: '🩸 BLOOD MOON' };
+        if (this.els.eventCurrent) this.els.eventCurrent.textContent = eventNames[status.currentEvent] || 'NONE';
+        if (this.els.eventState) this.els.eventState.textContent = status.state;
+        if (this.els.eventTimeLeft) this.els.eventTimeLeft.textContent = this._formatTime(status.timeLeft);
+        if (this.els.eventPhase) this.els.eventPhase.textContent = status.currentPhase ? status.currentPhase.toUpperCase() : 'N/A';
+        if (this.els.eventAuto) this.els.eventAuto.textContent = status.autoEvents ? 'ON' : 'OFF';
+        if (this.els.eventEclipseChance) this.els.eventEclipseChance.textContent = Math.round(status.eclipseChance * 100) + '%';
+        if (this.els.eventBloodChance) this.els.eventBloodChance.textContent = Math.round(status.bloodMoonChance * 100) + '%';
+        if (this.els.toggleAutoEvents) this.setToggleActive(this.els.toggleAutoEvents, SpecialEventManager.autoMode);
     },
 
     updatePhaseButtons: function(currentPhase) {
