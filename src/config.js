@@ -55,10 +55,10 @@ const CONFIG = {
     // =====================
     LIGHTING: {
         day: {
-            background: '#7aaccc',
+            background: '#6aa0c0',
             fogColor: '#8aafc0',
-            fogNear: 380,
-            fogFar: 2400,
+            fogNear: 350,
+            fogFar: 2200,
             ambientColor: '#9aacb8',
             ambientIntensity: 0.15,
             directionalColor: '#fff5e6',
@@ -82,10 +82,10 @@ const CONFIG = {
             moonColor: '#e0e8ff'
         },
         sunset: {
-            background: '#8a706e',
+            background: '#7a5e5c',
             fogColor: '#c4a898',
-            fogNear: 340,
-            fogFar: 2100,
+            fogNear: 320,
+            fogFar: 2000,
             ambientColor: '#7a6e6c',
             ambientIntensity: 0.08,
             directionalColor: '#ffcc99',
@@ -109,10 +109,10 @@ const CONFIG = {
             moonColor: '#c8d0e0'
         },
         night: {
-            background: '#0f1c2e',
-            fogColor: '#152535',
-            fogNear: 300,
-            fogFar: 2000,
+            background: '#0a1420',
+            fogColor: '#101e30',
+            fogNear: 280,
+            fogFar: 1800,
             ambientColor: '#223650',
             ambientIntensity: 0.30,
             directionalColor: '#8aa8c4',
@@ -136,10 +136,10 @@ const CONFIG = {
             moonColor: '#b8c8e0'
         },
         dawn: {
-            background: '#7a8da5',
+            background: '#6a8098',
             fogColor: '#8a9db0',
             fogNear: 340,
-            fogFar: 2200,
+            fogFar: 2100,
             ambientColor: '#8a9aaa',
             ambientIntensity: 0.12,
             directionalColor: '#ffe8d8',

@@ -22,7 +22,12 @@ let Renderer3D = {
     skyUniforms: null,
 
     _cachedTopColors: [],
+    _cachedUpperColors: [],
+    _cachedMidColors: [],
     _cachedHorizonColors: [],
+    _cachedGlowColors: [],
+    _cachedCloudLightColors: [],
+    _cachedCloudShadowColors: [],
     _cachedBgFrom: new THREE.Color(),
     _cachedBgTo: new THREE.Color(),
     _cachedGroundFrom: new THREE.Color(),
@@ -36,6 +41,7 @@ let Renderer3D = {
     // External GLB assets loaded from src/assets/models.
     _assetPromises: [],
     _externalModels: {},
+    _externalModelRoots: [],
     // Poki runs in a browser, so the first playable frame matters more than
     // loading cinematic source assets (the turret FBX alone is ~84 MB).
     webPerformanceMode: true,
@@ -74,12 +80,19 @@ let Renderer3D = {
     _autoDefenseTurrets: [],
     _autoDefenseTracers: [],
     _hqInterior: null,
-    _externalModels: [],
     _gltfLoader: null,
     _moonLight: null,
     _sunLayers: {},
     _moonLayers: {},
     _cloudLayers: [],
+    _cloudSharedGeometry: null,
+    _cloudTextureSoft: null,
+    _cloudTextureHorizon: null,
+    _cloudForwardVec: new THREE.Vector3(0, 0, -1),
+    _cloudRightVec: new THREE.Vector3(1, 0, 0),
+    _cloudUpVec: new THREE.Vector3(0, 1, 0),
+    _visualTime: 0,
+    _lastRenderTimeMs: 0,
 
     // Animation System (Clips, Mixers, Actions)
     playerMixer: null,
@@ -231,8 +244,10 @@ let Renderer3D = {
         const geometry = new THREE.SphereGeometry(1100, 32, 18);
         this.skyUniforms = {
             topColor: { value: new THREE.Color('#5b8db5') },
+            upperColor: { value: new THREE.Color('#6e9fcf') },
             midColor: { value: new THREE.Color('#9fc4d8') },
-            horizonColor: { value: new THREE.Color('#dce9ef') }
+            horizonColor: { value: new THREE.Color('#dce9ef') },
+            horizonGlowColor: { value: new THREE.Color('#f6ead2') }
         };
         const material = new THREE.ShaderMaterial({
             uniforms: this.skyUniforms,
@@ -245,14 +260,27 @@ let Renderer3D = {
             ].join('\n'),
             fragmentShader: [
                 'uniform vec3 topColor;',
+                'uniform vec3 upperColor;',
                 'uniform vec3 midColor;',
                 'uniform vec3 horizonColor;',
+                'uniform vec3 horizonGlowColor;',
                 'varying float vHeight;',
+                'float hash12(vec2 p) {',
+                '  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);',
+                '}',
                 'void main() {',
-                '  float upper = smoothstep(0.25, 0.85, vHeight);',
-                '  float lower = smoothstep(0.0, 0.55, vHeight);',
-                '  vec3 c = mix(horizonColor, midColor, lower);',
-                '  c = mix(c, topColor, upper);',
+                '  float h = clamp(vHeight, 0.0, 1.0);',
+                '  vec3 c = horizonGlowColor;',
+                '  c = mix(c, horizonColor, smoothstep(0.02, 0.16, h));',
+                '  c = mix(c, midColor, smoothstep(0.10, 0.40, h));',
+                '  c = mix(c, upperColor, smoothstep(0.34, 0.72, h));',
+                '  c = mix(c, topColor, smoothstep(0.62, 0.97, h));',
+                '  float glow = 1.0 - smoothstep(0.03, 0.22, h);',
+                '  c += horizonGlowColor * glow * 0.12;',
+                '  float mod1 = smoothstep(0.18, 0.55, h) * (1.0 - smoothstep(0.55, 0.88, h));',
+                '  c += vec3(mod1 * 0.018, mod1 * 0.009, -mod1 * 0.014);',
+                '  float dither = (hash12(gl_FragCoord.xy) - 0.5) / 255.0;',
+                '  c += vec3(dither * 2.8);',
                 '  gl_FragColor = vec4(c, 1.0);',
                 '}'
             ].join('\n'),
@@ -470,62 +498,203 @@ let Renderer3D = {
         };
     },
 
+    _buildCloudTexture: function(width, height, profile) {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const pseudo = function(seed) {
+            const n = Math.sin(seed * 12.9898) * 43758.5453;
+            return n - Math.floor(n);
+        };
+
+        ctx.clearRect(0, 0, width, height);
+
+        const isHorizon = profile === 'horizon';
+        const formations = isHorizon ? 7 : 9;
+        const marginX = width * 0.10;
+        const marginY = height * 0.10;
+        const rangeX = width - marginX * 2;
+        const rangeY = height - marginY * 2;
+
+        // Art-directed cluster centers with forced empty regions
+        const clusters = [];
+        const clusterCount = 3 + Math.floor(pseudo(profile.charCodeAt(0) + 1) * 2);
+        const usedCenters = [];
+        
+        for (let c = 0; c < clusterCount; c++) {
+            let cx, cy, attempts = 0;
+            do {
+                cx = marginX + pseudo(c * 7.77 + 0.5) * rangeX;
+                cy = marginY + pseudo(c * 8.88 + 1.5) * rangeY;
+                attempts++;
+            } while (attempts < 20 && usedCenters.some(uc => Math.hypot(uc[0]-cx, uc[1]-cy) < rangeX * 0.22));
+            
+            usedCenters.push([cx, cy]);
+            const clusterWidth = rangeX * (0.15 + pseudo(c * 9.99 + 2.5) * 0.25);
+            const clusterHeight = rangeY * (0.15 + pseudo(c * 10.11 + 3.5) * 0.25);
+            const formationCount = 2 + Math.floor(pseudo(c * 11.22 + 4.5) * 3);
+            
+            clusters.push({ cx, cy, clusterWidth, clusterHeight, formationCount });
+        }
+
+        for (let f = 0; f < formations; f++) {
+            const cluster = clusters[f % clusters.length];
+            const baseX = cluster.cx + (pseudo(f * 3.13 + 0.1) - 0.5) * cluster.clusterWidth;
+            const baseY = cluster.cy + (pseudo(f * 4.17 + 0.2) - 0.5) * cluster.clusterHeight;
+            const strength = 0.5 + pseudo(f * 4.77 + 0.25) * 0.5;
+
+            // 1 large base mass
+            const lx = baseX + (pseudo(f * 2.1 + 0.7) - 0.5) * width * 0.08;
+            const ly = baseY + (pseudo(f * 3.1 + 0.8) - 0.5) * height * 0.06;
+            const lrx = width * (0.14 + pseudo(f * 4.1 + 0.9) * (isHorizon ? 0.18 : 0.12));
+            const lry = height * (0.04 + pseudo(f * 5.1 + 1.0) * (isHorizon ? 0.04 : 0.05));
+            const lalpha = (0.12 + pseudo(f * 6.1 + 1.1) * 0.12) * strength;
+            const lrot = (pseudo(f * 7.1 + 1.2) - 0.5) * 0.5;
+            this._drawCloudPuff(ctx, lx, ly, lrx, lry, lalpha, lrot, 'rgba(220,224,235,', 'base');
+
+            // 2-4 medium masses
+            const medCount = 2 + Math.floor(pseudo(f * 8.1 + 0.3) * (isHorizon ? 2 : 3));
+            for (let m = 0; m < medCount; m++) {
+                const mx = baseX + (pseudo(f * 9.1 + m * 1.3) - 0.5) * width * 0.16;
+                const my = baseY + (pseudo(f * 10.1 + m * 1.4) - 0.5) * height * 0.12;
+                const mrx = width * (0.06 + pseudo(f * 11.1 + m * 1.5) * 0.09);
+                const mry = height * (0.035 + pseudo(f * 12.1 + m * 1.6) * 0.06);
+                const malpha = (0.18 + pseudo(f * 13.1 + m * 1.7) * 0.18) * strength;
+                const mrot = (pseudo(f * 14.1 + m * 1.8) - 0.5) * 1.0;
+                const light = pseudo(f * 15.1 + m * 1.9) > 0.5;
+                this._drawCloudPuff(ctx, mx, my, mrx, mry, malpha, mrot, light ? 'rgba(245,247,252,' : 'rgba(200,208,225,', light ? 'lit' : 'shadow');
+            }
+
+            // 1-2 medium shadow masses (lower density)
+            const shadowCount = 1 + Math.floor(pseudo(f * 14.5 + 0.35) * 1.5);
+            for (let s = 0; s < shadowCount; s++) {
+                const sx = baseX + (pseudo(f * 15.1 + s * 2.1) - 0.5) * width * 0.14;
+                const sy = baseY + height * 0.03 + pseudo(f * 16.1 + s * 2.2) * height * 0.08;
+                const srx = width * (0.07 + pseudo(f * 17.1 + s * 2.3) * 0.08);
+                const sry = height * (0.035 + pseudo(f * 18.1 + s * 2.4) * 0.05);
+                const salpha = (0.06 + pseudo(f * 19.1 + s * 2.5) * 0.10) * strength;
+                const srot = (pseudo(f * 20.1 + s * 2.6) - 0.5) * 0.8;
+                this._drawCloudPuff(ctx, sx, sy, srx, sry, salpha, srot, 'rgba(195,205,225,', 'shadow');
+            }
+
+            // 1-3 small puffs
+            const smallCount = 1 + Math.floor(pseudo(f * 21.1 + 0.5) * (isHorizon ? 2 : 3));
+            for (let p = 0; p < smallCount; p++) {
+                const px = baseX + (pseudo(f * 22.1 + p * 3.1) - 0.5) * width * 0.12;
+                const py = baseY + (pseudo(f * 23.1 + p * 3.2) - 0.5) * height * 0.10;
+                const prx = width * (0.02 + pseudo(f * 24.1 + p * 3.3) * 0.04);
+                const pry = height * (0.02 + pseudo(f * 25.1 + p * 3.4) * 0.04);
+                const palpha = (0.20 + pseudo(f * 26.1 + p * 3.5) * 0.22) * strength;
+                const prot = (pseudo(f * 27.1 + p * 3.6) - 0.5) * 1.8;
+                this._drawCloudPuff(ctx, px, py, prx, pry, palpha, prot, 'rgba(255,255,255,', 'highlight');
+            }
+
+            // 1-2 edge wisps
+            const wispCount = 1 + Math.floor(pseudo(f * 28.1 + 0.7) * 1.5);
+            for (let w = 0; w < wispCount; w++) {
+                const wx = baseX + (pseudo(f * 29.1 + w * 4.1) - 0.5) * width * 0.20;
+                const wy = baseY + (pseudo(f * 30.1 + w * 4.2) - 0.5) * height * 0.08;
+                const wrx = width * (0.08 + pseudo(f * 31.1 + w * 4.3) * 0.12);
+                const wry = height * (0.010 + pseudo(f * 32.1 + w * 4.4) * 0.018);
+                const walpha = (0.03 + pseudo(f * 33.1 + w * 4.5) * 0.06) * strength;
+                const wrot = (pseudo(f * 34.1 + w * 4.6) - 0.5) * 2.5;
+                this._drawCloudPuff(ctx, wx, wy, wrx, wry, walpha, wrot, 'rgba(225,228,238,', 'wisp');
+            }
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.needsUpdate = true;
+        return texture;
+    },
+
+    _drawCloudPuff: function(ctx, x, y, rx, ry, alpha, rotation, colorPrefix, type) {
+        if (alpha < 0.005) return;
+        const outerR = Math.max(1, Math.max(rx, ry));
+        const innerR = Math.max(0.5, outerR * 0.10);
+        const grad = ctx.createRadialGradient(x, y, innerR, x, y, outerR);
+        
+        let core, mid, edge;
+        if (type === 'shadow') {
+            core = alpha;
+            mid = alpha * 0.55;
+            edge = alpha * 0.12;
+        } else if (type === 'highlight') {
+            core = alpha;
+            mid = alpha * 0.70;
+            edge = alpha * 0.18;
+        } else if (type === 'wisp') {
+            core = alpha;
+            mid = alpha * 0.50;
+            edge = alpha * 0.08;
+        } else {
+            core = alpha;
+            mid = alpha * 0.65;
+            edge = alpha * 0.20;
+        }
+        
+        grad.addColorStop(0, colorPrefix + core.toFixed(3) + ')');
+        grad.addColorStop(0.20, colorPrefix + (mid * 0.9).toFixed(3) + ')');
+        grad.addColorStop(0.50, colorPrefix + (mid * 0.5).toFixed(3) + ')');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rotation);
+        ctx.scale(rx / outerR, ry / outerR);
+        ctx.beginPath();
+        ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    },
+
     createCloudLayers: function() {
         if (!this.skyDome) return;
-        const cloudCanvas = document.createElement('canvas');
-        cloudCanvas.width = 512;
-        cloudCanvas.height = 256;
-        const ctx = cloudCanvas.getContext('2d');
-        const cx = 256;
-        const cy = 128;
-        for (let i = 0; i < 18; i++) {
-            const x = Math.random() * 512;
-            const y = 40 + Math.random() * 140;
-            const rx = 50 + Math.random() * 90;
-            const ry = 18 + Math.random() * 28;
-            const alpha = 0.08 + Math.random() * 0.18;
-            const grad = ctx.createRadialGradient(x, y, rx * 0.1, x, y, rx);
-            grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
-            grad.addColorStop(0.5, `rgba(245,245,250,${alpha * 0.6})`);
-            grad.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
-        cloudTexture.wrapS = THREE.RepeatWrapping;
-        cloudTexture.wrapT = THREE.RepeatWrapping;
+        this._cloudTextureSoft = this._buildCloudTexture(1024, 512, 'soft');
+        this._cloudTextureHorizon = this._buildCloudTexture(1024, 384, 'horizon');
+        this._cloudSharedGeometry = new THREE.PlaneGeometry(1, 1, 1, 1);
 
-        const layers = [
-            { scale: 380, opacity: 0.22, speed: 0.6, y: 60, renderOrder: -50 },
-            { scale: 300, opacity: 0.28, speed: 1.0, y: 90, renderOrder: -49 },
-            { scale: 240, opacity: 0.32, speed: 1.6, y: 120, renderOrder: -48 },
-            { scale: 180, opacity: 0.36, speed: 2.4, y: 150, renderOrder: -47 }
+        const formationDefs = [
+            { id: 'hero-1', texture: 'soft', width: 850, height: 260, y: 190, distance: 700, lateral: -180, opacity: 0.50, speed: 0.004, driftX: 14, driftY: 5, depthDrift: 10, lightMix: 0.82 },
+            { id: 'hero-2', texture: 'soft', width: 900, height: 280, y: 170, distance: 650, lateral: 120, opacity: 0.48, speed: 0.003, driftX: 16, driftY: 6, depthDrift: 12, lightMix: 0.70 },
+            { id: 'large-1', texture: 'soft', width: 700, height: 220, y: 155, distance: 600, lateral: 280, opacity: 0.45, speed: 0.005, driftX: 18, driftY: 7, depthDrift: 14, lightMix: 0.75 },
+            { id: 'large-2', texture: 'soft', width: 680, height: 210, y: 140, distance: 580, lateral: -300, opacity: 0.44, speed: 0.006, driftX: 20, driftY: 8, depthDrift: 16, lightMix: 0.78 },
+            { id: 'med-1', texture: 'soft', width: 500, height: 160, y: 130, distance: 550, lateral: 50, opacity: 0.40, speed: 0.007, driftX: 22, driftY: 9, depthDrift: 18, lightMix: 0.72 },
+            { id: 'med-2', texture: 'horizon', width: 480, height: 150, y: 85, distance: 520, lateral: -150, opacity: 0.38, speed: 0.008, driftX: 15, driftY: 6, depthDrift: 12, lightMix: 0.65 },
+            { id: 'med-3', texture: 'horizon', width: 450, height: 140, y: 75, distance: 500, lateral: 220, opacity: 0.36, speed: 0.007, driftX: 12, driftY: 4, depthDrift: 10, lightMix: 0.68 },
+            { id: 'horizon-1', texture: 'horizon', width: 650, height: 120, y: 48, distance: 750, lateral: -80, opacity: 0.35, speed: 0.003, driftX: 10, driftY: 3, depthDrift: 8, lightMix: 0.60 },
+            { id: 'horizon-2', texture: 'horizon', width: 700, height: 130, y: 42, distance: 800, lateral: 150, opacity: 0.37, speed: 0.002, driftX: 8, driftY: 3, depthDrift: 6, lightMix: 0.58 },
+            { id: 'horizon-3', texture: 'horizon', width: 600, height: 115, y: 52, distance: 720, lateral: 350, opacity: 0.33, speed: 0.004, driftX: 12, driftY: 4, depthDrift: 9, lightMix: 0.62 },
+            { id: 'small-1', texture: 'soft', width: 320, height: 110, y: 200, distance: 450, lateral: -60, opacity: 0.30, speed: 0.009, driftX: 24, driftY: 10, depthDrift: 20, lightMix: 0.80 },
+            { id: 'small-2', texture: 'soft', width: 300, height: 100, y: 185, distance: 420, lateral: 180, opacity: 0.28, speed: 0.010, driftX: 26, driftY: 11, depthDrift: 22, lightMix: 0.77 }
         ];
 
-        this._cloudLayers = [];
-        layers.forEach((cfg, idx) => {
-            const geo = new THREE.PlaneGeometry(cfg.scale, cfg.scale * 0.55);
+        this._cloudFormations = [];
+        formationDefs.forEach((def, idx) => {
+            const tex = def.texture === 'horizon' ? this._cloudTextureHorizon : this._cloudTextureSoft;
             const mat = new THREE.MeshBasicMaterial({
-                map: cloudTexture,
+                map: tex,
                 transparent: true,
                 depthWrite: false,
                 depthTest: false,
                 fog: false,
                 side: THREE.DoubleSide,
-                opacity: cfg.opacity,
+                opacity: def.opacity,
                 blending: THREE.NormalBlending
             });
-            const mesh = new THREE.Mesh(geo, mat);
+            const mesh = new THREE.Mesh(this._cloudSharedGeometry, mat);
             mesh.visible = true;
-            mesh.renderOrder = cfg.renderOrder;
-            mesh.position.y = cfg.y;
-            mesh._cloudCfg = cfg;
-            mesh._cloudBaseOpacity = cfg.opacity;
+            mesh.renderOrder = -500 + idx;
+            mesh._cloudCfg = def;
+            mesh._cloudBaseOpacity = def.opacity;
+            mesh._cloudPhaseColor = new THREE.Color();
+            mesh._cloudNextColor = new THREE.Color();
             this.skyDome.add(mesh);
-            this._cloudLayers.push(mesh);
+            this._cloudFormations.push(mesh);
         });
+        this._cloudLayers = this._cloudFormations;
     },
 
     createMoonLayers: function() {
@@ -615,7 +784,7 @@ let Renderer3D = {
     },
 
     createStarField: function() {
-        const count = 600;
+        const count = 420;
         const positions = new Float32Array(count * 3);
         for (let i = 0; i < count; i++) {
             const theta = Math.random() * Math.PI * 2;
@@ -628,8 +797,8 @@ let Renderer3D = {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         const mat = new THREE.PointsMaterial({
-            color: 0xffffff,
-            size: 1.0,
+            color: 0xf4f8ff,
+            size: 0.9,
             transparent: true,
             opacity: 0,
             fog: false,
@@ -642,46 +811,96 @@ let Renderer3D = {
 
     _initSkyColorCache: function() {
         this._cachedTopColors = [
-            new THREE.Color('#5b8db5'),
-            new THREE.Color('#5a4a68'),
-            new THREE.Color('#152238'),
-            new THREE.Color('#4a6080')
+            new THREE.Color('#1e4d7a'),
+            new THREE.Color('#1a3a5c'),
+            new THREE.Color('#050e1a'),
+            new THREE.Color('#254a6e')
+        ];
+        this._cachedUpperColors = [
+            new THREE.Color('#4a7ea8'),
+            new THREE.Color('#4d5f8a'),
+            new THREE.Color('#0a1a30'),
+            new THREE.Color('#506590')
         ];
         this._cachedMidColors = [
-            new THREE.Color('#9fc4d8'),
-            new THREE.Color('#c4a080'),
-            new THREE.Color('#1e3d55'),
-            new THREE.Color('#b8a0b8')
+            new THREE.Color('#7fb8d8'),
+            new THREE.Color('#c07848'),
+            new THREE.Color('#142e4a'),
+            new THREE.Color('#b89098')
         ];
         this._cachedHorizonColors = [
-            new THREE.Color('#dce9ef'),
-            new THREE.Color('#e8c49a'),
-            new THREE.Color('#304860'),
-            new THREE.Color('#e8c8c0')
+            new THREE.Color('#c8e4f4'),
+            new THREE.Color('#e8b860'),
+            new THREE.Color('#1e3040'),
+            new THREE.Color('#ecc8b0')
         ];
+        this._cachedGlowColors = [
+            new THREE.Color('#f2e6c8'),
+            new THREE.Color('#f09448'),
+            new THREE.Color('#2a4058'),
+            new THREE.Color('#f8c898')
+        ];
+        this._cachedCloudLightColors = [
+            new THREE.Color('#f4f8ff'),
+            new THREE.Color('#ffc080'),
+            new THREE.Color('#6070a0'),
+            new THREE.Color('#f0c0b8')
+        ];
+        this._cachedCloudShadowColors = [
+            new THREE.Color('#a0b8cc'),
+            new THREE.Color('#7a5038'),
+            new THREE.Color('#142030'),
+            new THREE.Color('#806878')
+        ];
+    },
+
+    _computeStarOpacity: function(phase, phaseProgress) {
+        const p = Math.max(0, Math.min(1, phaseProgress || 0));
+
+        if (phase === CONFIG.PHASE_DAY) return 0;
+        if (phase === CONFIG.PHASE_SUNSET) {
+            return 0.18 * this._smoothStep(Math.max(0, (p - 0.72) / 0.28));
+        }
+        if (phase === CONFIG.PHASE_NIGHT) {
+            return THREE.MathUtils.lerp(0.34, 0.62, this._smoothStep(p));
+        }
+        if (phase === CONFIG.PHASE_DAWN) {
+            return THREE.MathUtils.lerp(0.18, 0.0, this._smoothStep(Math.min(1, p / 0.82)));
+        }
+
+        return 0;
     },
 
     updateSky: function(phase, phaseProgress) {
         const settings = CONFIG.LIGHTING[phase] || CONFIG.LIGHTING.day;
         const t = this._smoothStep(phaseProgress || 0);
         const phases = [CONFIG.PHASE_DAY, CONFIG.PHASE_SUNSET, CONFIG.PHASE_NIGHT, CONFIG.PHASE_DAWN];
+        if (!this._cachedTopColors || !this._cachedTopColors.length) this._initSkyColorCache();
+
         const currentIndex = phases.indexOf(phase);
-        const nextPhase = phases[(currentIndex + 1) % phases.length];
+        const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+        const nextPhase = phases[(safeIndex + 1) % phases.length];
         const nextSettings = CONFIG.LIGHTING[nextPhase] || CONFIG.LIGHTING.day;
 
         this._updateVisualFilter(phase, phaseProgress);
 
-        const topFrom = this._cachedTopColors[currentIndex];
-        const topTo = this._cachedTopColors[(currentIndex + 1) % phases.length];
-        const midFrom = this._cachedMidColors[currentIndex];
-        const midTo = this._cachedMidColors[(currentIndex + 1) % phases.length];
-        const horizonFrom = this._cachedHorizonColors[currentIndex];
-        const horizonTo = this._cachedHorizonColors[(currentIndex + 1) % phases.length];
+        const topFrom = this._cachedTopColors[safeIndex] || this._cachedTopColors[0];
+        const topTo = this._cachedTopColors[(safeIndex + 1) % phases.length] || this._cachedTopColors[0];
+        const upperFrom = this._cachedUpperColors[safeIndex] || this._cachedUpperColors[0];
+        const upperTo = this._cachedUpperColors[(safeIndex + 1) % phases.length] || this._cachedUpperColors[0];
+        const midFrom = this._cachedMidColors[safeIndex] || this._cachedMidColors[0];
+        const midTo = this._cachedMidColors[(safeIndex + 1) % phases.length] || this._cachedMidColors[0];
+        const horizonFrom = this._cachedHorizonColors[safeIndex] || this._cachedHorizonColors[0];
+        const horizonTo = this._cachedHorizonColors[(safeIndex + 1) % phases.length] || this._cachedHorizonColors[0];
+        const glowFrom = this._cachedGlowColors[safeIndex] || this._cachedGlowColors[0];
+        const glowTo = this._cachedGlowColors[(safeIndex + 1) % phases.length] || this._cachedGlowColors[0];
 
         if (this.skyDome && this.skyUniforms) {
             this.skyUniforms.topColor.value.lerpColors(topFrom, topTo, t);
+            this.skyUniforms.upperColor.value.lerpColors(upperFrom, upperTo, t);
             this.skyUniforms.midColor.value.lerpColors(midFrom, midTo, t);
             this.skyUniforms.horizonColor.value.lerpColors(horizonFrom, horizonTo, t);
+            this.skyUniforms.horizonGlowColor.value.lerpColors(glowFrom, glowTo, t);
             if (this.camera) this.skyDome.position.copy(this.camera.position);
         }
 
@@ -706,10 +925,16 @@ let Renderer3D = {
 
             if (this._cloudLayers && this._cloudLayers.length) {
                 this._cloudLayers.forEach(layer => {
-                    if (!layer._cloudBaseColor) {
-                        layer._cloudBaseColor = layer.material.color.clone();
-                    }
-                    layer.material.color.copy(layer._cloudBaseColor);
+                    const cfg = layer._cloudCfg;
+                    const lightFrom = this._cachedCloudLightColors[safeIndex];
+                    const lightTo = this._cachedCloudLightColors[(safeIndex + 1) % phases.length];
+                    const shadowFrom = this._cachedCloudShadowColors[safeIndex];
+                    const shadowTo = this._cachedCloudShadowColors[(safeIndex + 1) % phases.length];
+                    layer._cloudPhaseColor.lerpColors(shadowFrom, lightFrom, cfg.lightMix);
+                    layer._cloudNextColor.lerpColors(shadowTo, lightTo, cfg.lightMix);
+                    layer.material.color.lerpColors(layer._cloudPhaseColor, layer._cloudNextColor, t);
+                    layer.material.opacity = cfg.opacity * THREE.MathUtils.lerp(1.0, 1.14, t);
+
                     if (SpecialEventManager.currentEvent === 'ECLIPSE') {
                         const eclipseLerp = Math.min(1, SpecialEventManager.eventTimer / 60);
                         const cloudTint = new THREE.Color('#8090b0');
@@ -721,6 +946,23 @@ let Renderer3D = {
                     }
                 });
             }
+        }
+
+        if (this._cloudLayers && this._cloudLayers.length && (typeof SpecialEventManager === 'undefined' || !SpecialEventManager.currentEvent)) {
+            const lightFrom = this._cachedCloudLightColors[safeIndex];
+            const lightTo = this._cachedCloudLightColors[(safeIndex + 1) % phases.length];
+            const shadowFrom = this._cachedCloudShadowColors[safeIndex];
+            const shadowTo = this._cachedCloudShadowColors[(safeIndex + 1) % phases.length];
+            this._cloudLayers.forEach(layer => {
+                const cfg = layer._cloudCfg;
+                layer._cloudPhaseColor.lerpColors(shadowFrom, lightFrom, cfg.lightMix);
+                layer._cloudNextColor.lerpColors(shadowTo, lightTo, cfg.lightMix);
+                layer.material.color.lerpColors(layer._cloudPhaseColor, layer._cloudNextColor, t);
+                const phaseOpacity = phase === CONFIG.PHASE_NIGHT
+                    ? 1.05
+                    : (phase === CONFIG.PHASE_SUNSET ? 1.18 : (phase === CONFIG.PHASE_DAWN ? 1.10 : 1.0));
+                layer.material.opacity = cfg.opacity * phaseOpacity;
+            });
         }
 
         if (this.ground && this.ground.material && settings.groundColor && nextSettings.groundColor) {
@@ -769,6 +1011,12 @@ let Renderer3D = {
             const fogBase = new THREE.Color(settings.fogColor);
             const fogNext = new THREE.Color(nextSettings.fogColor);
             this.scene.fog.color.lerpColors(fogBase, fogNext, t);
+            const fogNearFrom = settings.fogNear !== undefined ? settings.fogNear : this.scene.fog.near;
+            const fogNearTo = nextSettings.fogNear !== undefined ? nextSettings.fogNear : fogNearFrom;
+            const fogFarFrom = settings.fogFar !== undefined ? settings.fogFar : this.scene.fog.far;
+            const fogFarTo = nextSettings.fogFar !== undefined ? nextSettings.fogFar : fogFarFrom;
+            this.scene.fog.near = THREE.MathUtils.lerp(fogNearFrom, fogNearTo, t);
+            this.scene.fog.far = THREE.MathUtils.lerp(fogFarFrom, fogFarTo, t);
             if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.currentEvent === 'ECLIPSE') {
                 const eclipseLerp = Math.min(1, SpecialEventManager.eventTimer / 60);
                 const eclipseFog = new THREE.Color('#1a2040');
@@ -831,19 +1079,19 @@ let Renderer3D = {
                 this._sunLayers.innerGlow.position.copy(this.sunMesh.position);
                 this._sunLayers.innerGlow.quaternion.copy(this.sunMesh.quaternion);
                 const s = this.sunMesh.scale.x;
-                this._sunLayers.innerGlow.scale.setScalar(Math.max(0.001, s * 1.35));
+                this._sunLayers.innerGlow.scale.setScalar(Math.max(0.001, s * 1.20));
             }
             if (this._sunLayers.corona && this.sunMesh.visible) {
                 this._sunLayers.corona.position.copy(this.sunMesh.position);
                 this._sunLayers.corona.quaternion.copy(this.sunMesh.quaternion);
                 const s = this.sunMesh.scale.x;
-                this._sunLayers.corona.scale.setScalar(Math.max(0.001, s * 2.8));
+                this._sunLayers.corona.scale.setScalar(Math.max(0.001, s * 1.80));
             }
             if (this._sunLayers.halo && this.sunMesh.visible) {
                 this._sunLayers.halo.position.copy(this.sunMesh.position);
                 this._sunLayers.halo.quaternion.copy(this.sunMesh.quaternion);
                 const s = this.sunMesh.scale.x;
-                this._sunLayers.halo.scale.setScalar(Math.max(0.001, s * 5.5));
+                this._sunLayers.halo.scale.setScalar(Math.max(0.001, s * 2.50));
             }
 
             if (this._sunLight) {
@@ -852,8 +1100,7 @@ let Renderer3D = {
         }
 
         if (this.starField) {
-            const opacity = THREE.MathUtils.lerp(settings.starOpacity, nextSettings.starOpacity, t);
-            this.starField.material.opacity = Math.max(0, Math.min(1, opacity));
+            this.starField.material.opacity = this._computeStarOpacity(phase, phaseProgress);
         }
 
         if (this.moonMesh && this._moonLight) {
@@ -920,10 +1167,10 @@ let Renderer3D = {
         if (!this.canvas) return;
         const p = Math.max(0, Math.min(1, progress || 0));
         const phaseFilters = {
-            day: 'saturate(1.04) contrast(1.06) brightness(0.98)',
-            sunset: 'saturate(1.04) contrast(1.06) brightness(0.96)',
-            night: 'saturate(1.04) contrast(1.06) brightness(0.96)',
-            dawn: 'saturate(1.04) contrast(1.06) brightness(0.97)'
+            day: 'saturate(1.06) contrast(1.08) brightness(1.00)',
+            sunset: 'saturate(1.08) contrast(1.08) brightness(0.98)',
+            night: 'saturate(1.04) contrast(1.06) brightness(0.95)',
+            dawn: 'saturate(1.06) contrast(1.06) brightness(0.98)'
         };
         const current = phaseFilters[phase] || phaseFilters.day;
         this.canvas.style.filter = current;
@@ -3202,14 +3449,28 @@ let Renderer3D = {
     render: function() {
         if (this.skyDome && this.camera) this.skyDome.position.copy(this.camera.position);
         if (this.starField && this.camera) this.starField.position.copy(this.camera.position);
-        if (this._cloudLayers && this._cloudLayers.length && typeof SpecialEventManager !== 'undefined' && SpecialEventManager._visualTime) {
-            const vt = SpecialEventManager._visualTime;
-            this._cloudLayers.forEach((layer, i) => {
-                const cfg = layer._cloudCfg;
-                const driftX = Math.sin(vt * cfg.speed * 0.08 + i * 1.7) * cfg.scale * 0.35;
-                const driftY = Math.cos(vt * cfg.speed * 0.06 + i * 2.3) * cfg.scale * 0.08;
-                layer.position.x = driftX;
-                layer.position.y = cfg.y + driftY;
+        if (this._cloudFormations && this._cloudFormations.length && this.camera) {
+            let vt = 0;
+            if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager._visualTime !== undefined) {
+                vt = SpecialEventManager._visualTime;
+            } else {
+                const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                if (!this._lastRenderTimeMs) this._lastRenderTimeMs = nowMs;
+                const dt = Math.max(0, Math.min(0.05, (nowMs - this._lastRenderTimeMs) / 1000));
+                this._lastRenderTimeMs = nowMs;
+                this._visualTime += dt;
+                vt = this._visualTime;
+            }
+            this.camera.getWorldDirection(this._cloudForwardVec);
+            this._cloudRightVec.crossVectors(this._cloudUpVec, this._cloudForwardVec).normalize();
+            this._cloudFormations.forEach((cloud, i) => {
+                const cfg = cloud._cloudCfg;
+                const waveA = Math.sin(vt * cfg.speed + i * 1.7);
+                const waveB = Math.cos(vt * cfg.speed * 0.6 + i * 2.3);
+                cloud.position.copy(this._cloudForwardVec).multiplyScalar(cfg.distance + waveB * cfg.depthDrift);
+                cloud.position.addScaledVector(this._cloudRightVec, cfg.lateral + waveA * cfg.driftX);
+                cloud.position.y = cfg.y + waveB * cfg.driftY;
+                cloud.quaternion.copy(this.camera.quaternion);
             });
         }
         if (this._radar) {
@@ -3642,7 +3903,7 @@ Renderer3D._loadMainHQModel = function(cx, cz) {
         root.position.set(cx, 0, cz);
         root.name = 'MainHQImportedGLB';
         this.scene.add(root);
-        this._externalModels.push(root);
+        if (this._externalModelRoots) this._externalModelRoots.push(root);
         // Collision box khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºp ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºng kÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ch thÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t sau khi scale/normalize,
         // trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡nh chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·n nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§m ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“iÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢m spawn cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i (250,250) ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³.
         this._addModelCollisionBoxFromObject(root, cx, cz, { margin: 1.02, minWidth: 20, minDepth: 10 });
@@ -3668,7 +3929,7 @@ Renderer3D._loadTentModel = function(x, z) {
         root.rotation.y = Math.PI * 0.5;
         root.name = 'TentOutpostImportedGLB';
         this.scene.add(root);
-        this._externalModels.push(root);
+        if (this._externalModelRoots) this._externalModelRoots.push(root);
         // VÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu xoay 90ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°, chiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âu rÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ng/sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢u thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â±c tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿ trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥c X/Z bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ hoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢i so
         // vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºi bbox gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“c ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nh lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i collision box SAU khi ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ xoay ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºp thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­t.
         this._addModelCollisionBoxFromObject(root, x, z, { margin: 1.02, minWidth: 6, minDepth: 6 });
@@ -4640,6 +4901,3 @@ Renderer3D.getPlayerFloorHeight = function(x, z) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
 }
-
-
-
