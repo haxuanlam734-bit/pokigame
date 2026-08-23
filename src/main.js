@@ -277,6 +277,8 @@ const Game = {
             if (event.key === 'Escape') {
                 if (GameState.buildingMode) {
                     GameState.endBuildMode();
+                    pendingPointerEvent = null;
+                    previewFrameRequested = false;
                     console.log('✅ Đã hủy chế độ xây dựng');
                 }
                 Game.closeTurretModal();
@@ -563,6 +565,21 @@ const Game = {
         
         GameState.init();
         
+        // Reset player controller state
+        if (typeof PlayerController !== 'undefined' && PlayerController.reset) {
+            PlayerController.reset();
+        }
+        
+        // Hide all overlays
+        const deathOverlay = document.getElementById('death-overlay');
+        if (deathOverlay) deathOverlay.style.display = 'none';
+        const lowHealthOverlay = document.getElementById('low-health-overlay');
+        if (lowHealthOverlay) lowHealthOverlay.style.display = 'none';
+        const lowHealthVignette = document.getElementById('low-health-vignette');
+        if (lowHealthVignette) lowHealthVignette.style.display = 'none';
+        const lowHealthText = document.getElementById('low-health-text');
+        if (lowHealthText) lowHealthText.style.display = 'none';
+        
         if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.stopEvent) {
             SpecialEventManager.stopEvent();
         }
@@ -604,3 +621,5 @@ if (document.readyState === 'loading') {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Game;
 }
+
+

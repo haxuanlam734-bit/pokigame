@@ -28,7 +28,10 @@ const WEAPON_DEFS = {
         attach: { px: 0.48, py: 0.58, pz: 0.12, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 1.0 },
         grips: {
             primary: { x: 0, y: -0.08, z: 0.03 }
-        }
+        },
+        meleeInnerRadius: 0.7,
+        meleeOuterRadius: 2.6,
+        meleeSwingArc: Math.PI * 0.55
     },
     pistol: {
         id:              'pistol',
@@ -178,6 +181,9 @@ const WeaponSystem = {
             if (hitInfo && hitInfo.damage != null) {
                 const pos = hitInfo.zombie && hitInfo.zombie.mesh3D ? hitInfo.zombie.mesh3D.position : null;
                 WeaponSystem.spawnDamageNumber(hitInfo.damage, false, pos);
+            }
+            if (typeof Renderer3D !== 'undefined' && Renderer3D.triggerCameraShake) {
+                Renderer3D.triggerCameraShake(0.10, 0.12);
             }
         };
 
@@ -369,8 +375,13 @@ const WeaponSystem = {
         const px  = PlayerController.position.x;
         const pz  = PlayerController.position.z;
         const yaw = InputManager.cameraYaw;
-        const forwardX = -Math.sin(yaw);
-        const forwardZ = -Math.cos(yaw);
+        const forwardX = Math.sin(yaw);
+        const forwardZ = Math.cos(yaw);
+        const rightX = Math.cos(yaw);
+        const rightZ = -Math.sin(yaw);
+        const innerR = def.meleeInnerRadius || 0.7;
+        const outerR = def.meleeOuterRadius || def.range || 2.8;
+        const halfArc = (def.meleeSwingArc || Math.PI * 0.5) / 2;
         const zombies = GameState.zombies || [];
         for (let i = 0; i < zombies.length; i++) {
             const zombie = zombies[i];
@@ -379,15 +390,18 @@ const WeaponSystem = {
             const dx = zombie.x - px;
             const dz = zombie.z - pz;
             const dist = Math.sqrt(dx * dx + dz * dz);
-            if (dist > def.range) continue;
-            const dot = (dx / dist) * forwardX + (dz / dist) * forwardZ;
-            if (dot < -0.1) continue;
+            if (dist < innerR || dist > outerR) continue;
+            const relX = dx * rightX + dz * rightZ;
+            const relZ = dx * forwardX + dz * forwardZ;
+            if (relZ <= 0) continue;
+            const angle = Math.atan2(relX, relZ);
+            if (Math.abs(angle) > halfArc) continue;
             this._meleeHitDealt.add(zombie);
             zombie.takeDamage(def.damage);
             const hitInfo = { zombie: zombie, dist: dist, damage: def.damage };
             if (this.onMeleeHit) this.onMeleeHit(def, hitInfo);
             this.showHitMarker(false);
-            console.log('\u{1F5E1}\uFE0F Melee hit! Dist=' + dist.toFixed(1) + ' Dmg=' + def.damage);
+            console.log('🗡️ Melee hit! Dist=' + dist.toFixed(1) + ' Dmg=' + def.damage);
         }
     },
 

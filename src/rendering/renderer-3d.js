@@ -222,6 +222,11 @@ let Renderer3D = {
     _visualTime: 0,
     _lastRenderTimeMs: 0,
 
+    // Camera shake
+    _shakeAmount: 0,
+    _shakeDuration: 0,
+    _shakeTimer: 0,
+
     // Animation System (Clips, Mixers, Actions)
     playerMixer: null,
     playerActions: {},
@@ -3639,13 +3644,30 @@ let Renderer3D = {
             this._smoothedCameraY,
             this._smoothedCameraZ
         );
+
+        if (this._shakeTimer > 0) {
+            this._shakeTimer -= dt;
+            const shake = this._shakeAmount * (this._shakeTimer / this._shakeDuration);
+            this.camera.position.x += (Math.random() - 0.5) * shake;
+            this.camera.position.y += (Math.random() - 0.5) * shake;
+            this.camera.position.z += (Math.random() - 0.5) * shake;
+        }
+
         this.camera.lookAt(
             this._smoothedLookAtX,
             this._smoothedLookAtY,
             this._smoothedLookAtZ
         );
         this.camera.updateMatrixWorld(true);
-    }
+    },
+
+    triggerCameraShake: function(amount, duration) {
+        if (amount > this._shakeAmount) {
+            this._shakeAmount = amount;
+            this._shakeDuration = duration;
+            this._shakeTimer = duration;
+        }
+    },
 };
 
 
@@ -4958,6 +4980,62 @@ Renderer3D.getPlayerFloorHeight = function(x, z) {
     return 0;
 };
 
+/**
+ * Create a small splatter effect when rotten meat projectile hits
+ * Lightweight particle effect for browser performance
+ */
+Renderer3D.createSplatterEffect = function(x, y, z) {
+    if (!this.scene) return;
+
+    const particleCount = 6;
+    const geometry = new THREE.SphereGeometry(0.1, 4, 4);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x5c2e1a,
+        transparent: true,
+        opacity: 0.8
+    });
+
+    for (let i = 0; i < particleCount; i++) {
+        const particle = new THREE.Mesh(geometry, material.clone());
+        particle.position.set(x, y, z);
+
+        // Random velocity
+        particle.userData.vx = (Math.random() - 0.5) * 4;
+        particle.userData.vy = Math.random() * 3 + 1;
+        particle.userData.vz = (Math.random() - 0.5) * 4;
+        particle.userData.life = 0.5 + Math.random() * 0.3;
+        particle.userData.age = 0;
+
+        this.scene.add(particle);
+
+        // Animate and remove
+        const animate = () => {
+            particle.userData.age += 0.016;
+            const progress = particle.userData.age / particle.userData.life;
+
+            if (progress >= 1) {
+                this.scene.remove(particle);
+                particle.geometry.dispose();
+                particle.material.dispose();
+                return;
+            }
+
+            particle.position.x += particle.userData.vx * 0.016;
+            particle.position.y += particle.userData.vy * 0.016;
+            particle.position.z += particle.userData.vz * 0.016;
+            particle.userData.vy -= 9.8 * 0.016; // gravity
+            particle.material.opacity = 0.8 * (1 - progress);
+            particle.scale.setScalar(1 - progress * 0.5);
+
+            requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+    }
+};
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
 }
+
+
+

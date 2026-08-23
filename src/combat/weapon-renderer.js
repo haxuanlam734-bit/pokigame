@@ -15,6 +15,16 @@ const WeaponRenderer = {
     _swingTimer:      0,
     _swingDuration:   0.32,
 
+    // Melee slash visual
+    _slashGroup:      null,
+    _slashTimer:      0,
+    _slashDuration:   0.28,
+    _slashPeakTime:   0.18,
+
+    // Debug
+    _debugKatanaHitbox: false,
+    _debugHitboxMesh:   null,
+
     // Muzzle flash
     _muzzleFlashTimer: 0,
     _muzzleFlashObj:  null,
@@ -422,6 +432,10 @@ const WeaponRenderer = {
     playMeleeSwingAnim: function() {
         this._swingAnim  = true;
         this._swingTimer = 0;
+        this._createCinematicSlash();
+        if (Renderer3D && Renderer3D.triggerCameraShake) {
+            Renderer3D.triggerCameraShake(0.06, 0.15);
+        }
     },
 
     resetMeleeAnim: function() {
@@ -430,6 +444,258 @@ const WeaponRenderer = {
         if (this._weaponHolder) {
             this._weaponHolder.rotation.set(0, 0, 0);
         }
+        this._clearSlashArc();
+        if (this._debugHitboxMesh) {
+            if (this._debugHitboxMesh.parent) this._debugHitboxMesh.parent.remove(this._debugHitboxMesh);
+            this._debugHitboxMesh = null;
+        }
+        if (Renderer3D && Renderer3D._shakeTimer) {
+            Renderer3D._shakeTimer = 0;
+        }
+    },
+
+    _createCinematicSlash: function() {
+        this._clearSlashArc();
+        if (!Renderer3D || !Renderer3D.scene || !PlayerController) return;
+
+        const yaw = InputManager.cameraYaw;
+        const forwardX = Math.sin(yaw);
+        const forwardZ = Math.cos(yaw);
+        const rightX = Math.cos(yaw);
+        const rightZ = -Math.sin(yaw);
+        const px = PlayerController.position.x;
+        const pz = PlayerController.position.z;
+        const py = PlayerController.position.y + 1.2;
+
+        const innerR = 0.7;
+        const outerR = 2.6;
+        const halfArc = Math.PI * 0.275;
+        const segments = 28;
+
+        const path = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const r = innerR + (outerR - innerR) * t;
+            const angle = -halfArc + t * halfArc * 2;
+            const x = px + forwardX * r * Math.cos(angle) + rightX * r * Math.sin(angle);
+            const z = pz + forwardZ * r * Math.cos(angle) + rightZ * r * Math.sin(angle);
+            path.push({ x, y: py, z, t });
+        }
+
+        const buildRibbonGeo = (baseWidth, taperExp) => {
+            const verts = [];
+            const idx = [];
+            for (let i = 0; i <= segments; i++) {
+                const t = path[i].t;
+                const envelope = Math.sin(t * Math.PI);
+                const width = baseWidth * Math.pow(envelope, taperExp);
+                let tx, tz;
+                if (i === 0) {
+                    tx = path[1].x - path[0].x;
+                    tz = path[1].z - path[0].z;
+                } else if (i === segments) {
+                    tx = path[i].x - path[i - 1].x;
+                    tz = path[i].z - path[i - 1].z;
+                } else {
+                    tx = path[i + 1].x - path[i - 1].x;
+                    tz = path[i + 1].z - path[i - 1].z;
+                }
+                const len = Math.hypot(tx, tz) || 1;
+                tx /= len;
+                tz /= len;
+                const nx = -tz;
+                const nz = tx;
+                verts.push(path[i].x + nx * width, path[i].y, path[i].z + nz * width);
+                verts.push(path[i].x - nx * width, path[i].y, path[i].z - nz * width);
+            }
+            for (let i = 0; i < segments; i++) {
+                const a = i * 2;
+                const b = i * 2 + 1;
+                const c = (i + 1) * 2;
+                const d = (i + 1) * 2 + 1;
+                idx.push(a, c, b, b, c, d);
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geo.setIndex(idx);
+            geo.computeVertexNormals();
+            return geo;
+        };
+
+        const mainGeo = buildRibbonGeo(0.16, 1.0);
+        const mainMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 1.0,
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        const mainMesh = new THREE.Mesh(mainGeo, mainMat);
+        mainMesh.renderOrder = 999;
+        mainMesh.frustumCulled = false;
+        mainMesh.name = 'slashMain';
+
+        const glowGeo = buildRibbonGeo(0.34, 0.7);
+        const glowMat = new THREE.MeshBasicMaterial({
+            color: 0xd0ffff,
+            transparent: true,
+            opacity: 0.4,
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+        glowMesh.renderOrder = 998;
+        glowMesh.frustumCulled = false;
+        glowMesh.name = 'slashGlow';
+
+        const streakGeo = buildRibbonGeo(0.06, 1.4);
+        const streakMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.7,
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        const streakMesh = new THREE.Mesh(streakGeo, streakMat);
+        streakMesh.renderOrder = 997;
+        streakMesh.frustumCulled = false;
+        streakMesh.name = 'slashStreak';
+
+        const group = new THREE.Group();
+        group.add(mainMesh);
+        group.add(glowMesh);
+        group.add(streakMesh);
+        group.userData.materials = [mainMat, glowMat, streakMat];
+        group.userData.geometries = [mainGeo, glowGeo, streakGeo];
+
+        Renderer3D.scene.add(group);
+        this._slashGroup = group;
+        this._slashTimer = 0;
+    },
+
+    _clearSlashArc: function() {
+        if (this._slashGroup) {
+            if (this._slashGroup.parent) this._slashGroup.parent.remove(this._slashGroup);
+            this._slashGroup.traverse(node => {
+                if (node.geometry) node.geometry.dispose();
+                if (node.material) node.material.dispose();
+            });
+            this._slashGroup = null;
+        }
+    },
+
+    _updateCinematicSlash: function(deltaSec) {
+        if (!this._slashGroup) return;
+        this._slashTimer += deltaSec;
+        const progress = this._slashTimer / this._slashDuration;
+        if (progress >= 1) {
+            this._clearSlashArc();
+            return;
+        }
+        const peak = this._slashPeakTime;
+        const materials = this._slashGroup.userData.materials;
+        if (!materials || materials.length < 3) return;
+
+        const mainMat = materials[0];
+        const glowMat = materials[1];
+        const streakMat = materials[2];
+
+        let mainOp, glowOp, streakOp;
+        if (this._slashTimer < peak) {
+            const ramp = this._slashTimer / peak;
+            mainOp = Math.min(1.0, ramp);
+            glowOp = 0.35 * ramp;
+            streakOp = 0.6 * ramp;
+        } else {
+            const tail = 1.0 - (this._slashTimer - peak) / (this._slashDuration - peak);
+            const fade = Math.max(0, tail);
+            mainOp = 1.0 * fade;
+            glowOp = 0.35 * fade;
+            streakOp = 0.6 * fade * fade;
+        }
+
+        mainMat.opacity = mainOp;
+        glowMat.opacity = glowOp;
+        streakMat.opacity = streakOp;
+
+        const scale = this._slashTimer < peak
+            ? 0.6 + 0.4 * (this._slashTimer / peak)
+            : 1.0;
+        this._slashGroup.scale.setScalar(scale);
+    },
+
+    _updateDebugKatanaHitbox: function() {
+        if (!this._debugKatanaHitbox) {
+            if (this._debugHitboxMesh) {
+                if (this._debugHitboxMesh.parent) this._debugHitboxMesh.parent.remove(this._debugHitboxMesh);
+                this._debugHitboxMesh = null;
+            }
+            return;
+        }
+        if (!PlayerController || !GameState || !Renderer3D || !Renderer3D.scene) return;
+
+        const def = WeaponSystem.getCurrentDef();
+        if (!def || def.fireMode !== FIRE_MODE.MELEE) {
+            if (this._debugHitboxMesh) {
+                if (this._debugHitboxMesh.parent) this._debugHitboxMesh.parent.remove(this._debugHitboxMesh);
+                this._debugHitboxMesh = null;
+            }
+            return;
+        }
+
+        const px = PlayerController.position.x;
+        const pz = PlayerController.position.z;
+        const py = PlayerController.position.y + 1.2;
+        const yaw = InputManager.cameraYaw;
+        const forwardX = Math.sin(yaw);
+        const forwardZ = Math.cos(yaw);
+        const rightX = Math.cos(yaw);
+        const rightZ = -Math.sin(yaw);
+        const innerR = def.meleeInnerRadius || 0.7;
+        const outerR = def.meleeOuterRadius || def.range || 2.8;
+        const halfArc = (def.meleeSwingArc || Math.PI * 0.5) / 2;
+
+        const shape = new THREE.Shape();
+        const segments = 32;
+        const outerPoints = [];
+        const innerPoints = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const angle = -halfArc + t * halfArc * 2;
+            outerPoints.push({ x: Math.cos(angle) * outerR, y: Math.sin(angle) * outerR });
+            innerPoints.push({ x: Math.cos(angle) * innerR, y: Math.sin(angle) * innerR });
+        }
+        shape.moveTo(outerPoints[0].x, outerPoints[0].y);
+        for (let i = 1; i < outerPoints.length; i++) shape.lineTo(outerPoints[i].x, outerPoints[i].y);
+        for (let i = innerPoints.length - 1; i >= 0; i--) shape.lineTo(innerPoints[i].x, innerPoints[i].y);
+        shape.closePath();
+
+        const geometry = new THREE.ShapeGeometry(shape);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.15,
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+
+        if (!this._debugHitboxMesh) {
+            this._debugHitboxMesh = new THREE.Mesh(geometry, material);
+            this._debugHitboxMesh.renderOrder = 1000;
+            this._debugHitboxMesh.frustumCulled = false;
+            Renderer3D.scene.add(this._debugHitboxMesh);
+        } else {
+            this._debugHitboxMesh.geometry.dispose();
+            this._debugHitboxMesh.geometry = geometry;
+            this._debugHitboxMesh.material = material;
+        }
+
+        this._debugHitboxMesh.position.set(px, py, pz);
+        this._debugHitboxMesh.rotation.set(-Math.PI / 2, -yaw, 0);
     },
 
     showMuzzleFlash: function() {
@@ -509,6 +775,12 @@ const WeaponRenderer = {
             }
         }
 
+        // 2. Slash arc visual
+        this._updateCinematicSlash(deltaSec);
+
+        // 3. Debug katana hitbox
+        this._updateDebugKatanaHitbox();
+
         // 2. Muzzle flash timer
         if (this._muzzleFlashTimer > 0 && this._muzzleFlashObj) {
             this._muzzleFlashTimer -= deltaSec;
@@ -581,3 +853,6 @@ const WeaponRenderer = {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = WeaponRenderer;
 }
+
+
+

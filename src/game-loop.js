@@ -1,6 +1,6 @@
-﻿/**
- * GAME-LOOP.JS - Vòng lặp game chính
- * Cập nhật trạng thái, vẽ, và xử lý khung hình
+/**
+ * GAME-LOOP.JS - V�ng l?p game ch�nh
+ * C?p nh?t tr?ng th�i, v?, v� x? l� khung h�nh
  */
 
 const GameLoop = {
@@ -13,30 +13,36 @@ const GameLoop = {
     _currentNotificationPhase: null,
     _notificationHiding: false,
 
+    // Damage flash state
+    _damageFlashTimer: 0,
+    _damageIndicatorTimeout: null,
+    _lastDamageSoundTime: 0,
+    _damageSoundCooldown: 120,
+
     /**
-     * Khởi động vòng lặp game
+     * Kh?i d?ng v�ng l?p game
      */
     start: function() {
-        console.log('▶️ Khởi động Game Loop...');
+        console.log('?? Kh?i d?ng Game Loop...');
         this.isRunning = true;
         this.lastFrameTime = 0;
         this.frameCount = 0;
         this.lastFpsUpdate = 0;
         requestAnimationFrame(this.loop.bind(this));
-        console.log('✅ Game Loop đã khởi động');
+        console.log('? Game Loop d� kh?i d?ng');
     },
     
     /**
-     * Dừng vòng lặp game
+     * D?ng v�ng l?p game
      */
     stop: function() {
-        console.log('⏸️ Dừng Game Loop');
+        console.log('?? D?ng Game Loop');
         this.isRunning = false;
     },
     
     /**
-     * Vòng lặp chính
-     * @param {number} timestamp - Thời gian từ browser (performance.now())
+     * V�ng l?p ch�nh
+     * @param {number} timestamp - Th?i gian t? browser (performance.now())
      */
     loop: function(timestamp) {
         if (!this.isRunning) return;
@@ -70,8 +76,8 @@ const GameLoop = {
     },
     
     /**
-     * Cập nhật trạng thái game
-     * @param {number} deltaTime - Thời gian delta (ms)
+     * C?p nh?t tr?ng th�i game
+     * @param {number} deltaTime - Th?i gian delta (ms)
      */
     update: function(deltaTime) {
         if (!GameState.isRunning) return;
@@ -80,7 +86,9 @@ const GameLoop = {
             TimeCycle.update(deltaTime);
         }
 
-        GameState.update(deltaTime);
+        if (typeof GameState !== 'undefined' && GameState.update) {
+            GameState.update(deltaTime);
+        }
 
         if (typeof SpecialEventManager !== 'undefined' && SpecialEventManager.update) {
             SpecialEventManager.update(deltaTime);
@@ -96,8 +104,8 @@ const GameLoop = {
     },
     
     /**
-     * Cập nhật FPS
-     * @param {number} currentTime - Thời gian hiện tại
+     * C?p nh?t FPS
+     * @param {number} currentTime - Th?i gian hi?n t?i
      */
     updateFPS: function(currentTime) {
         this.frameCount++;
@@ -109,7 +117,103 @@ const GameLoop = {
     },
 
     /**
-     * Cập nhật UI display (3D version)
+     * Trigger a red damage flash overlay
+     */
+    triggerDamageFlash: function() {
+        const overlay = document.getElementById('damage-overlay');
+        if (!overlay) return;
+
+        // Clear any existing timeout to prevent premature fade
+        if (this._damageFlashTimeout) {
+            clearTimeout(this._damageFlashTimeout);
+        }
+
+        // Flash immediately
+        overlay.classList.add('flash');
+        this._damageFlashTimer = CONFIG.DAMAGE_FLASH_DURATION;
+
+        // Start fade after brief delay
+        this._damageFlashTimeout = setTimeout(() => {
+            overlay.classList.remove('flash');
+            this._damageFlashTimeout = null;
+        }, 50);
+    },
+
+    /**
+     * Show directional damage indicator toward attacker
+     */
+    showDamageIndicator: function(attackerX, attackerZ) {
+        if (typeof PlayerController === 'undefined' || !PlayerController.position || PlayerController.isDead || PlayerController.isRespawning) return;
+
+        const px = PlayerController.position.x;
+        const pz = PlayerController.position.z;
+
+        const dx = attackerX - px;
+        const dz = attackerZ - pz;
+
+        const camYaw = (typeof InputManager !== 'undefined') ? InputManager.cameraYaw : 0;
+
+        const forwardX = Math.sin(camYaw);
+        const forwardZ = Math.cos(camYaw);
+        const rightX = Math.cos(camYaw);
+        const rightZ = -Math.sin(camYaw);
+
+        const forwardAmount = dx * forwardX + dz * forwardZ;
+        const rightAmount = dx * rightX + dz * rightZ;
+
+        let angle = Math.atan2(rightAmount, forwardAmount);
+        if (angle < 0) angle += Math.PI * 2;
+
+        const sectors = [
+            { id: 'damage-indicator-top',       angle: 0 },
+            { id: 'damage-indicator-topright',  angle: Math.PI / 4 },
+            { id: 'damage-indicator-right',     angle: Math.PI / 2 },
+            { id: 'damage-indicator-bottomright', angle: Math.PI * 3 / 4 },
+            { id: 'damage-indicator-bottom',    angle: Math.PI },
+            { id: 'damage-indicator-bottomleft', angle: Math.PI * 5 / 4 },
+            { id: 'damage-indicator-left',      angle: Math.PI * 3 / 2 },
+            { id: 'damage-indicator-topleft',   angle: Math.PI * 7 / 4 }
+        ];
+
+        let best = sectors[0];
+        let bestDiff = Infinity;
+        for (const s of sectors) {
+            let diff = angle - s.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            if (Math.abs(diff) < bestDiff) {
+                bestDiff = Math.abs(diff);
+                best = s;
+            }
+        }
+
+        const el = document.getElementById(best.id);
+        if (!el) return;
+
+        el.classList.add('show');
+
+        if (this._damageIndicatorTimeout) {
+            clearTimeout(this._damageIndicatorTimeout);
+        }
+        this._damageIndicatorTimeout = setTimeout(() => {
+            el.classList.remove('show');
+            this._damageIndicatorTimeout = null;
+        }, 350);
+    },
+
+    /**
+     * Play short damage hit sound with cooldown
+     */
+    playDamageSound: function() {
+        if (typeof AudioController === 'undefined' || !AudioController.playDamageSound) return;
+        const now = performance.now();
+        if (now - this._lastDamageSoundTime < this._damageSoundCooldown) return;
+        this._lastDamageSoundTime = now;
+        AudioController.playDamageSound();
+    },
+
+    /**
+     * C?p nh?t UI display (3D version)
      */
     updateUI: function() {
         const phaseInfo = (typeof TimeCycle !== 'undefined' && TimeCycle.isRunning)
@@ -232,10 +336,10 @@ const GameLoop = {
             notif.style.display = 'flex';
             notif.style.opacity = Math.min(1, this._phaseNotificationTimer / 30);
             const phaseNames = {
-                [CONFIG.PHASE_DAY]: '☀️ NGÀY',
-                [CONFIG.PHASE_SUNSET]: '🌇 SUNSET',
-                [CONFIG.PHASE_NIGHT]: '🌙 ĐÊM',
-                [CONFIG.PHASE_DAWN]: '🌅 DAWN'
+                [CONFIG.PHASE_DAY]: '?? NG�Y',
+                [CONFIG.PHASE_SUNSET]: '?? SUNSET',
+                [CONFIG.PHASE_NIGHT]: '?? ��M',
+                [CONFIG.PHASE_DAWN]: '?? DAWN'
             };
             notif.textContent = phaseNames[phase] || phase.toUpperCase();
         } else if (!this._notificationHiding) {
@@ -250,13 +354,13 @@ const GameLoop = {
     },
 
     _getLegacyPhaseDisplayName: function(phase) {
-        if (phase === CONFIG.PHASE_DAY || phase === CONFIG.PHASE_DAY_LEGACY) return '☀️ NGÀY';
-        if (phase === CONFIG.PHASE_NIGHT || phase === CONFIG.PHASE_NIGHT_LEGACY) return '🌙 ĐÊM';
+        if (phase === CONFIG.PHASE_DAY || phase === CONFIG.PHASE_DAY_LEGACY) return '?? NG�Y';
+        if (phase === CONFIG.PHASE_NIGHT || phase === CONFIG.PHASE_NIGHT_LEGACY) return '?? ��M';
         return phase.toUpperCase();
     },
 
     /**
-     * Cập nhật trạng thái nút (enable/disable + style)
+     * C?p nh?t tr?ng th�i n�t (enable/disable + style)
      */
     updateButtonStates: function() {
         const buttons = {
@@ -302,7 +406,9 @@ const GameLoop = {
     }
 };
 
-// Xuất GameLoop
+// Xu?t GameLoop
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = GameLoop;
 }
+
+

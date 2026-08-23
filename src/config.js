@@ -368,11 +368,34 @@ const CONFIG = {
     },
 
     // =====================
+    // PLAYER RESPAWN
+    // =====================
+    RESPAWN_DELAY_MS: 1500,
+
+    // =====================
     // ZOMBIE AI - Phạm vi phát hiện người chơi
     // =====================
     ZOMBIE_PLAYER_CHASE_RADIUS: 120,
     ZOMBIE_PLAYER_ATTACK_RADIUS: 1.6,
     ZOMBIE_PLAYER_DAMAGE: 12,
+
+    // =====================
+    // ROTTEN MEAT ZOMBIE (ranged enemy)
+    // =====================
+    ROTTEN_MEAT_ZOMBIE_SPEED: 1.5,
+    ROTTEN_MEAT_ZOMBIE_HP: 25,
+    ROTTEN_MEAT_ZOMBIE_SPAWN_CHANCE: 0.25,
+    ROTTEN_MEAT_ATTACK_RANGE: 20,
+    ROTTEN_MEAT_PREFERRED_RANGE: 12,
+    ROTTEN_MEAT_MIN_RANGE: 7,
+    ROTTEN_MEAT_THROW_COOLDOWN: 3.0,
+    ROTTEN_MEAT_PROJECTILE_SPEED: 18,
+    ROTTEN_MEAT_PROJECTILE_LIFETIME: 4.0,
+    ROTTEN_MEAT_PROJECTILE_HIT_RADIUS: 0.30,
+    ROTTEN_MEAT_IMPACT_DAMAGE: 5,
+    ROTTEN_MEAT_POISON_TOTAL_DAMAGE: 5,
+    ROTTEN_MEAT_POISON_DURATION: 5.0,
+    ROTTEN_MEAT_POISON_TICK_INTERVAL: 1.0,
 
     // =====================
     // BULLET (ĐẠN) - 3D world scale (m/s)
@@ -390,6 +413,13 @@ const CONFIG = {
     ZOMBIE_SPAWN_RATE: 2,
     ZOMBIE_SPAWN_X: 1550,
     ZOMBIE_TARGET_X: 800,
+
+    // =====================
+    // DAMAGE FEEDBACK
+    // =====================
+    DAMAGE_FLASH_DURATION: 0.35,
+    LOW_HEALTH_THRESHOLD: 0.10,
+    LOW_HEALTH_VIGNETTE_COLOR: 'rgba(180, 0, 0, 0.6)',
 
     ZOMBIE_WAVES: [
         { count: 3, speed: 2.5 },
@@ -515,3 +545,5 @@ const CONFIG = {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CONFIG;
 }
+
+

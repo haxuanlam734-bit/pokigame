@@ -992,6 +992,226 @@
             box-shadow: 0 0 35px rgba(255, 46, 99, 0.6);
         }
 
+        /* ===== DEATH OVERLAY ===== */
+        #death-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(80, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 85;
+            pointer-events: none;
+        }
+
+        .death-container {
+            text-align: center;
+            animation: deathPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes deathPulse {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+        }
+
+        .death-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 42px;
+            font-weight: 900;
+            color: #ff2e63;
+            letter-spacing: 3px;
+            text-shadow: 0 0 30px rgba(255, 46, 99, 0.6);
+        }
+
+        .death-sub {
+            font-size: 18px;
+            color: #ff8fa3;
+            margin-top: 8px;
+        }
+
+        /* ===== DAMAGE FLASH OVERLAY ===== */
+        #damage-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0) 0%, rgba(255, 0, 0, 0.4) 100%);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 80;
+            transition: opacity 0.1s ease-out;
+        }
+
+        #damage-overlay.flash {
+            opacity: 1;
+            transition: opacity 0.05s ease-out;
+        }
+
+        /* ===== DIRECTIONAL DAMAGE INDICATORS ===== */
+        .damage-indicator {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            pointer-events: none;
+            z-index: 81;
+            opacity: 0;
+            transition: opacity 0.08s ease-out;
+            filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.9));
+        }
+        .damage-indicator.show {
+            opacity: 1;
+        }
+        .damage-indicator::before {
+            content: "";
+            position: absolute;
+            width: 0;
+            height: 0;
+        }
+        #damage-indicator-top {
+            top: 6%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #damage-indicator-top::before {
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-bottom: 22px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-bottom {
+            bottom: 6%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #damage-indicator-bottom::before {
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 22px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-left {
+            left: 6%;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #damage-indicator-left::before {
+            border-top: 14px solid transparent;
+            border-bottom: 14px solid transparent;
+            border-right: 22px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-right {
+            right: 6%;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #damage-indicator-right::before {
+            border-top: 14px solid transparent;
+            border-bottom: 14px solid transparent;
+            border-left: 22px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-topleft {
+            top: 5%;
+            left: 5%;
+            transform: rotate(135deg);
+        }
+        #damage-indicator-topleft::before {
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 18px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-topright {
+            top: 5%;
+            right: 5%;
+            transform: rotate(-135deg);
+        }
+        #damage-indicator-topright::before {
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 18px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-bottomleft {
+            bottom: 5%;
+            left: 5%;
+            transform: rotate(45deg);
+        }
+        #damage-indicator-bottomleft::before {
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 18px solid rgba(255, 30, 30, 0.9);
+        }
+        #damage-indicator-bottomright {
+            bottom: 5%;
+            right: 5%;
+            transform: rotate(-45deg);
+        }
+        #damage-indicator-bottomright::before {
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 18px solid rgba(255, 30, 30, 0.9);
+        }
+
+        /* ===== LOW HEALTH OVERLAY ===== */
+        #low-health-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(40, 40, 40, 0.25);
+            display: none;
+            pointer-events: none;
+            z-index: 79;
+            animation: lowHealthPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes lowHealthPulse {
+            0%, 100% { background: rgba(40, 40, 40, 0.2); }
+            50% { background: rgba(40, 40, 40, 0.35); }
+        }
+
+        #low-health-vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            pointer-events: none;
+            z-index: 80;
+            box-shadow: inset 0 0 150px 60px rgba(180, 0, 0, 0.5);
+            animation: vignettePulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes vignettePulse {
+            0%, 100% { box-shadow: inset 0 0 150px 60px rgba(180, 0, 0, 0.4); }
+            50% { box-shadow: inset 0 0 150px 80px rgba(180, 0, 0, 0.6); }
+        }
+
+        #low-health-text {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Orbitron', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: #ff4444;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+            display: none;
+            pointer-events: none;
+            z-index: 81;
+            animation: lowHealthTextBlink 1s ease-in-out infinite;
+        }
+
+        @keyframes lowHealthTextBlink {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
         /* ===== ADMIN PANEL ===== */
         #admin-btn {
             position: absolute;
@@ -1340,6 +1560,32 @@
                 <button id="restart-button">⚡ CHƠI LẠI</button>
             </div>
         </div>
+
+        <!-- DEATH OVERLAY (temporary, shows during respawn) -->
+        <div id="death-overlay">
+            <div class="death-container">
+                <div class="death-title">💀 ĐÃ CHẾT</div>
+                <div class="death-sub">Đang hồi sinh...</div>
+            </div>
+        </div>
+
+        <!-- DAMAGE FLASH OVERLAY (red pulse when hit) -->
+        <div id="damage-overlay"></div>
+
+        <!-- DIRECTIONAL DAMAGE INDICATORS -->
+        <div id="damage-indicator-top" class="damage-indicator"></div>
+        <div id="damage-indicator-bottom" class="damage-indicator"></div>
+        <div id="damage-indicator-left" class="damage-indicator"></div>
+        <div id="damage-indicator-right" class="damage-indicator"></div>
+        <div id="damage-indicator-topleft" class="damage-indicator"></div>
+        <div id="damage-indicator-topright" class="damage-indicator"></div>
+        <div id="damage-indicator-bottomleft" class="damage-indicator"></div>
+        <div id="damage-indicator-bottomright" class="damage-indicator"></div>
+
+        <!-- LOW HEALTH OVERLAY (vignette + desaturation when HP < 10%) -->
+        <div id="low-health-overlay"></div>
+        <div id="low-health-vignette"></div>
+        <div id="low-health-text">⚠️ LOW HEALTH</div>
 
         <!-- UI OVERLAY -->
         <div id="ui-overlay">
@@ -1725,6 +1971,7 @@
     <script src="src/entities/turel-3d.js"></script>
     <script src="src/entities/minigun-3d.js"></script>
     <script src="src/entities/zombie-3d.js"></script>
+    <script src="src/entities/rotten-meat-zombie.js"></script>
     <script src="src/game-state.js"></script>
     <script src="src/admin-panel.js"></script>
     <script src="src/game-loop.js"></script>

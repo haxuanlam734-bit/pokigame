@@ -14,12 +14,23 @@ const PlayerController = {
         z: CONFIG.WORLD.BASE_CENTER_Z + 30
     },
 
+    // Initial spawn position - captured once, used for respawns
+    initialSpawnX: CONFIG.WORLD.BASE_CENTER_X,
+    initialSpawnY: 0,
+    initialSpawnZ: CONFIG.WORLD.BASE_CENTER_Z + 30,
+    initialSpawnRotationY: 0,
+
+    // Death/Respawn state
+    isDead: false,
+    isRespawning: false,
+    respawnTimer: 0,
+
     velocity: { x: 0, z: 0 },
     targetVelocity: { x: 0, z: 0 },
     speed: 6,
     normalSpeed: 6,
     flySpeed: 35,
-    sprintMultiplier: 1.65,
+    sprintMultiplier: 1.50,
     sprintDrainPerSecond: 22,
     isSprinting: false,
     isCrouching: false,
@@ -77,6 +88,26 @@ const PlayerController = {
     _moveVec: null,
     _camDir: null,
 
+    /**
+     * Reset player state (called during game restart)
+     */
+    reset: function() {
+        this.position = { x: this.initialSpawnX, y: this.initialSpawnY, z: this.initialSpawnZ };
+        this.velocity = { x: 0, z: 0 };
+        this.targetVelocity = { x: 0, z: 0 };
+        this.currentMoveAngle = this.initialSpawnRotationY;
+        this.targetMoveAngle = this.initialSpawnRotationY;
+        this.hasMovementInput = false;
+        this.velocityY = 0;
+        this.isGrounded = true;
+        this.isDead = false;
+        this.isRespawning = false;
+        this.respawnTimer = 0;
+        this.isSprinting = false;
+        this.isCrouching = false;
+        this.speed = this.normalSpeed;
+    },
+
     init: function() {
         console.log('🚶 Khởi tạo Player Controller...');
 
@@ -88,6 +119,17 @@ const PlayerController = {
         this.currentMoveAngle = 0;
         this.targetMoveAngle = 0;
         this.hasMovementInput = false;
+
+        // Capture initial spawn position for respawns
+        this.initialSpawnX = this.position.x;
+        this.initialSpawnY = this.position.y;
+        this.initialSpawnZ = this.position.z;
+        this.initialSpawnRotationY = 0;
+
+        // Reset death/respawn state
+        this.isDead = false;
+        this.isRespawning = false;
+        this.respawnTimer = 0;
 
         this.velocityY = 0;
         this.isGrounded = true;
@@ -228,6 +270,19 @@ const PlayerController = {
     update: function(deltaTime) {
         const deltaSec = deltaTime / 1000;
 
+        // Handle respawn timer
+        if (this.isDead || this.isRespawning) {
+            this.respawnTimer -= deltaTime;
+            if (this.respawnTimer <= 0 && this.isRespawning) {
+                this._completeRespawn();
+            }
+            // While dead, skip normal updates but still render
+            if (typeof Renderer3D !== 'undefined' && Renderer3D.render) {
+                Renderer3D.render();
+            }
+            return;
+        }
+
         // Lam muot (lerp) goc xoay camera truoc khi dung - quan tinh Roblox-style
         // NOTE: InputManager.update() reset isMouseJustPressed/Released,
         // nen WeaponSystem.update() PHAI duoc goi TRUOC InputManager.update().
@@ -276,11 +331,6 @@ const PlayerController = {
                 this.speed = this.normalSpeed * this.sprintMultiplier;
             } else {
                 this.speed = this.normalSpeed;
-            }
-
-            if (this.isSprinting && typeof GameState !== 'undefined' && !GameState.adminInfiniteStamina) {
-                GameState.stamina = Math.max(0, GameState.stamina - this.sprintDrainPerSecond * deltaSec);
-                if (GameState.stamina <= 0) this.isSprinting = false;
             }
         }
 
@@ -404,6 +454,119 @@ const PlayerController = {
     },
 
     /**
+     * Trigger player death and start respawn sequence
+     */
+    die: function() {
+        if (this.isDead || this.isRespawning) return;
+        this.isDead = true;
+        this.isRespawning = true;
+        this.respawnTimer = CONFIG.RESPAWN_DELAY_MS;
+
+        // Disable movement
+        this.velocity = { x: 0, z: 0 };
+        this.targetVelocity = { x: 0, z: 0 };
+        this.hasMovementInput = false;
+        this.isSprinting = false;
+        this.isCrouching = false;
+        this.velocityY = 0;
+
+        // Show death overlay
+        const deathOverlay = document.getElementById('death-overlay');
+        if (deathOverlay) deathOverlay.style.display = 'flex';
+
+        console.log('💀 Player died - respawning in ' + CONFIG.RESPAWN_DELAY_MS + 'ms');
+    },
+
+    /**
+     * Complete the respawn - restore player to spawn point
+     */
+    _completeRespawn: function() {
+        // Move to initial spawn position
+        this.position.x = this.initialSpawnX;
+        this.position.y = this.initialSpawnY;
+        this.position.z = this.initialSpawnZ;
+
+        // Reset movement state
+        this.velocity = { x: 0, z: 0 };
+        this.targetVelocity = { x: 0, z: 0 };
+        this.currentMoveAngle = this.initialSpawnRotationY;
+        this.targetMoveAngle = this.initialSpawnRotationY;
+        this.velocityY = 0;
+        this.isGrounded = true;
+
+        // Reset states
+        this.isDead = false;
+        this.isRespawning = false;
+        this.respawnTimer = 0;
+        this.isSprinting = false;
+        this.isCrouching = false;
+
+        // Restore HP
+        if (typeof GameState !== 'undefined') {
+            GameState.playerHP = GameState.playerMaxHP;
+            // Clear poison on respawn
+            GameState.poisonDamageRemaining = 0;
+            GameState.poisonTimeRemaining = 0;
+            GameState.poisonTickTimer = 0;
+        }
+
+        // Hide death overlay
+        const deathOverlay = document.getElementById('death-overlay');
+        if (deathOverlay) deathOverlay.style.display = 'none';
+
+        // Clear low health effects
+        const lowHealthOverlay = document.getElementById('low-health-overlay');
+        if (lowHealthOverlay) lowHealthOverlay.style.display = 'none';
+        const lowHealthVignette = document.getElementById('low-health-vignette');
+        if (lowHealthVignette) lowHealthVignette.style.display = 'none';
+        const lowHealthText = document.getElementById('low-health-text');
+        if (lowHealthText) lowHealthText.style.display = 'none';
+
+        // Clear damage indicators and flash
+        const indicatorIds = [
+            'damage-indicator-top', 'damage-indicator-bottom',
+            'damage-indicator-left', 'damage-indicator-right',
+            'damage-indicator-topleft', 'damage-indicator-topright',
+            'damage-indicator-bottomleft', 'damage-indicator-bottomright'
+        ];
+        indicatorIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('show');
+        });
+
+        if (typeof GameLoop !== 'undefined') {
+            if (GameLoop._damageIndicatorTimeout) {
+                clearTimeout(GameLoop._damageIndicatorTimeout);
+                GameLoop._damageIndicatorTimeout = null;
+            }
+            if (GameLoop._damageFlashTimeout) {
+                clearTimeout(GameLoop._damageFlashTimeout);
+                GameLoop._damageFlashTimeout = null;
+            }
+            const damageOverlay = document.getElementById('damage-overlay');
+            if (damageOverlay) damageOverlay.classList.remove('flash');
+        }
+
+        // Restore player animation
+        if (Renderer3D && Renderer3D.setPlayerAnimation) {
+            Renderer3D.setPlayerAnimation('idle', 0.18);
+        }
+
+        // Restore camera follow
+        if (Renderer3D && Renderer3D.updateCameraToPlayer) {
+            Renderer3D.updateCameraToPlayer(
+                this.position.x,
+                this.position.z,
+                InputManager ? InputManager.cameraYaw : 0,
+                InputManager ? InputManager.cameraPitch : 0,
+                this.position.y
+            );
+        }
+
+        console.log('✅ Player respawned at (' + this.initialSpawnX.toFixed(0) + ', ' + this.initialSpawnZ.toFixed(0) + ')');
+    },
+
+    /**
      * Di chuyển player với collision đơn giản theo AABB của các mesh
      * được Renderer3D đăng ký. Chỉ lấy các vật thể đủ cao để làm
      * chướng ngại vật; sàn/base mỏng sẽ không chặn player.
@@ -500,3 +663,4 @@ const PlayerController = {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = PlayerController;
 }
+
