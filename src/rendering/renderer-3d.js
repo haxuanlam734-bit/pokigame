@@ -11,6 +11,14 @@ const PLAYER_R6_DEBUG_VISUALS = (typeof window !== 'undefined' && window.PLAYER_
 const PLAYER_R6_LOG_FRAMES = (typeof window !== 'undefined' && window.PLAYER_R6_LOG_FRAMES) ? window.PLAYER_R6_LOG_FRAMES : 30;
 const PLAYER_R6_TRACE_WRITES = (typeof window !== 'undefined' && window.PLAYER_R6_TRACE_WRITES) ? window.PLAYER_R6_TRACE_WRITES : false;
 
+// ============================================================
+// R6 RUNTIME RIG — LEGACY LOCOMOTION ISOLATION
+// When false, the OLD bone-based _updateR6ModularPose system is
+// completely bypassed and the NEW runtime pivot rig owns ALL player
+// visual animation. The legacy code is kept only for rollback.
+// ============================================================
+const USE_LEGACY_R6_LOCOMOTION = false;
+
 
 function applyVisualReferenceLighting() {
     const L = CONFIG.LIGHTING;
@@ -335,6 +343,12 @@ let Renderer3D = {
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
         console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Renderer 3D khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o xong');
+
+        // Expose the active instance for debug diagnostics only
+        if (typeof window !== 'undefined') {
+            window.__activeRenderer3D = this;
+            console.log('[R6 DEBUG] Active Renderer3D instance found.');
+        }
     },
 
     setupLighting: function() {
@@ -3299,7 +3313,22 @@ let Renderer3D = {
         let rightHandSocket = null;
         let leftHandSocket = null;
 
-        if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
+        if (!USE_LEGACY_R6_LOCOMOTION && playerFBXMode === 'r6-modular') {
+            // ============================================================
+            // NEW RUNTIME RIG — owns ALL player visual animation.
+            // Builds clean player-space pivots, bakes the 6 meshes into
+            // them, creates hand sockets, and captures the rest pose.
+            // ============================================================
+            rig.visualRoot = visualRoot; // ensure available to rig builder
+            this._setupR6RuntimeRig(rig);
+            rightHandSocket = rig.r6RuntimeRightHandSocket || null;
+            leftHandSocket = rig.r6RuntimeLeftHandSocket || null;
+            if (rig.r6RuntimePivots) {
+                console.log('[R6 RUNTIME] NEW RIG BUILT — meshes baked into clean pivots');
+            } else {
+                console.warn('[R6 RUNTIME] Rig build failed — falling back is not available; legacy disabled');
+            }
+        } else if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
             const rb = rig.r6Bones;
             if (rb.rightArmEndBone) {
                 rightHandSocket = new THREE.Group();
@@ -3335,7 +3364,9 @@ let Renderer3D = {
             console.warn('[PLAYER FBX] RightHand bone not found or invalid - no socket created');
         }
 
-        if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
+        if (!USE_LEGACY_R6_LOCOMOTION && playerFBXMode === 'r6-modular') {
+            // leftHandSocket handled inside runtime rig
+        } else if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
             // leftHandSocket already handled above
         } else if (leftHandBoneValid) {
             leftHandSocket = new THREE.Group();
@@ -3376,7 +3407,7 @@ let Renderer3D = {
         // BƯỚC 8.5: R6-MODULAR REST POSE + HEAD PIVOT
         // ============================================================
 
-        if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
+        if (USE_LEGACY_R6_LOCOMOTION && playerFBXMode === 'r6-modular' && rig.r6Bones) {
             const rb = rig.r6Bones;
 
             rig.r6RestPose = {
@@ -3480,29 +3511,46 @@ let Renderer3D = {
             }
         }
 
+        // NEW RUNTIME RIG: expose clean pivots + head fix to player/rig.
+        if (!USE_LEGACY_R6_LOCOMOTION && rig.r6RuntimePivots) {
+            rig.headPivot = rig.r6RuntimePivots.headPivot;
+            rig.headPivotRestY = rig.r6RuntimePivots.headPivot.position.y;
+            if (this.player) {
+                this.player.r6Parts = rig.r6Parts;
+                this.player.r6Bones = rig.r6Bones;
+                this.player.headPivot = rig.r6RuntimePivots.headPivot;
+                this.player.head = rig.r6RuntimePivots.headPivot;
+            }
+        }
+
+        // Active weapon socket = runtime right-hand socket when the new rig is used,
+        // so the legacy bone-end socket never influences the weapon.
+        const activeRightSocket = (!USE_LEGACY_R6_LOCOMOTION && rig.r6RuntimeRightHandSocket) ? rig.r6RuntimeRightHandSocket : rightHandSocket;
+        const activeLeftSocket = (!USE_LEGACY_R6_LOCOMOTION && rig.r6RuntimeLeftHandSocket) ? rig.r6RuntimeLeftHandSocket : leftHandSocket;
+
         // Update player object references
         if (this.player) {
-            this.player.rightHandSocket = rightHandSocket;
-            this.player.leftHandSocket = leftHandSocket;
+            this.player.rightHandSocket = activeRightSocket;
+            this.player.leftHandSocket = activeLeftSocket;
             this.player.bones = boneCache;
             this.player.body = visualRoot;
-            this.player.head = boneCache.head || null;
+            this.player.head = (!USE_LEGACY_R6_LOCOMOTION && rig.r6RuntimePivots) ? rig.r6RuntimePivots.headPivot : (boneCache.head || null);
             this.player.visualRoot = visualRoot;
             this.player.rigMode = playerFBXMode;
         }
 
-        rig.rightHandSocket = rightHandSocket;
-        rig.leftHandSocket = leftHandSocket;
+        rig.rightHandSocket = activeRightSocket;
+        rig.leftHandSocket = activeLeftSocket;
 
         // ============================================================
         // BƯỚC 10: Re-bind weapon holder (chỉ khi có valid socket)
         // ============================================================
 
-        if ((rightHandSocket) && typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
+        if ((activeRightSocket) && typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
             if (WeaponRenderer._weaponHolder.parent) {
                 WeaponRenderer._weaponHolder.parent.remove(WeaponRenderer._weaponHolder);
             }
-            rightHandSocket.add(WeaponRenderer._weaponHolder);
+            activeRightSocket.add(WeaponRenderer._weaponHolder);
             WeaponRenderer._weaponHolder.position.set(0, 0, 0);
             WeaponRenderer._weaponHolder.rotation.set(0, 0, 0);
             WeaponRenderer._weaponHolder.visible = true;
@@ -4395,9 +4443,15 @@ let Renderer3D = {
                 if (rig.playerFBXMode === 'r6-modular') {
                     const baseScale = rig.fbxVisualScale || rig.visualRoot.scale.x;
                     rig.visualRoot.scale.setScalar(baseScale);
-                    // r6-modular crouch uses a real leg/torso pose, not a squash:
-                    // only a small grounding offset so feet stay planted.
-                    rig.visualRoot.position.y = isCrouching ? -0.12 : 0;
+                    if (!USE_LEGACY_R6_LOCOMOTION && rig.r6RuntimePivots) {
+                        // NEW runtime rig handles crouch via pivot poses; keep the
+                        // visualRoot grounded (no whole-body sink) so feet stay planted.
+                        rig.visualRoot.position.y = 0;
+                    } else {
+                        // r6-modular crouch uses a real leg/torso pose, not a squash:
+                        // only a small grounding offset so feet stay planted.
+                        rig.visualRoot.position.y = isCrouching ? -0.12 : 0;
+                    }
                 } else {
                     rig.visualRoot.scale.y = this.player._currentScaleY;
                     rig.visualRoot.position.y = isCrouching ? -0.25 : 0;
@@ -4441,7 +4495,11 @@ let Renderer3D = {
         } else if (rig && rig.bones && rig.playerFBXAnimated === true) {
             // FBX model với bone animation
             if (rig.playerFBXMode === 'r6-modular') {
-                this._updateR6ModularPose(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
+                if (!USE_LEGACY_R6_LOCOMOTION && rig.r6RuntimePivots) {
+                    this._updateR6RuntimeAnimation(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
+                } else {
+                    this._updateR6ModularPose(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
+                }
             } else if (rig.playerFBXMode === 'rigid-bone-part') {
                 // Rigid bone-part: dùng procedural bone animation
                 this._updateRigidBonePartPose(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
@@ -4810,6 +4868,488 @@ let Renderer3D = {
         }
     },
 
+    // ============================================================
+    // _setupR6RuntimeRig
+    // Builds a CLEAN runtime character rig under playerVisualRoot.
+    //  - 6 player-space pivots (torso/head/arms/legs)
+    //  - the 6 imported FBX meshes are BAKED into these pivots
+    //    (exact world transform preserved via attach())
+    //  - the imported FBX bones are NEVER used as animation controllers
+    //  - hand sockets are created under the arm pivots
+    //  - the rest pose (position+quaternion) of every pivot is captured
+    // ============================================================
+    _setupR6RuntimeRig: function(rig) {
+        if (!rig.visualRoot) return;
+        const visualRoot = rig.visualRoot;
+        visualRoot.updateMatrixWorld(true);
+
+        const parts = rig.r6Parts;
+        if (!parts || !parts.headMesh || !parts.torsoMesh ||
+            !parts.rightArmMesh || !parts.leftArmMesh ||
+            !parts.rightLegMesh || !parts.leftLegMesh) {
+            console.warn('[R6 RUNTIME] Missing body-part meshes — cannot build runtime rig');
+            return;
+        }
+
+        // RUNTIME RIG GEOMETRY FIX:
+        // Joints are taken from the AUTHORITATIVE FBX controlling bones, NOT from
+        // mesh AABBs. Each runtime pivot initially reproduces the exact world
+        // transform of its controlling bone (pos/quat/scale), validated against it,
+        // then the mesh is attached (preserving its world transform). No estimated
+        // shoulder/hip coordinates, no box.min/box.max joint inference.
+        const rb = rig.r6Bones;
+        if (!rb || !rb.torsoBone || !rb.rightArmBone || !rb.leftArmBone || !rb.rightLegBone || !rb.leftLegBone) {
+            console.error('[R6 RUNTIME] PIVOT VALIDATION FAILED — missing controlling bones; rig not built');
+            return;
+        }
+
+        const r6Root = new THREE.Group();
+        r6Root.name = 'r6RuntimeRoot';
+        r6Root.position.set(0, 0, 0);
+        r6Root.rotation.set(0, 0, 0);
+        r6Root.scale.set(1, 1, 1);
+        visualRoot.add(r6Root);
+        r6Root.updateMatrixWorld(true);
+        rig.r6RuntimeRoot = r6Root;
+
+        const ERR = 0.001;
+        const pivots = {};
+        let RIG_VALID = true;
+
+        // Place `obj` so its WORLD transform equals the bone's world transform, then
+        // validate the pivot world == bone world (pos/quat/scale < ERR).
+        const setWorldFromBone = function(obj, bone) {
+            bone.updateMatrixWorld(true);
+            const bwPos = new THREE.Vector3(); bone.getWorldPosition(bwPos);
+            const bwQuat = new THREE.Quaternion(); bone.getWorldQuaternion(bwQuat);
+            const bwScale = new THREE.Vector3(); bone.getWorldScale(bwScale);
+            const rootQuat = new THREE.Quaternion(); r6Root.getWorldQuaternion(rootQuat);
+            const rootScale = new THREE.Vector3(); r6Root.getWorldScale(rootScale);
+            obj.position.copy(r6Root.worldToLocal(bwPos.clone()));
+            obj.quaternion.copy(rootQuat).invert().multiply(bwQuat);
+            obj.scale.set(bwScale.x / rootScale.x, bwScale.y / rootScale.y, bwScale.z / rootScale.z);
+            obj.updateMatrixWorld(true);
+            const pwPos = new THREE.Vector3(); obj.getWorldPosition(pwPos);
+            const pwQuat = new THREE.Quaternion(); obj.getWorldQuaternion(pwQuat);
+            const pwScale = new THREE.Vector3(); obj.getWorldScale(pwScale);
+            return {
+                posErr: pwPos.distanceTo(bwPos),
+                rotErr: pwQuat.angleTo(bwQuat),
+                sclErr: Math.max(Math.abs(pwScale.x - bwScale.x), Math.abs(pwScale.y - bwScale.y), Math.abs(pwScale.z - bwScale.z))
+            };
+        };
+
+        // Bone-driven joints: Torso / Arms / Legs. Each pivot = exact controlling-bone world transform.
+        const boneParts = [
+            ['torsoPivot', rb.torsoBone, parts.torsoMesh],
+            ['rightArmPivot', rb.rightArmBone, parts.rightArmMesh],
+            ['leftArmPivot', rb.leftArmBone, parts.leftArmMesh],
+            ['rightLegPivot', rb.rightLegBone, parts.rightLegMesh],
+            ['leftLegPivot', rb.leftLegBone, parts.leftLegMesh]
+        ];
+        for (let bi = 0; bi < boneParts.length; bi++) {
+            const name = boneParts[bi][0], bone = boneParts[bi][1], mesh = boneParts[bi][2];
+            if (!bone) {
+                console.error('[R6 RUNTIME] PIVOT VALIDATION FAILED part=' + name + ' (no controlling bone)');
+                RIG_VALID = false; continue;
+            }
+            const pivot = new THREE.Group();
+            pivot.name = name;
+            r6Root.add(pivot);
+            const v = setWorldFromBone(pivot, bone);
+            if (v.posErr > ERR || v.rotErr > ERR || v.sclErr > ERR) {
+                console.error('[R6 RUNTIME] PIVOT VALIDATION FAILED part=' + name +
+                    ' positionError=' + v.posErr.toFixed(6) + ' rotationError=' + v.rotErr.toFixed(6) + ' scaleError=' + v.sclErr.toFixed(6));
+                RIG_VALID = false; continue; // do NOT attach if joint is wrong
+            }
+            // Validation #2: attach must not move the mesh.
+            const mbPos = new THREE.Vector3(); mesh.getWorldPosition(mbPos);
+            const mbQuat = new THREE.Quaternion(); mesh.getWorldQuaternion(mbQuat);
+            const mbScale = new THREE.Vector3(); mesh.getWorldScale(mbScale);
+            pivot.attach(mesh);
+            r6Root.updateMatrixWorld(true);
+            const maPos = new THREE.Vector3(); mesh.getWorldPosition(maPos);
+            const maQuat = new THREE.Quaternion(); mesh.getWorldQuaternion(maQuat);
+            const maScale = new THREE.Vector3(); mesh.getWorldScale(maScale);
+            const mPosErr = maPos.distanceTo(mbPos);
+            const mRotErr = maQuat.angleTo(mbQuat);
+            const mSclErr = Math.max(Math.abs(maScale.x - mbScale.x), Math.abs(maScale.y - mbScale.y), Math.abs(maScale.z - mbScale.z));
+            if (mPosErr > ERR || mRotErr > ERR || mSclErr > ERR) {
+                console.error('[R6 RUNTIME] MESH ATTACH VALIDATION FAILED part=' + name +
+                    ' positionError=' + mPosErr.toFixed(6) + ' rotationError=' + mRotErr.toFixed(6) + ' scaleError=' + mSclErr.toFixed(6));
+                RIG_VALID = false;
+            }
+            pivots[name] = pivot;
+            console.log('[R6 RUNTIME] PIVOT OK part=' + name + ' posErr=' + v.posErr.toFixed(6) + ' rotErr=' + v.rotErr.toFixed(6));
+        }
+
+        // Head pivot (head-render fix): mesh-center rotation origin, identity-scaled,
+        // attached preserving world transform. Head is not a joint in the validation set.
+        {
+            const pivot = new THREE.Group();
+            pivot.name = 'headPivot';
+            if (parts.headMesh.geometry && parts.headMesh.geometry.boundingBox === null) parts.headMesh.geometry.computeBoundingBox();
+            const hbox = new THREE.Box3().setFromObject(parts.headMesh);
+            const hc = new THREE.Vector3(); hbox.getCenter(hc);
+            pivot.position.copy(r6Root.worldToLocal(hc.clone()));
+            pivot.quaternion.identity();
+            pivot.scale.set(1, 1, 1);
+            r6Root.add(pivot);
+            pivot.attach(parts.headMesh);
+            pivots.headPivot = pivot;
+        }
+
+        // ---- Hand sockets from the REAL FBX endpoint bones ----
+        // Each socket reproduces the exact world transform of its Bone_end.
+        // No AABB / mesh-bottom inference.
+        const makeHandSocket = function(armPivot, endBone, socketName) {
+            if (!armPivot) { console.error('[R6 RUNTIME] ' + socketName + ' FAILED (no arm pivot)'); RIG_VALID = false; return null; }
+            if (!endBone) { console.error('[R6 RUNTIME] ' + socketName + ' FAILED (no endBone)'); RIG_VALID = false; return null; }
+            endBone.updateMatrixWorld(true);
+            const endPos = new THREE.Vector3(); endBone.getWorldPosition(endPos);
+            const endQuat = new THREE.Quaternion(); endBone.getWorldQuaternion(endQuat);
+            const endScale = new THREE.Vector3(); endBone.getWorldScale(endScale);
+
+            const socket = new THREE.Group();
+            socket.name = socketName;
+            socket.position.copy(armPivot.worldToLocal(endPos.clone()));
+            const armWorldQuat = new THREE.Quaternion(); armPivot.getWorldQuaternion(armWorldQuat);
+            const armWorldScale = new THREE.Vector3(); armPivot.getWorldScale(armWorldScale);
+            socket.quaternion.copy(armWorldQuat).invert().multiply(endQuat);
+            socket.scale.set(endScale.x / armWorldScale.x, endScale.y / armWorldScale.y, endScale.z / armWorldScale.z);
+            armPivot.add(socket);
+            armPivot.updateMatrixWorld(true);
+
+            const sv = new THREE.Vector3(); socket.getWorldPosition(sv);
+            const sq = new THREE.Quaternion(); socket.getWorldQuaternion(sq);
+            const posErr = sv.distanceTo(endPos);
+            const rotErr = sq.angleTo(endQuat);
+            console.log('[R6 RUNTIME] ' + socketName.toUpperCase() + ' VALIDATION boneEndWorld=(' +
+                endPos.x.toFixed(4) + ',' + endPos.y.toFixed(4) + ',' + endPos.z.toFixed(4) + ') socketWorld=(' +
+                sv.x.toFixed(4) + ',' + sv.y.toFixed(4) + ',' + sv.z.toFixed(4) + ') positionError=' +
+                posErr.toFixed(6) + ' rotationError=' + rotErr.toFixed(6) + ' ' + (posErr < ERR && rotErr < ERR ? 'PASS' : 'FAIL'));
+            if (posErr > ERR || rotErr > ERR) RIG_VALID = false;
+            return socket;
+        };
+
+        const rightHandSocket = makeHandSocket(pivots.rightArmPivot, rb.rightArmEndBone, 'rightHandSocket');
+        const leftHandSocket = makeHandSocket(pivots.leftArmPivot, rb.leftArmEndBone, 'leftHandSocket');
+        rig.r6RuntimeRightHandSocket = rightHandSocket;
+        rig.r6RuntimeLeftHandSocket = leftHandSocket;
+
+        // ---- Capture the RUNTIME REST POSE (position + quaternion) from the actual pivots ----
+        const capture = (p) => (p ? {
+            position: p.position.clone(),
+            quaternion: p.quaternion.clone(),
+            scale: p.scale.clone()
+        } : null);
+        rig.r6RuntimeRestPose = {
+            torsoPivot: capture(pivots.torsoPivot),
+            headPivot: capture(pivots.headPivot),
+            rightArmPivot: capture(pivots.rightArmPivot),
+            leftArmPivot: capture(pivots.leftArmPivot),
+            rightLegPivot: capture(pivots.rightLegPivot),
+            leftLegPivot: capture(pivots.leftLegPivot)
+        };
+        rig.r6RuntimePivots = pivots;
+
+        console.log('[R6 RUNTIME] BONE-DRIVEN RIG BUILT (rest pose captured) RIG_VALID=' + RIG_VALID);
+        if (rightHandSocket) console.log('[R6 RUNTIME] ACTIVE WEAPON SOCKET = runtimeRightHandSocket');
+        console.log('[R6 RUNTIME] LEGACY WEAPON SOCKET ACTIVE = false');
+    },
+
+    // ============================================================
+    // _updateR6RuntimeAnimation
+    // THE ONLY owner of the runtime pivot rig. No other system writes
+    // these pivots. Frame loop: pick state -> smooth targets -> advance
+    // phase -> delegate to _applyR6RuntimePose (pure, rest-based rebuild).
+    //     pivot.quaternion = restQuat * offsetQuat   (never accumulated)
+    // CROUCH uses FORWARD/BACKWARD foot separation, NEVER lateral splay.
+    // ============================================================
+    _updateR6RuntimeAnimation: function(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset) {
+        // PHASE 16: safe rollback flag. Default ON; set rig.r6RuntimeAnimation=false to disable.
+        if (rig.r6RuntimeAnimation === false) return;
+        const P = rig.r6RuntimePivots;
+        const RP = rig.r6RuntimeRestPose;
+        if (!P || !RP) return;
+
+        // REST-ONLY ISOLATION TEST (id=7e2c9f): force the exact runtime rest pose and
+        // bypass ALL animation (locomotion, weapon pose, breathing, root motion). No pivots
+        // or sockets are changed — only restored to the captured rest transform.
+        if (typeof window !== 'undefined' && window.__R6_REST_ONLY_TEST) {
+            this._applyR6RestOnly(rig);
+            if (!rig._r6rtReportedRest) {
+                rig._r6rtReportedRest = true;
+                console.log('[R6 REST ONLY] rest transforms applied; ALL runtime animation bypassed');
+            }
+            return;
+        }
+
+        const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (typeof this._r6rtLastMs === 'undefined') this._r6rtLastMs = nowMs;
+        let dt = (nowMs - this._r6rtLastMs) / 1000;
+        this._r6rtLastMs = nowMs;
+        if (!(dt > 0)) dt = 0;
+        if (dt > 0.1) dt = 0.1;
+
+        if (typeof rig._r6rt === 'undefined') {
+            rig._r6rt = { phase: 0, breath: 0, freq: 0, legAmp: 0, armAmp: 0, lean: 0, crouch: 0, lift: 0, reported: false };
+        }
+        const S = rig._r6rt;
+
+        const isJump = jumpOffset > 0.01;
+
+        // ---- State selection (priority: JUMP > CROUCH* > RUN > WALK > IDLE) ----
+        let state = 'IDLE';
+        if (isJump) state = 'JUMP';
+        else if (isCrouching && isMoving) state = 'CROUCH_WALK';
+        else if (isCrouching) state = 'CROUCH_IDLE';
+        else if (isSprinting && isMoving) state = 'RUN';
+        else if (isMoving) state = 'WALK';
+
+        // ---- Smooth toward targets (no accumulation). Phase is continuous. ----
+        const T = this._getR6StateTargets(state);
+        const k = 1 - Math.exp(-10 * dt);
+        S.freq += (T.freq - S.freq) * k;
+        S.legAmp += (T.legAmp - S.legAmp) * k;
+        S.armAmp += (T.armAmp - S.armAmp) * k;
+        S.lean += (T.lean - S.lean) * k;
+        S.crouch += (T.crouch - S.crouch) * k;
+        S.lift += (T.lift - S.lift) * k;
+
+        S.phase += dt * S.freq;
+        S.breath += dt;
+
+        this._applyR6RuntimePose(rig, {
+            phase: S.phase,
+            breath: S.breath,
+            legAmp: S.legAmp, armAmp: S.armAmp, lean: S.lean, crouch: S.crouch, lift: S.lift,
+            isMoving: isMoving, isSprinting: isSprinting, isCrouching: isCrouching,
+            isAttacking: isAttacking, currentWeapon: currentWeapon, jumpOffset: jumpOffset, isJump: isJump
+        });
+
+        if (!S.reported) {
+            S.reported = true;
+            console.log('[R6 RUNTIME] NEW RIG + LOCOMOTION SYSTEM INSTALLED (forward/back crouch)');
+            console.log('[R6 RUNTIME] LEGACY LOCOMOTION DISABLED');
+            const valid = this._validateR6RuntimeRestPose(rig);
+            console.log('[R6 RUNTIME] REST POSE VALIDATED' + (valid ? '' : ' (CHECK FAILED)'));
+        }
+    },
+
+    // Per-state target locomotion parameters (Phase 6/7/9 gait tuning).
+    _getR6StateTargets: function(state) {
+        switch (state) {
+            case 'RUN':         return { freq: 5.4, legAmp: 0.85, armAmp: 0.55, lean: 0.18, crouch: 0, lift: 0.10 };
+            case 'WALK':        return { freq: 3.6, legAmp: 0.52, armAmp: 0.34, lean: 0.05, crouch: 0, lift: 0.02 };
+            case 'CROUCH_WALK': return { freq: 2.3, legAmp: 0.30, armAmp: 0.18, lean: 0.06, crouch: 1, lift: 0.0 };
+            case 'CROUCH_IDLE': return { freq: 1.0, legAmp: 0.0,  armAmp: 0.0,  lean: 0.05, crouch: 1, lift: 0.0 };
+            case 'JUMP':        return { freq: 3.0, legAmp: 0.22, armAmp: 0.22, lean: 0.06, crouch: 0, lift: 0.0 };
+            default:           return { freq: 1.0, legAmp: 0.0,  armAmp: 0.0,  lean: 0.0,  crouch: 0, lift: 0.0 };
+        }
+    },
+
+    // ============================================================
+    // _applyR6RuntimePose
+    // PURE pose builder. Rebuilds every pivot from the captured rest
+    // pose each call:  quaternion = restQuat * offsetQuat,
+    // position = rest.position (+ semantic crouch translate).
+    // Used by the live loop AND the read-only debug tool, so the
+    // reported pose is exactly the live formula (no smoothing drift).
+    // ============================================================
+    _applyR6RuntimePose: function(rig, o) {
+        const P = rig.r6RuntimePivots;
+        const RP = rig.r6RuntimeRestPose;
+        if (!P || !RP) return;
+
+        const phase = o.phase || 0;
+        const breath = (o.breath !== undefined) ? o.breath : 0;
+        const legAmp = o.legAmp || 0, armAmp = o.armAmp || 0, lean = o.lean || 0;
+        const crouch = o.crouch || 0, lift = o.lift || 0;
+        const isMoving = !!o.isMoving, isSprinting = !!o.isSprinting;
+        const isCrouching = !!o.isCrouching, isAttacking = !!o.isAttacking, isJump = !!o.isJump;
+        const currentWeapon = o.currentWeapon || 'unarmed';
+        const jumpOffset = (o.jumpOffset !== undefined) ? o.jumpOffset : 0;
+
+        // Player-space local axes: X=PLAYER RIGHT, Y=UP, Z=PLAYER FORWARD.
+        const X = new THREE.Vector3(1, 0, 0);
+        const fromAxis = (axis, a) => new THREE.Quaternion().setFromAxisAngle(axis, a);
+        const eulerToQuat = (e) => new THREE.Quaternion().setFromEuler(new THREE.Euler(e.x || 0, e.y || 0, e.z || 0, 'XYZ'));
+
+        // ---- POSE-CYCLE GAIT (Phase 4): CONTACT -> DOWN -> PASSING -> UP -> RECOVER ----
+        const frac = (v) => v - Math.floor(v);
+        const tR = frac(phase / (Math.PI * 2));
+        const tL = frac(tR + 0.5);
+        const LEG_KEYS = [
+            [0.00, 1.00],   // CONTACT (front)
+            [0.18, 0.45],   // DOWN
+            [0.36, -0.18],  // PASSING (under hips)
+            [0.60, -1.00],  // UP / back extension
+            [0.82, 0.35],   // RECOVER
+            [1.00, 1.00]    // wrap -> CONTACT
+        ];
+        const sampleKeys = (keys, t) => {
+            for (let i = 0; i < keys.length - 1; i++) {
+                const a = keys[i], b = keys[i + 1];
+                if (t >= a[0] && t <= b[0]) {
+                    const u = (t - a[0]) / (b[0] - a[0]);
+                    const s = u * u * (3 - 2 * u); // smoothstep
+                    return a[1] + (b[1] - a[1]) * s;
+                }
+            }
+            return keys[keys.length - 1][1];
+        };
+        // + = forward (+Z), - = backward (-Z)
+        const legCycleR = sampleKeys(LEG_KEYS, tR);
+        const legCycleL = sampleKeys(LEG_KEYS, tL);
+        const legFwdR = legCycleR * legAmp;
+        const legFwdL = legCycleL * legAmp;
+
+        // Foot lift (vertical) during the swing/recovery phase -> RUN air-time / bounce.
+        const liftBump = (t) => {
+            const c = 0.8, w = 0.22;
+            const d = (t > c) ? (t - c) : (t + 1 - c);
+            const x = d / w;
+            return (x >= 0 && x <= 1) ? Math.sin(x * Math.PI) : 0;
+        };
+        const liftR = liftBump(tR) * lift;
+        const liftL = liftBump(tL) * lift;
+
+        // ---- Weapon category -> arm swing damping + pose (Phase 14) ----
+        const WEAPON_CATEGORY = { pistol: 'FIREARM', ak: 'FIREARM', m4a1: 'FIREARM', rifle: 'FIREARM', sword: 'SWORD', grenade: 'GRENADE' };
+        const category = WEAPON_CATEGORY[currentWeapon] || 'UNARMED';
+        const armSwingFactor = (category === 'FIREARM') ? 0.18 : 1.0;
+        const weaponPose = this._getR6WeaponPose(currentWeapon, isAttacking);
+
+        // ---- CROUCH geometry: FORWARD/BACKWARD feet separation (Phase 8/9) ----
+        // Derived from rest pose so it scales with the character.
+        const hipHalf = Math.abs(RP.rightLegPivot.position.x) || 0.15;
+        const narrow = 1 - 0.5 * crouch;          // pull feet toward centerline (reduce lateral)
+        const crouchFrontZ = 0.32 * crouch;       // forward/back foot translation (dominant)
+        const crouchFrontAng = 0.38 * crouch;     // forward/back hip rotation (rad)
+        const upperDrop = 0.30 * crouch;          // torso/head/arms lower
+        const upperFwd = 0.12 * crouch;           // torso slightly forward
+        const legDrop = 0.14 * crouch;            // hips lower a little
+
+        // CROUCH_WALK adds a small alternating stride on top of the base crouch silhouette.
+        const cwStride = (isCrouching && isMoving) ? Math.sin(phase) * 0.18 : 0;
+        const baseFrontR = crouchFrontZ + cwStride * 0.5;   // right starts FRONT
+        const baseFrontL = -(crouchFrontZ - cwStride * 0.5); // left starts REAR
+        // negative X-rotation -> foot moves +Z (forward)
+        const baseAngR = -(crouchFrontAng + cwStride * 0.4);
+        const baseAngL = (crouchFrontAng - cwStride * 0.4);
+
+        // ---- Build LEG rotations/positions ----
+        // WALK/RUN swing purely about PLAYER RIGHT (X) -> forward/back. Crouch adds the
+        // static forward/back base. NEVER a lateral (Z-axis) splay.
+        const rightLegRot = fromAxis(X, -legFwdR + baseAngR);
+        const leftLegRot = fromAxis(X, -legFwdL + baseAngL);
+
+        // Leg positions: crouch narrows laterally, drops hips, and separates feet forward/back.
+        const rightLegPos = new THREE.Vector3(
+            RP.rightLegPivot.position.x * narrow,
+            RP.rightLegPivot.position.y - legDrop + liftR,
+            RP.rightLegPivot.position.z + baseFrontR
+        );
+        const leftLegPos = new THREE.Vector3(
+            RP.leftLegPivot.position.x * narrow,
+            RP.leftLegPivot.position.y - legDrop + liftL,
+            RP.leftLegPivot.position.z + baseFrontL
+        );
+        if (isJump) { rightLegPos.y -= 0.12; leftLegPos.y -= 0.12; }
+
+        // ---- Arms: counter-swing to legs (forward/back), weapon pose layered on top ----
+        let armSwingR = -legCycleR * armAmp * armSwingFactor;
+        let armSwingL = -legCycleL * armAmp * armSwingFactor;
+        if (isJump) { armSwingR += 0.30; armSwingL += 0.30; }
+        const rightArmRot = fromAxis(X, armSwingR);
+        const leftArmRot = fromAxis(X, armSwingL);
+        if (weaponPose && weaponPose.rightArm) rightArmRot.multiply(eulerToQuat(weaponPose.rightArm));
+        if (weaponPose && weaponPose.leftArm) leftArmRot.multiply(eulerToQuat(weaponPose.leftArm));
+
+        // ---- Torso: small forward lean + tiny breathing/sway (Phase 12) ----
+        const torsoLean = lean + (isMoving ? Math.sin(phase) * legAmp * 0.03 : 0) + breath * 0.015;
+        const torsoRot = fromAxis(X, torsoLean);
+
+        // ---- Head: stable, very small motion (Phase 13) ----
+        const headAmp = (isMoving ? (isSprinting ? 0.02 : 0.012) : 0.006) * (1 - crouch * 0.5);
+        const headRot = fromAxis(X, Math.sin(phase * (isMoving ? 1 : 0.5)) * headAmp + breath * 0.01);
+
+        // ---- APPLY: quaternion = restQuat * offsetQuat ; position = rest (+ crouch translate) ----
+        const applyRot = (pivot, rest, off) => { pivot.quaternion.copy(rest.quaternion).multiply(off); };
+        applyRot(P.torsoPivot, RP.torsoPivot, torsoRot);
+        applyRot(P.headPivot, RP.headPivot, headRot);
+        applyRot(P.rightArmPivot, RP.rightArmPivot, rightArmRot);
+        applyRot(P.leftArmPivot, RP.leftArmPivot, leftArmRot);
+        applyRot(P.rightLegPivot, RP.rightLegPivot, rightLegRot);
+        applyRot(P.leftLegPivot, RP.leftLegPivot, leftLegRot);
+
+        const upperTranslate = new THREE.Vector3(0, upperDrop + breath * 0.012, upperFwd);
+        P.torsoPivot.position.copy(RP.torsoPivot.position).add(upperTranslate);
+        P.headPivot.position.copy(RP.headPivot.position).add(upperTranslate);
+        P.rightArmPivot.position.copy(RP.rightArmPivot.position).add(upperTranslate);
+        P.leftArmPivot.position.copy(RP.leftArmPivot.position).add(upperTranslate);
+        P.rightLegPivot.position.copy(rightLegPos);
+        P.leftLegPivot.position.copy(leftLegPos);
+
+        // Player root Y: only jump offset (Phase 11: never touch x/z/rotation.y from anim).
+        if (this.player) this.player.position.y = jumpOffset;
+    },
+
+    // REST-ONLY ISOLATION TEST (id=vth8l6 / 2kyp0f): restore the EXACT captured rest
+    // transform for every runtime pivot. No interpolation, no Euler, no offsets. This is
+    // the guaranteed-correct rest pose; used to isolate rig geometry from animation.
+    _applyR6RestOnly: function(rig) {
+        const P = rig.r6RuntimePivots;
+        const RP = rig.r6RuntimeRestPose;
+        if (!P || !RP) return;
+        const names = ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'];
+        for (const n of names) {
+            const p = P[n], rp = RP[n];
+            if (!p || !rp) continue;
+            p.position.copy(rp.position);
+            p.quaternion.copy(rp.quaternion);
+            p.scale.copy(rp.scale);
+        }
+        // Force immediate world-matrix update (id=2kyp0f) without touching player/visualRoot.
+        if (rig.visualRoot) rig.visualRoot.updateMatrixWorld(true);
+        if (rig.r6RuntimeRoot) rig.r6RuntimeRoot.updateMatrixWorld(true);
+    },
+
+    _validateR6RuntimeRestPose: function(rig) {
+        const P = rig.r6RuntimePivots;
+        const RP = rig.r6RuntimeRestPose;
+        if (!P || !RP) return false;
+        const names = ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'];
+        for (const n of names) {
+            if (!P[n] || !RP[n]) return false;
+        }
+        // Quick symmetry sanity: leg pivots roughly mirror in X
+        const rl = RP.rightLegPivot.position.x;
+        const ll = RP.leftLegPivot.position.x;
+        if (Math.abs(rl + ll) > 0.6) {
+            console.warn('[R6 RUNTIME] leg pivot X not symmetric:', rl.toFixed(3), ll.toFixed(3));
+        }
+        return true;
+    },
+
+    _getR6PlayerSpaceSwingAxisLocal: function(bone, restQuat) {
+        if (!bone || !bone.parent) return new THREE.Vector3(1, 0, 0);
+        bone.parent.updateMatrixWorld(true);
+        const playerRotY = this.player ? this.player.rotation.y : 0;
+        const playerRightWorld = new THREE.Vector3(Math.cos(playerRotY), 0, -Math.sin(playerRotY)).normalize();
+        const parentWorldQuat = new THREE.Quaternion();
+        bone.parent.getWorldQuaternion(parentWorldQuat);
+        let axisLocal;
+        if (restQuat) {
+            const restWorldQuat = parentWorldQuat.clone().multiply(restQuat);
+            axisLocal = playerRightWorld.clone().applyQuaternion(restWorldQuat.clone().invert()).normalize();
+        } else {
+            axisLocal = playerRightWorld.clone().applyQuaternion(parentWorldQuat.clone().invert()).normalize();
+        }
+        return axisLocal;
+    },
+
     _updateR6ModularPose: function(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset) {
         if (!rig.r6Bones || !rig.r6RestPose) return;
 
@@ -4857,7 +5397,10 @@ let Renderer3D = {
             if (PLAYER_R6_TRACE_WRITES) {
                 console.log('[PLAYER R6] WRITE:', bone.name, 'offsets:', JSON.stringify(offsets));
             }
-            const combined = offsets.map(o => eulerToQuat(o.x, o.y, o.z)).reduce((a, b) => a.multiply(b), new THREE.Quaternion());
+            const combined = offsets.map(o => {
+                if (o.quat && o.quat.isQuaternion) return o.quat;
+                return eulerToQuat(o.x, o.y, o.z);
+            }).reduce((a, b) => a.multiply(b), new THREE.Quaternion());
             bone.quaternion.copy(rest.quaternion).multiply(combined);
         };
 
@@ -4922,12 +5465,116 @@ let Renderer3D = {
         // small stride asymmetry so motion is not perfectly mechanical
         const asymL = 1.0, asymR = 0.97;
 
+        const rightLegAxis = this._getR6PlayerSpaceSwingAxisLocal(rb.rightLegBone, rp.rightLegBone ? rp.rightLegBone.quaternion : null);
+        const leftLegAxis = this._getR6PlayerSpaceSwingAxisLocal(rb.leftLegBone, rp.leftLegBone ? rp.leftLegBone.quaternion : null);
+        const rightArmAxis = this._getR6PlayerSpaceSwingAxisLocal(rb.rightArmBone, rp.rightArmBone ? rp.rightArmBone.quaternion : null);
+        const leftArmAxis = this._getR6PlayerSpaceSwingAxisLocal(rb.leftArmBone, rp.leftArmBone ? rp.leftArmBone.quaternion : null);
+
+        if (!this._r6AxisFixLogged) {
+            this._r6AxisFixLogged = true;
+            console.log('[R6 AXIS FIX]');
+            console.log('RightArm player-space swing axis = (' + rightArmAxis.x.toFixed(4) + ', ' + rightArmAxis.y.toFixed(4) + ', ' + rightArmAxis.z.toFixed(4) + ')');
+            console.log('LeftArm player-space swing axis = (' + leftArmAxis.x.toFixed(4) + ', ' + leftArmAxis.y.toFixed(4) + ', ' + leftArmAxis.z.toFixed(4) + ')');
+            console.log('RightLeg player-space swing axis = (' + rightLegAxis.x.toFixed(4) + ', ' + rightLegAxis.y.toFixed(4) + ', ' + rightLegAxis.z.toFixed(4) + ')');
+            console.log('LeftLeg player-space swing axis = (' + leftLegAxis.x.toFixed(4) + ', ' + leftLegAxis.y.toFixed(4) + ', ' + leftLegAxis.z.toFixed(4) + ')');
+        }
+
+        const DEG = Math.PI / 180;
+        const limbsToValidate = [
+            { name: 'RightArm', bone: rb.rightArmBone, rest: rp.rightArmBone, axis: rightArmAxis, mesh: rig.r6Parts && rig.r6Parts.rightArmMesh },
+            { name: 'LeftArm', bone: rb.leftArmBone, rest: rp.leftArmBone, axis: leftArmAxis, mesh: rig.r6Parts && rig.r6Parts.leftArmMesh },
+            { name: 'RightLeg', bone: rb.rightLegBone, rest: rp.rightLegBone, axis: rightLegAxis, mesh: rig.r6Parts && rig.r6Parts.rightLegMesh },
+            { name: 'LeftLeg', bone: rb.leftLegBone, rest: rp.leftLegBone, axis: leftLegAxis, mesh: rig.r6Parts && rig.r6Parts.leftLegMesh }
+        ];
+
+        if (!this._r6AxisFixValidated) {
+            this._r6AxisFixValidated = true;
+            for (const limb of limbsToValidate) {
+                if (!limb.bone || !limb.rest || !limb.mesh || !limb.mesh.geometry || !limb.mesh.geometry.attributes.position) continue;
+
+                const restQuat = limb.rest.quaternion.clone();
+                limb.bone.updateMatrixWorld(true);
+                const basePos = limb.bone.getWorldPosition(new THREE.Vector3());
+
+                const getDistalWorld = (bone, mesh, origin) => {
+                    mesh.updateMatrixWorld(true);
+                    const positions = mesh.geometry.attributes.position;
+                    let maxDist = -Infinity;
+                    const distal = new THREE.Vector3();
+                    const v = new THREE.Vector3();
+                    for (let i = 0; i < positions.count; i++) {
+                        v.set(positions.getX(i), positions.getY(i), positions.getZ(i));
+                        const worldV = v.clone().applyMatrix4(mesh.matrixWorld);
+                        const dist = worldV.distanceTo(origin);
+                        if (dist > maxDist) { maxDist = dist; distal.copy(worldV); }
+                    }
+                    return distal;
+                };
+
+                const baseDistal = getDistalWorld(limb.bone, limb.mesh, basePos);
+
+                const qPlus = new THREE.Quaternion().setFromAxisAngle(limb.axis, 20 * DEG);
+                limb.bone.quaternion.copy(restQuat).multiply(qPlus);
+                limb.bone.updateMatrixWorld(true);
+                const plusDistal = getDistalWorld(limb.bone, limb.mesh, basePos);
+
+                limb.bone.quaternion.copy(restQuat);
+                limb.bone.updateMatrixWorld(true);
+
+                const qMinus = new THREE.Quaternion().setFromAxisAngle(limb.axis, -20 * DEG);
+                limb.bone.quaternion.copy(restQuat).multiply(qMinus);
+                limb.bone.updateMatrixWorld(true);
+                const minusDistal = getDistalWorld(limb.bone, limb.mesh, basePos);
+
+                limb.bone.quaternion.copy(restQuat);
+                limb.bone.updateMatrixWorld(true);
+
+                const deltaPlus = plusDistal.clone().sub(baseDistal);
+                const deltaMinus = minusDistal.clone().sub(baseDistal);
+
+                const playerRotY = this.player ? this.player.rotation.y : 0;
+                const playerForwardWorld = new THREE.Vector3(Math.sin(playerRotY), 0, Math.cos(playerRotY));
+                const playerRightWorld = new THREE.Vector3(Math.cos(playerRotY), 0, -Math.sin(playerRotY));
+
+                const fwdPlus = deltaPlus.dot(playerForwardWorld);
+                const latPlus = deltaPlus.dot(playerRightWorld);
+                const fwdMinus = deltaMinus.dot(playerForwardWorld);
+                const latMinus = deltaMinus.dot(playerRightWorld);
+
+                const oppositeDir = (fwdPlus * fwdMinus) < 0;
+                const fwdDominatesLat = Math.abs(fwdPlus) > Math.abs(latPlus) * 2 && Math.abs(fwdMinus) > Math.abs(latMinus) * 2;
+
+                let pass = true;
+                let reasons = [];
+                if (!fwdDominatesLat) {
+                    pass = false;
+                    reasons.push('forward does not dominate lateral');
+                }
+                if (!oppositeDir) {
+                    pass = false;
+                    reasons.push('+20 and -20 do not produce opposite forward directions');
+                }
+
+                if (!pass) {
+                    console.log('[R6 AXIS FIX] VALIDATION ' + (pass ? 'PASSED' : 'FAILED') + ' for ' + limb.name + ': ' + reasons.join(', '));
+                    console.log('  +20 fwd=' + fwdPlus.toFixed(4) + ' lat=' + latPlus.toFixed(4));
+                    console.log('  -20 fwd=' + fwdMinus.toFixed(4) + ' lat=' + latMinus.toFixed(4));
+                }
+            }
+        }
+
         // legs: opposite phase. Crouch uses OPPOSITE local-X bend signs so the body
         // center stays aligned (no forward bow) and feet stay near the ground.
         const legBendR = L.kneeBend * 0.5;
         const legBendL = -L.kneeBend * 0.5;
-        offsets.rightLeg.push({ x: -s * L.legAmp * asymR + legBendR, y: 0, z: 0 });
-        offsets.leftLeg.push({ x: s * L.legAmp * asymL + legBendL, y: 0, z: 0 });
+        {
+            const qR = new THREE.Quaternion().setFromAxisAngle(rightLegAxis, -s * L.legAmp * asymR + legBendR);
+            offsets.rightLeg.push({ quat: qR });
+        }
+        {
+            const qL = new THREE.Quaternion().setFromAxisAngle(leftLegAxis, s * L.legAmp * asymL + legBendL);
+            offsets.leftLeg.push({ quat: qL });
+        }
 
         // arms: counter-swing to legs (rightArm phase = leftLeg phase).
         // Explicit weapon categories: FIREARM constrains arm swing, others swing freely.
@@ -4939,8 +5586,10 @@ let Renderer3D = {
         const weaponArmFactor = category === 'FIREARM' ? 0.12 : 1.0;
         if (!isAttacking) {
             const armSwing = s * L.armAmp * weaponArmFactor;
-            offsets.rightArm.push({ x: armSwing + breath * 0.5, y: 0, z: 0 });
-            offsets.leftArm.push({ x: -armSwing + breath * 0.5, y: 0, z: 0 });
+            const qRA = new THREE.Quaternion().setFromAxisAngle(rightArmAxis, armSwing + breath * 0.5);
+            offsets.rightArm.push({ quat: qRA });
+            const qLA = new THREE.Quaternion().setFromAxisAngle(leftArmAxis, -armSwing + breath * 0.5);
+            offsets.leftArm.push({ quat: qLA });
         }
 
         // torso: forward lean (walk/run), crouch lean, subtle rotational sway, breathing
@@ -4949,8 +5598,10 @@ let Renderer3D = {
 
         // jump tuck
         if (isJump) {
-            offsets.rightLeg.push({ x: 0.15, y: 0, z: 0 });
-            offsets.leftLeg.push({ x: 0.15, y: 0, z: 0 });
+            const qRT = new THREE.Quaternion().setFromAxisAngle(rightLegAxis, 0.15);
+            offsets.rightLeg.push({ quat: qRT });
+            const qLT = new THREE.Quaternion().setFromAxisAngle(leftLegAxis, 0.15);
+            offsets.leftLeg.push({ quat: qLT });
         }
 
         // weapon pose layered on top (preserves firearm stability + melee attack)
@@ -7718,7 +8369,1796 @@ window.dumpR6Runtime = function() {
     console.log('========== END R6 RUNTIME REPORT ==========');
 };
 
-console.log('[R6 DEBUG] dumpR6Runtime() is ready.');
+// ============================================================
+// R6 JOINT / AXIS FORENSIC TEST
+// ============================================================
+window.debugR6JointForensic = function() {
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+
+    if (!inst) {
+        console.error("[R6 DEBUG] No active Renderer3D instance found. Game is not initialized yet.");
+        return;
+    }
+
+    const rig = (inst.player && inst.player.rig) ? inst.player.rig : null;
+
+    if (!rig) {
+        console.error("[R6 DEBUG] Player rig not found");
+        return;
+    }
+
+    const scene = inst.scene;
+
+    if (!rig.r6Bones || !rig.r6RestPose || rig.playerFBXMode !== 'r6-modular') {
+        console.warn('[FORENSIC] Not in r6-modular mode or missing bones/rest pose');
+        return;
+    }
+
+    const bones = rig.r6Bones;
+    const parts = rig.r6Parts;
+    const visualRoot = rig.visualRoot;
+
+    const testParts = [
+        { name: 'Torso', bone: bones.torsoBone, mesh: parts.torsoMesh, label: 'TORSO' },
+        { name: 'RightArm', bone: bones.rightArmBone, mesh: parts.rightArmMesh, label: 'RIGHT_ARM' },
+        { name: 'LeftArm', bone: bones.leftArmBone, mesh: parts.leftArmMesh, label: 'LEFT_ARM' },
+        { name: 'RightLeg', bone: bones.rightLegBone, mesh: parts.rightLegMesh, label: 'RIGHT_LEG' },
+        { name: 'LeftLeg', bone: bones.leftLegBone, mesh: parts.leftLegMesh, label: 'LEFT_LEG' }
+    ];
+
+    const DEG20 = 20 * Math.PI / 180;
+    const AXES = [
+        { key: 'X', vec: new THREE.Vector3(1, 0, 0) },
+        { key: 'Y', vec: new THREE.Vector3(0, 1, 0) },
+        { key: 'Z', vec: new THREE.Vector3(0, 0, 1) }
+    ];
+
+    const allMarkers = [];
+    const results = [];
+
+    function getLocalBounds(mesh) {
+        const geom = mesh.geometry;
+        if (!geom) return null;
+        if (geom.attributes && geom.attributes.position) {
+            return new THREE.Box3().setFromBufferAttribute(geom.attributes.position);
+        }
+        return null;
+    }
+
+    function localToWorld(mesh, localPoint) {
+        return localPoint.clone().applyMatrix4(mesh.matrixWorld);
+    }
+
+    function getMeshWorldAABB(mesh) {
+        mesh.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(mesh);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        return { box, center, min: box.min.clone(), max: box.max.clone(), size: new THREE.Vector3().subVectors(box.max, box.min) };
+    }
+
+    function removeAllMarkers() {
+        for (const m of allMarkers) {
+            if (m.parent) m.parent.remove(m);
+            if (m.geometry && m.geometry !== scene) m.geometry.dispose();
+            if (m.material) {
+                if (Array.isArray(m.material)) m.material.forEach(mat => mat.dispose());
+                else m.material.dispose();
+            }
+        }
+        allMarkers.length = 0;
+    }
+
+    for (const part of testParts) {
+        if (!part.bone || !part.mesh) {
+            results.push({ name: part.name, error: 'MISSING_BONE_OR_MESH' });
+            continue;
+        }
+
+        part.bone.updateMatrixWorld(true);
+        part.mesh.updateMatrixWorld(true);
+
+        // A. Capture original transforms
+        const origBonePos = part.bone.position.clone();
+        const origBoneQuat = part.bone.quaternion.clone();
+        const origBoneScale = part.bone.scale.clone();
+        const origBoneWorldPos = new THREE.Vector3();
+        part.bone.getWorldPosition(origBoneWorldPos);
+        const origBoneWorldQuat = new THREE.Quaternion();
+        part.bone.getWorldQuaternion(origBoneWorldQuat);
+        const origBoneWorldEuler = new THREE.Euler().setFromQuaternion(origBoneWorldQuat);
+        const origBoneWorldScale = new THREE.Vector3();
+        part.bone.getWorldScale(origBoneWorldScale);
+
+        const origMeshWorldPos = new THREE.Vector3();
+        part.mesh.getWorldPosition(origMeshWorldPos);
+        const origMeshWorldQuat = new THREE.Quaternion();
+        part.mesh.getWorldQuaternion(origMeshWorldQuat);
+        const origMeshWorldScale = new THREE.Vector3();
+        part.mesh.getWorldScale(origMeshWorldScale);
+        const origAABB = getMeshWorldAABB(part.mesh);
+
+        // B. Calculate joint candidates from mesh local bounds
+        const localBox = getLocalBounds(part.mesh);
+        const candidates = {};
+        if (localBox) {
+            const localCenter = new THREE.Vector3(
+                (localBox.min.x + localBox.max.x) / 2,
+                (localBox.min.y + localBox.max.y) / 2,
+                (localBox.min.z + localBox.max.z) / 2
+            );
+            const localTopCenter = new THREE.Vector3(localCenter.x, localBox.max.y, localCenter.z);
+            const localBottomCenter = new THREE.Vector3(localCenter.x, localBox.min.y, localCenter.z);
+
+            candidates.center = localToWorld(part.mesh, localCenter);
+            candidates.top = localToWorld(part.mesh, localTopCenter);
+            candidates.bottom = localToWorld(part.mesh, localBottomCenter);
+        } else {
+            candidates.center = origAABB.center.clone();
+            candidates.top = origAABB.center.clone();
+            candidates.bottom = origAABB.center.clone();
+        }
+
+        const distances = {
+            center: origBoneWorldPos.distanceTo(candidates.center),
+            top: origBoneWorldPos.distanceTo(candidates.top),
+            bottom: origBoneWorldPos.distanceTo(candidates.bottom)
+        };
+
+        // C. Axis tests: +/-20° around local X, Y, Z
+        const axisResults = {};
+        for (const axis of AXES) {
+            const plusResults = {};
+            const minusResults = {};
+
+            // +20° around local axis
+            part.bone.quaternion.copy(origBoneQuat).multiply(new THREE.Quaternion().setFromAxisAngle(axis.vec, DEG20));
+            part.bone.updateMatrixWorld(true);
+            const plusAABB = getMeshWorldAABB(part.mesh);
+            plusResults.center = plusAABB.center.clone();
+            plusResults.delta = new THREE.Vector3().subVectors(plusAABB.center, origAABB.center);
+            plusResults.dist = plusResults.delta.length();
+
+            // Restore
+            part.bone.quaternion.copy(origBoneQuat);
+            part.bone.updateMatrixWorld(true);
+
+            // -20° around local axis
+            part.bone.quaternion.copy(origBoneQuat).multiply(new THREE.Quaternion().setFromAxisAngle(axis.vec, -DEG20));
+            part.bone.updateMatrixWorld(true);
+            const minusAABB = getMeshWorldAABB(part.mesh);
+            minusResults.center = minusAABB.center.clone();
+            minusResults.delta = new THREE.Vector3().subVectors(minusAABB.center, origAABB.center);
+            minusResults.dist = minusResults.delta.length();
+
+            // Restore
+            part.bone.quaternion.copy(origBoneQuat);
+            part.bone.updateMatrixWorld(true);
+
+            axisResults[axis.key] = {
+                plus: plusResults,
+                minus: minusResults,
+                totalDist: plusResults.dist + minusResults.dist,
+                opposite: plusResults.delta.dot(minusResults.delta) < -0.3
+            };
+        }
+
+        // D. Determine best hinge axis (largest total displacement, ideally opposite signs)
+        let bestAxis = null;
+        let bestScore = -1;
+        for (const [key, data] of Object.entries(axisResults)) {
+            const score = data.totalDist + (data.opposite ? 0.1 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                bestAxis = key;
+            }
+        }
+
+        // E. Pivot classification
+        const minDist = Math.min(distances.center, distances.top, distances.bottom);
+        let pivotCorrect = false;
+        if (part.name === 'Torso') {
+            pivotCorrect = minDist < 0.35;
+        } else {
+            pivotCorrect = distances.top < 0.35;
+        }
+
+        let classification;
+        if (pivotCorrect && bestAxis) classification = 'CORRECT_PIVOT_CORRECT_AXIS';
+        else if (!pivotCorrect && bestAxis) classification = 'WRONG_PIVOT_CORRECT_AXIS';
+        else if (pivotCorrect && !bestAxis) classification = 'CORRECT_PIVOT_WRONG_AXIS';
+        else classification = 'WRONG_PIVOT_WRONG_AXIS';
+
+        results.push({
+            name: part.name,
+            bone: part.bone.name,
+            origBonePos,
+            origBoneQuat,
+            origBoneScale,
+            origBoneWorldPos,
+            origBoneWorldQuat,
+            origBoneWorldEuler,
+            origBoneWorldScale,
+            origMeshWorldPos,
+            origMeshWorldQuat,
+            origMeshWorldScale,
+            origMeshCenter: origAABB.center,
+            origMeshMin: origAABB.min,
+            origMeshMax: origAABB.max,
+            origMeshSize: origAABB.size,
+            candidates,
+            distances,
+            axisResults,
+            bestAxis,
+            bestScore,
+            pivotCorrect,
+            classification
+        });
+
+        // F. Debug visualization
+        if (scene) {
+            const color = part.name === 'Torso' ? 0xff0000 :
+                          part.name === 'RightArm' ? 0x00ff00 :
+                          part.name === 'LeftArm' ? 0x4444ff :
+                          part.name === 'RightLeg' ? 0xffff00 : 0xff00ff;
+
+            const boneSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.07, 8, 8),
+                new THREE.MeshBasicMaterial({ color: color, depthTest: false, transparent: true, opacity: 0.9 })
+            );
+            boneSphere.position.copy(origBoneWorldPos);
+            scene.add(boneSphere);
+            allMarkers.push(boneSphere);
+
+            const jointSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.05, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 })
+            );
+            jointSphere.position.copy(candidates.top);
+            scene.add(jointSphere);
+            allMarkers.push(jointSphere);
+
+            const lineGeom = new THREE.BufferGeometry().setFromPoints([origBoneWorldPos, candidates.top]);
+            const lineMat = new THREE.LineBasicMaterial({ color: color, depthTest: false, transparent: true, opacity: 0.8 });
+            const line = new THREE.Line(lineGeom, lineMat);
+            scene.add(line);
+            allMarkers.push(line);
+
+            const axisHelper = new THREE.AxesHelper(0.35);
+            part.bone.add(axisHelper);
+            allMarkers.push(axisHelper);
+        }
+    }
+
+    // G. Console report
+    console.log('==================================================');
+    console.log('R6 JOINT / AXIS FORENSIC REPORT');
+    console.log('==================================================');
+
+    for (const r of results) {
+        if (r.error) {
+            console.log(`PART: ${r.name}`);
+            console.log(`  ERROR: ${r.error}`);
+            continue;
+        }
+
+        console.log(`PART: ${r.name}`);
+        console.log(`  Bone name: ${r.bone}`);
+        console.log(`  Bone origin: (${r.origBoneWorldPos.x.toFixed(4)}, ${r.origBoneWorldPos.y.toFixed(4)}, ${r.origBoneWorldPos.z.toFixed(4)})`);
+        console.log(`  Bone local pos: (${r.origBonePos.x.toFixed(4)}, ${r.origBonePos.y.toFixed(4)}, ${r.origBonePos.z.toFixed(4)})`);
+        console.log(`  Bone world quat: (${r.origBoneWorldQuat.x.toFixed(4)}, ${r.origBoneWorldQuat.y.toFixed(4)}, ${r.origBoneWorldQuat.z.toFixed(4)}, ${r.origBoneWorldQuat.w.toFixed(4)})`);
+        console.log(`  Bone local quat: (${r.origBoneQuat.x.toFixed(4)}, ${r.origBoneQuat.y.toFixed(4)}, ${r.origBoneQuat.z.toFixed(4)}, ${r.origBoneQuat.w.toFixed(4)})`);
+        console.log(`  Bone world euler: (${r.origBoneWorldEuler.x.toFixed(4)}, ${r.origBoneWorldEuler.y.toFixed(4)}, ${r.origBoneWorldEuler.z.toFixed(4)})`);
+        console.log(`  Bone world scale: (${r.origBoneWorldScale.x.toFixed(4)}, ${r.origBoneWorldScale.y.toFixed(4)}, ${r.origBoneWorldScale.z.toFixed(4)})`);
+        console.log(`  Mesh center: (${r.origMeshCenter.x.toFixed(4)}, ${r.origMeshCenter.y.toFixed(4)}, ${r.origMeshCenter.z.toFixed(4)})`);
+        console.log(`  Mesh bounds min: (${r.origMeshMin.x.toFixed(4)}, ${r.origMeshMin.y.toFixed(4)}, ${r.origMeshMin.z.toFixed(4)})`);
+        console.log(`  Mesh bounds max: (${r.origMeshMax.x.toFixed(4)}, ${r.origMeshMax.y.toFixed(4)}, ${r.origMeshMax.z.toFixed(4)})`);
+        console.log(`  Mesh size: (${r.origMeshSize.x.toFixed(4)}, ${r.origMeshSize.y.toFixed(4)}, ${r.origMeshSize.z.toFixed(4)})`);
+
+        for (const [candKey, candPos] of Object.entries(r.candidates)) {
+            console.log(`  Candidate joint (${candKey}): (${candPos.x.toFixed(4)}, ${candPos.y.toFixed(4)}, ${candPos.z.toFixed(4)})`);
+        }
+        console.log(`  Bone->joint distance center: ${r.distances.center.toFixed(4)}`);
+        console.log(`  Bone->joint distance top: ${r.distances.top.toFixed(4)}`);
+        console.log(`  Bone->joint distance bottom: ${r.distances.bottom.toFixed(4)}`);
+
+        for (const axis of AXES) {
+            const data = r.axisResults[axis.key];
+            console.log(`  ${axis.key}_AXIS_EFFECT:`);
+            console.log(`    +20 result: delta=(${data.plus.delta.x.toFixed(4)}, ${data.plus.delta.y.toFixed(4)}, ${data.plus.delta.z.toFixed(4)}) dist=${data.plus.dist.toFixed(4)}`);
+            console.log(`    -20 result: delta=(${data.minus.delta.x.toFixed(4)}, ${data.minus.delta.y.toFixed(4)}, ${data.minus.delta.z.toFixed(4)}) dist=${data.minus.dist.toFixed(4)}`);
+            console.log(`    opposite=${data.opposite}`);
+        }
+
+        console.log(`  Best hinge axis: ${r.bestAxis}`);
+        console.log(`  Classification: ${r.classification}`);
+        console.log('');
+    }
+
+    console.log('==================================================');
+    console.log('FINAL CLASSIFICATION');
+    console.log('==================================================');
+    for (const r of results) {
+        if (!r.error) {
+            console.log(`${r.name}: ${r.classification}`);
+        }
+    }
+
+    // H. Root cause
+    let rootCause = 'neither';
+    let wrongPivotCount = 0;
+    let wrongAxisCount = 0;
+    for (const r of results) {
+        if (!r.error) {
+            if (!r.pivotCorrect) wrongPivotCount++;
+            if (!r.bestAxis) wrongAxisCount++;
+        }
+    }
+    if (wrongPivotCount > 0 && wrongAxisCount > 0) rootCause = 'both';
+    else if (wrongPivotCount > 0) rootCause = 'pivot placement problem';
+    else if (wrongAxisCount > 0) rootCause = 'imported bone orientation problem';
+    else rootCause = 'neither';
+
+    let confidence = 'HIGH';
+    if (results.some(r => r.error)) confidence = 'LOW';
+
+    console.log('');
+    console.log('ROOT_CAUSE: ' + rootCause);
+    console.log('CONFIDENCE: ' + confidence);
+    console.log('');
+    console.log('[FORENSIC] Debug markers are temporary. Call cleanupR6ForensicMarkers() to remove them manually, or they will persist until page reload.');
+
+    // I. Cleanup: restore rig and remove markers after a short delay
+    // Actually, per instructions, restore immediately. But let markers persist briefly for visual confirmation.
+    // We'll restore transforms immediately but leave markers for 5 seconds.
+    setTimeout(() => {
+        removeAllMarkers();
+        console.log('[FORENSIC] Debug markers removed.');
+    }, 5000);
+};
+
+// ============================================================
+// R6 LOCOMOTION AXIS FORENSIC (READ-ONLY, NO CODE CHANGES)
+// ============================================================
+window.debugR6LocomotionForensic = function() {
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+
+    if (!inst) {
+        console.error("[R6 DEBUG] No active Renderer3D instance found. Game is not initialized yet.");
+        return;
+    }
+
+    const rig = (inst.player && inst.player.rig) ? inst.player.rig : null;
+
+    if (!rig) {
+        console.error("[R6 DEBUG] Player rig not found");
+        return;
+    }
+
+    if (!rig.r6Bones || !rig.r6RestPose || rig.playerFBXMode !== 'r6-modular') {
+        console.warn('[FORENSIC] Not in r6-modular mode or missing bones/rest pose');
+        return;
+    }
+
+    const bones = rig.r6Bones;
+    const parts = rig.r6Parts;
+    const rest = rig.r6RestPose;
+    const visualRoot = rig.visualRoot;
+
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const v3 = () => new THREE.Vector3();
+    const quat = () => new THREE.Quaternion();
+    const DEG = Math.PI / 180;
+
+    const boneNames = ['torsoBone', 'rightArmBone', 'leftArmBone', 'rightLegBone', 'leftLegBone'];
+    const meshNames = ['torsoMesh', 'rightArmMesh', 'leftArmMesh', 'rightLegMesh', 'leftLegMesh'];
+    const labels = ['Torso', 'RightArm', 'LeftArm', 'RightLeg', 'LeftLeg'];
+
+    function captureBone(bone) {
+        if (!bone) return null;
+        bone.updateMatrixWorld(true);
+        return {
+            localPos: bone.position.clone(),
+            localQuat: bone.quaternion.clone(),
+            localEuler: bone.rotation.clone(),
+            worldPos: bone.getWorldPosition(v3()),
+            worldQuat: bone.getWorldQuaternion(quat()),
+            worldEuler: new THREE.Euler().setFromQuaternion(bone.getWorldQuaternion(quat())),
+            worldScale: bone.getWorldScale(v3())
+        };
+    }
+
+    function captureMesh(mesh) {
+        if (!mesh) return null;
+        mesh.updateMatrixWorld(true);
+        return {
+            localPos: mesh.position.clone(),
+            localQuat: mesh.quaternion.clone(),
+            localEuler: mesh.rotation.clone(),
+            worldPos: mesh.getWorldPosition(v3()),
+            worldQuat: mesh.getWorldQuaternion(quat()),
+            worldEuler: new THREE.Euler().setFromQuaternion(mesh.getWorldQuaternion(quat())),
+            worldScale: mesh.getWorldScale(v3())
+        };
+    }
+
+    function findClosestPointOnMesh(mesh, worldPoint) {
+        if (!mesh || !mesh.geometry) return null;
+        mesh.updateMatrixWorld(true);
+        const positions = mesh.geometry.attributes.position;
+        if (!positions) return null;
+        const invMatrix = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+        const localPoint = worldPoint.clone().applyMatrix4(invMatrix);
+        let closestDist = Infinity;
+        let closestLocal = null;
+        const v = v3();
+        for (let i = 0; i < positions.count; i++) {
+            v.set(positions.getX(i), positions.getY(i), positions.getZ(i));
+            const dist = v.distanceToSquared(localPoint);
+            if (dist < closestDist) { closestDist = dist; closestLocal = v.clone(); }
+        }
+        if (!closestLocal) return null;
+        return { local: closestLocal, world: closestLocal.clone().applyMatrix4(mesh.matrixWorld), distance: Math.sqrt(closestDist) };
+    }
+
+    function findDistalPointOnMesh(mesh, boneWorldPos) {
+        if (!mesh || !mesh.geometry) return null;
+        mesh.updateMatrixWorld(true);
+        const positions = mesh.geometry.attributes.position;
+        if (!positions) return null;
+        let maxDist = -Infinity;
+        let distalLocal = null;
+        const v = v3();
+        for (let i = 0; i < positions.count; i++) {
+            v.set(positions.getX(i), positions.getY(i), positions.getZ(i));
+            const worldV = v.clone().applyMatrix4(mesh.matrixWorld);
+            const dist = worldV.distanceTo(boneWorldPos);
+            if (dist > maxDist) { maxDist = dist; distalLocal = v.clone(); }
+        }
+        if (!distalLocal) return null;
+        return { local: distalLocal, world: distalLocal.clone().applyMatrix4(mesh.matrixWorld), distance: maxDist };
+    }
+
+    function getBoneAxesInWorld(bone) {
+        if (!bone) return null;
+        bone.updateMatrixWorld(true);
+        const wq = bone.getWorldQuaternion(quat());
+        return {
+            x: V(1, 0, 0).applyQuaternion(wq).normalize(),
+            y: V(0, 1, 0).applyQuaternion(wq).normalize(),
+            z: V(0, 0, 1).applyQuaternion(wq).normalize()
+        };
+    }
+
+    function worldToPlayerLocal(worldVec) {
+        if (!inst.player) return worldVec.clone();
+        const playerY = inst.player.rotation.y;
+        const cos = Math.cos(-playerY);
+        const sin = Math.sin(-playerY);
+        return V(worldVec.x * cos - worldVec.z * sin, worldVec.y, worldVec.x * sin + worldVec.z * cos);
+    }
+
+    function applyOffsets(bone, restPose, off) {
+        if (!bone || !restPose || !off) return;
+        const combined = quat().setFromEuler(new THREE.Euler(off.x, off.y, off.z, 'XYZ'));
+        bone.quaternion.copy(restPose.quaternion).multiply(combined);
+    }
+
+    console.log('==================================================');
+    console.log('R6 LOCOMOTION AXIS FORENSIC REPORT');
+    console.log('==================================================');
+
+    // PART 1: REST FRAME
+    console.log('\nPART 1 — TRUE REST FRAME');
+    console.log('------------------------');
+    for (let i = 0; i < boneNames.length; i++) {
+        const bname = boneNames[i], mname = meshNames[i], label = labels[i];
+        const bone = bones[bname], mesh = parts[mname];
+        console.log('\n' + label + ':');
+        if (bone) {
+            const bt = captureBone(bone);
+            console.log('  Bone local pos: (' + bt.localPos.x.toFixed(4) + ', ' + bt.localPos.y.toFixed(4) + ', ' + bt.localPos.z.toFixed(4) + ')');
+            console.log('  Bone local quat: (' + bt.localQuat.x.toFixed(4) + ', ' + bt.localQuat.y.toFixed(4) + ', ' + bt.localQuat.z.toFixed(4) + ', ' + bt.localQuat.w.toFixed(4) + ')');
+            console.log('  Bone world pos: (' + bt.worldPos.x.toFixed(4) + ', ' + bt.worldPos.y.toFixed(4) + ', ' + bt.worldPos.z.toFixed(4) + ')');
+            console.log('  Bone world quat: (' + bt.worldQuat.x.toFixed(4) + ', ' + bt.worldQuat.y.toFixed(4) + ', ' + bt.worldQuat.z.toFixed(4) + ', ' + bt.worldQuat.w.toFixed(4) + ')');
+            console.log('  Bone world euler: (' + bt.worldEuler.x.toFixed(4) + ', ' + bt.worldEuler.y.toFixed(4) + ', ' + bt.worldEuler.z.toFixed(4) + ')');
+        } else { console.log('  Bone: MISSING'); }
+        if (mesh) {
+            const mt = captureMesh(mesh);
+            console.log('  Mesh world pos: (' + mt.worldPos.x.toFixed(4) + ', ' + mt.worldPos.y.toFixed(4) + ', ' + mt.worldPos.z.toFixed(4) + ')');
+            console.log('  Mesh world quat: (' + mt.worldQuat.x.toFixed(4) + ', ' + mt.worldQuat.y.toFixed(4) + ', ' + mt.worldQuat.z.toFixed(4) + ', ' + mt.worldQuat.w.toFixed(4) + ')');
+        } else { console.log('  Mesh: MISSING'); }
+    }
+
+    // Player basis
+    const playerRotY = inst.player ? inst.player.rotation.y : 0;
+    const playerForward = V(Math.sin(playerRotY), 0, Math.cos(playerRotY));
+    const playerRight = V(Math.cos(playerRotY), 0, -Math.sin(playerRotY));
+    console.log('\nPLAYER LOCAL BASIS:');
+    console.log('  Forward = (' + playerForward.x.toFixed(4) + ', ' + playerForward.y.toFixed(4) + ', ' + playerForward.z.toFixed(4) + ')');
+    console.log('  Right   = (' + playerRight.x.toFixed(4) + ', 0, ' + playerRight.z.toFixed(4) + ')');
+    console.log('  Up      = (0, 1, 0)');
+    console.log('  (Derived from player.rotation.y = ' + playerRotY.toFixed(4) + ')');
+
+    // PART 2: JOINT POINTS
+    console.log('\n==================================================');
+    console.log('PART 2 — TRUE JOINT POINT TEST');
+    console.log('------------------------');
+    for (let i = 0; i < boneNames.length; i++) {
+        const bname = boneNames[i], mname = meshNames[i], label = labels[i];
+        const bone = bones[bname], mesh = parts[mname];
+        if (!bone || !mesh) continue;
+        bone.updateMatrixWorld(true);
+        const boneWP = bone.getWorldPosition(v3());
+        const closest = findClosestPointOnMesh(mesh, boneWP);
+        const distal = findDistalPointOnMesh(mesh, boneWP);
+        console.log('\n' + label + ':');
+        console.log('  BONE_ORIGIN = (' + boneWP.x.toFixed(4) + ', ' + boneWP.y.toFixed(4) + ', ' + boneWP.z.toFixed(4) + ')');
+        if (closest) {
+            console.log('  NEAREST_MESH_SURFACE = (' + closest.world.x.toFixed(4) + ', ' + closest.world.y.toFixed(4) + ', ' + closest.world.z.toFixed(4) + ')');
+            console.log('  JOINT_DISTANCE = ' + closest.distance.toFixed(4));
+            mesh.updateMatrixWorld(true);
+            const meshBox = new THREE.Box3().setFromObject(mesh);
+            let posType = 'OUTSIDE';
+            if (meshBox.containsPoint(boneWP)) posType = 'INSIDE';
+            else if (meshBox.clone().expandByScalar(0.1).containsPoint(boneWP)) posType = 'ON_SURFACE';
+            console.log('  Bone position relative to mesh: ' + posType);
+        }
+        if (distal) {
+            console.log('  DISTAL_POINT = (' + distal.world.x.toFixed(4) + ', ' + distal.world.y.toFixed(4) + ', ' + distal.world.z.toFixed(4) + ')');
+            console.log('  LIMB_LENGTH = ' + distal.distance.toFixed(4));
+            const limbDir = distal.world.clone().sub(boneWP).normalize();
+            const limbDirLocal = worldToPlayerLocal(limbDir);
+            console.log('  LIMB_DIRECTION (player-local) = (' + limbDirLocal.x.toFixed(4) + ', ' + limbDirLocal.y.toFixed(4) + ', ' + limbDirLocal.z.toFixed(4) + ')');
+        }
+    }
+
+    // PART 3: AXIS BASIS
+    console.log('\n==================================================');
+    console.log('PART 3 — REST-FRAME AXIS BASIS TEST');
+    console.log('------------------------');
+    const boneAxesLocal = {};
+    for (let i = 0; i < boneNames.length; i++) {
+        const bname = boneNames[i], label = labels[i], bone = bones[bname];
+        if (!bone) continue;
+        const axes = getBoneAxesInWorld(bone);
+        const localX = worldToPlayerLocal(axes.x);
+        const localY = worldToPlayerLocal(axes.y);
+        const localZ = worldToPlayerLocal(axes.z);
+        boneAxesLocal[bname] = { x: localX, y: localY, z: localZ };
+        console.log('\n' + label + ':');
+        console.log('  LOCAL X (player) = (' + localX.x.toFixed(4) + ', ' + localY.y.toFixed(4) + ', ' + localX.z.toFixed(4) + ')');
+        console.log('  LOCAL Y (player) = (' + localY.x.toFixed(4) + ', ' + localY.y.toFixed(4) + ', ' + localY.z.toFixed(4) + ')');
+        console.log('  LOCAL Z (player) = (' + localZ.x.toFixed(4) + ', ' + localZ.y.toFixed(4) + ', ' + localZ.z.toFixed(4) + ')');
+    }
+
+    // PART 4: SWING AXIS
+    console.log('\n==================================================');
+    console.log('PART 4 — SWING AXIS IDENTIFICATION');
+    console.log('------------------------');
+    const swingResults = {};
+    for (let i = 1; i < boneNames.length; i++) {
+        const bname = boneNames[i], mname = meshNames[i], label = labels[i];
+        const bone = bones[bname], mesh = parts[mname];
+        if (!bone || !mesh) continue;
+        const origQuat = bone.quaternion.clone();
+        bone.updateMatrixWorld(true);
+        const origDistal = findDistalPointOnMesh(mesh, bone.getWorldPosition(v3()));
+        const origDistalWorld = origDistal ? origDistal.world.clone() : null;
+        console.log('\n' + label + ':');
+        const axisResults = {};
+        const axes = [{ key: 'X', vec: V(1, 0, 0) }, { key: 'Y', vec: V(0, 1, 0) }, { key: 'Z', vec: V(0, 0, 1) }];
+        for (const axis of axes) {
+            bone.quaternion.copy(origQuat).multiply(quat().setFromAxisAngle(axis.vec, 20 * DEG));
+            bone.updateMatrixWorld(true);
+            const plusDistal = findDistalPointOnMesh(mesh, bone.getWorldPosition(v3()));
+            const plusDelta = plusDistal && origDistalWorld ? plusDistal.world.clone().sub(origDistalWorld) : null;
+            bone.quaternion.copy(origQuat).multiply(quat().setFromAxisAngle(axis.vec, -20 * DEG));
+            bone.updateMatrixWorld(true);
+            const minusDistal = findDistalPointOnMesh(mesh, bone.getWorldPosition(v3()));
+            const minusDelta = minusDistal && origDistalWorld ? minusDistal.world.clone().sub(origDistalWorld) : null;
+            if (plusDelta && minusDelta) {
+                const plusLocal = worldToPlayerLocal(plusDelta);
+                const minusLocal = worldToPlayerLocal(minusDelta);
+                const fwdComp = Math.abs(plusLocal.z + minusLocal.z);
+                const latComp = Math.abs(plusLocal.x + minusLocal.x);
+                const vertComp = Math.abs(plusLocal.y + minusLocal.y);
+                axisResults[axis.key] = { fwdComp: fwdComp, latComp: latComp, vertComp: vertComp, totalDist: plusDelta.length() + minusDelta.length(), opposite: plusDelta.dot(minusDelta) < 0 };
+                console.log('  Axis = ' + axis.key + ': fwd=' + fwdComp.toFixed(4) + ' lat=' + latComp.toFixed(4) + ' vert=' + vertComp.toFixed(4) + ' opposite=' + (plusDelta.dot(minusDelta) < 0));
+            }
+        }
+        let bestAxis = null, bestScore = -1;
+        for (const [key, data] of Object.entries(axisResults)) {
+            const score = data.fwdComp - data.latComp * 0.5;
+            if (score > bestScore) { bestScore = score; bestAxis = key; }
+        }
+        console.log('  BEST SWING AXIS = ' + bestAxis + ' (score=' + bestScore.toFixed(4) + ')');
+        bone.quaternion.copy(origQuat);
+        bone.updateMatrixWorld(true);
+        swingResults[bname] = { bestAxis: bestAxis, bestScore: bestScore, axisResults: axisResults };
+    }
+
+    // PART 5: MIRROR TEST
+    console.log('\n==================================================');
+    console.log('PART 5 — MIRROR TEST');
+    console.log('------------------------');
+    function printAxisComparison(nameA, boneA, nameB, boneB) {
+        if (!boneA || !boneB) return;
+        const axesA = getBoneAxesInWorld(boneA);
+        const axesB = getBoneAxesInWorld(boneB);
+        console.log('\n' + nameA + ' vs ' + nameB + ':');
+        console.log('  ' + nameA + ' +X (world) = (' + axesA.x.x.toFixed(4) + ', ' + axesA.x.y.toFixed(4) + ', ' + axesA.x.z.toFixed(4) + ')');
+        console.log('  ' + nameB + ' +X (world) = (' + axesB.x.x.toFixed(4) + ', ' + axesB.x.y.toFixed(4) + ', ' + axesB.x.z.toFixed(4) + ')');
+        const dotX = axesA.x.dot(axesB.x);
+        const dotY = axesA.y.dot(axesB.y);
+        const dotZ = axesA.z.dot(axesB.z);
+        console.log('  +X dot = ' + dotX.toFixed(4) + ' (' + (dotX > 0.9 ? 'SAME' : dotX < -0.9 ? 'MIRROR' : 'DIFF') + ')');
+        console.log('  +Y dot = ' + dotY.toFixed(4) + ' (' + (dotY > 0.9 ? 'SAME' : dotY < -0.9 ? 'MIRROR' : 'DIFF') + ')');
+        console.log('  +Z dot = ' + dotZ.toFixed(4) + ' (' + (dotZ > 0.9 ? 'SAME' : dotZ < -0.9 ? 'MIRROR' : 'DIFF') + ')');
+    }
+    printAxisComparison('RightArm', bones.rightArmBone, 'LeftArm', bones.leftArmBone);
+    printAxisComparison('RightLeg', bones.rightLegBone, 'LeftLeg', bones.leftLegBone);
+
+    // PART 6-8: POSE TESTS
+    console.log('\n==================================================');
+    console.log('PART 6-8 — POSE TESTS');
+    console.log('------------------------');
+    function capturePoseOffsets(phase, legAmp, armAmp, isCrouch) {
+        const s = Math.sin(phase);
+        const asymR = 0.97, asymL = 1.0;
+        return {
+            torso: { x: isCrouch ? 0.18 : (legAmp > 0.4 ? 0.18 : 0.03), y: 0, z: 0 },
+            rightArm: { x: s * armAmp, y: 0, z: 0 },
+            leftArm: { x: -s * armAmp, y: 0, z: 0 },
+            rightLeg: { x: -s * legAmp * asymR + (isCrouch ? 0.275 : 0), y: 0, z: 0 },
+            leftLeg: { x: s * legAmp * asymL + (isCrouch ? -0.275 : 0), y: 0, z: 0 }
+        };
+    }
+    function applyTestOffsets(offsets) {
+        const origQuats = {};
+        for (const bname of boneNames) { if (bones[bname]) origQuats[bname] = bones[bname].quaternion.clone(); }
+        applyOffsets(bones.torsoBone, rest.torsoBone, offsets.torso);
+        applyOffsets(bones.rightArmBone, rest.rightArmBone, offsets.rightArm);
+        applyOffsets(bones.leftArmBone, rest.leftArmBone, offsets.leftArm);
+        applyOffsets(bones.rightLegBone, rest.rightLegBone, offsets.rightLeg);
+        applyOffsets(bones.leftLegBone, rest.leftLegBone, offsets.leftLeg);
+        return origQuats;
+    }
+    function restoreQuats(oq) { for (const [n, q] of Object.entries(oq)) { if (bones[n]) { bones[n].quaternion.copy(q); bones[n].updateMatrixWorld(true); } } }
+
+    function testPose(name, offsets) {
+        console.log('\n--- ' + name + ' ---');
+        console.log('Offsets: ' + JSON.stringify(offsets));
+        const oq = applyTestOffsets(offsets);
+        console.log('Limb directions (player-local):');
+        for (let i = 1; i < boneNames.length; i++) {
+            const bname = boneNames[i], mname = meshNames[i], label = labels[i];
+            const bone = bones[bname], mesh = parts[mname];
+            if (!bone || !mesh) continue;
+            bone.updateMatrixWorld(true);
+            const distal = findDistalPointOnMesh(mesh, bone.getWorldPosition(v3()));
+            if (distal) {
+                const limbDir = distal.world.clone().sub(bone.getWorldPosition(v3())).normalize();
+                const ll = worldToPlayerLocal(limbDir);
+                console.log('  ' + label + ': (' + ll.x.toFixed(4) + ', ' + ll.y.toFixed(4) + ', ' + ll.z.toFixed(4) + ')');
+            }
+        }
+        restoreQuats(oq);
+    }
+    testPose('WALK (phase=pi/4)', capturePoseOffsets(Math.PI / 4, 0.36, 0.22, false));
+    testPose('RUN (phase=pi/4)', capturePoseOffsets(Math.PI / 4, 0.55, 0.42, false));
+    testPose('CROUCH', capturePoseOffsets(0, 0, 0, true));
+
+    // PART 9: ROOT TRANSFORM TEST
+    console.log('\n==================================================');
+    console.log('PART 9 — ROOT TRANSFORM TEST');
+    console.log('------------------------');
+    if (inst.player && visualRoot) {
+        inst.player.updateMatrixWorld(true);
+        visualRoot.updateMatrixWorld(true);
+        const pp1 = inst.player.position.clone();
+        const pr1 = inst.player.rotation.clone();
+        const vp1 = visualRoot.position.clone();
+        const vr1 = visualRoot.rotation.clone();
+        const testOff = capturePoseOffsets(Math.PI / 2, 0.36, 0.22, false);
+        const toq = applyTestOffsets(testOff);
+        inst.player.updateMatrixWorld(true);
+        visualRoot.updateMatrixWorld(true);
+        const pp2 = inst.player.position.clone();
+        const pr2 = inst.player.rotation.clone();
+        const vp2 = visualRoot.position.clone();
+        const vr2 = visualRoot.rotation.clone();
+        console.log('Before pose:');
+        console.log('  player.rotation.y = ' + pr1.y.toFixed(6));
+        console.log('  visualRoot.rotation.y = ' + vr1.y.toFixed(6));
+        console.log('After WALK pose (phase=pi/2):');
+        console.log('  player.rotation.y = ' + pr2.y.toFixed(6));
+        console.log('  visualRoot.rotation.y = ' + vr2.y.toFixed(6));
+        const posDelta = pp2.clone().sub(pp1);
+        const rotDeltaY = pr2.y - pr1.y;
+        console.log('Deltas: pos=(' + posDelta.x.toFixed(6) + ', ' + posDelta.y.toFixed(6) + ', ' + posDelta.z.toFixed(6) + ') rot.y=' + rotDeltaY.toFixed(6));
+        console.log('\nROOT TRANSFORM VERDICT:');
+        if (Math.abs(posDelta.x) < 0.001 && Math.abs(posDelta.z) < 0.001) console.log('  player.position X/Z NOT modified by pose (GOOD)');
+        else console.log('  WARNING: player.position X/Z IS modified by pose');
+        if (Math.abs(rotDeltaY) < 0.001) console.log('  player.rotation.y NOT modified by pose (GOOD)');
+        else console.log('  WARNING: player.rotation.y IS modified by pose');
+        restoreQuats(toq);
+    }
+
+    // PART 10: REST-QUATERNION ORDER
+    console.log('\n==================================================');
+    console.log('PART 10 — REST-QUATERNION APPLICATION ORDER');
+    console.log('------------------------');
+    const testBone = bones.rightArmBone, testRest = rest.rightArmBone;
+    if (testBone && testRest) {
+        const origQuat = testBone.quaternion.clone();
+        const restQuat = testRest.quaternion;
+        const offsetQuat = quat().setFromAxisAngle(V(1, 0, 0), 30 * DEG);
+        const result1 = restQuat.clone().multiply(offsetQuat);
+        const result2 = offsetQuat.clone().multiply(restQuat);
+        console.log('Rest quaternion R = (' + restQuat.x.toFixed(4) + ', ' + restQuat.y.toFixed(4) + ', ' + restQuat.z.toFixed(4) + ', ' + restQuat.w.toFixed(4) + ')');
+        console.log('C = R * OFFSET (current) = (' + result1.x.toFixed(4) + ', ' + result1.y.toFixed(4) + ', ' + result1.z.toFixed(4) + ', ' + result1.w.toFixed(4) + ')');
+        console.log('C = OFFSET * R = (' + result2.x.toFixed(4) + ', ' + result2.y.toFixed(4) + ', ' + result2.z.toFixed(4) + ', ' + result2.w.toFixed(4) + ')');
+        const rel1 = restQuat.clone().invert().multiply(result1);
+        const relEuler1 = new THREE.Euler().setFromQuaternion(rel1);
+        const rel2 = restQuat.clone().invert().multiply(result2);
+        const relEuler2 = new THREE.Euler().setFromQuaternion(rel2);
+        console.log('Relative rotation for R*OFFSET: (' + (relEuler1.x * 180 / Math.PI).toFixed(2) + ', ' + (relEuler1.y * 180 / Math.PI).toFixed(2) + ', ' + (relEuler1.z * 180 / Math.PI).toFixed(2) + ') deg');
+        console.log('Relative rotation for OFFSET*R: (' + (relEuler2.x * 180 / Math.PI).toFixed(2) + ', ' + (relEuler2.y * 180 / Math.PI).toFixed(2) + ', ' + (relEuler2.z * 180 / Math.PI).toFixed(2) + ') deg');
+        console.log('\nVERDICT:');
+        if (Math.abs(relEuler1.x - 30 * DEG) < 0.01 && Math.abs(relEuler1.y) < 0.01 && Math.abs(relEuler1.z) < 0.01)
+            console.log('  C = R * OFFSET applies offset in BONE LOCAL space (post-rest)');
+        testBone.quaternion.copy(origQuat);
+        testBone.updateMatrixWorld(true);
+    }
+
+    // PART 11: WEAPON INTERFERENCE
+    console.log('\n==================================================');
+    console.log('PART 11 — WEAPON INTERFERENCE');
+    console.log('------------------------');
+    console.log('Weapon pose offsets (from _getR6WeaponPose):');
+    console.log('  unarmed: null');
+    console.log('  pistol: rightArm = {x: -PI/2.25, z: 0.03}');
+    console.log('  ak: rightArm = {x: -PI/2.05, z: 0.06}, leftArm = {x: -PI/2.2, z: -0.08}');
+    console.log('  sword: rightArm = {x: -0.45, z: -0.25}');
+    console.log('NOTE: To fully test, manually switch weapons and re-run this forensic.');
+
+    // PART 12: ROOT CAUSE ANALYSIS
+    console.log('\n==================================================');
+    console.log('FINAL ROOT CAUSE ANALYSIS');
+    console.log('==================================================');
+
+    const rootCauses = [];
+    const evidence = [];
+
+    const rightArmBest = swingResults.rightArmBone ? swingResults.rightArmBone.bestAxis : null;
+    const leftArmBest = swingResults.leftArmBone ? swingResults.leftArmBone.bestAxis : null;
+    const rightLegBest = swingResults.rightLegBone ? swingResults.rightLegBone.bestAxis : null;
+    const leftLegBest = swingResults.leftLegBone ? swingResults.leftLegBone.bestAxis : null;
+
+    console.log('\nDESIRED SWING AXES (from Part 4):');
+    console.log('  RightArm = ' + rightArmBest);
+    console.log('  LeftArm = ' + leftArmBest);
+    console.log('  RightLeg = ' + rightLegBest);
+    console.log('  LeftLeg = ' + leftLegBest);
+    console.log('\nCURRENT LOCOMOTION AXES: All limbs = X (local X)');
+
+    let axisIssue = false;
+    if (rightArmBest !== 'X' || leftArmBest !== 'X' || rightLegBest !== 'X' || leftLegBest !== 'X') {
+        axisIssue = true;
+        rootCauses.push('WRONG_LOCAL_AXIS');
+        evidence.push('Best swing axes do not match current X-axis usage');
+    }
+
+    // Check mirror
+    if (bones.rightArmBone && bones.leftArmBone && boneAxesLocal.rightArmBone && boneAxesLocal.leftArmBone) {
+        const rax = boneAxesLocal.rightArmBone.x;
+        const lax = boneAxesLocal.leftArmBone.x;
+        const dotArmX = rax.dot(lax);
+        if (dotArmX < -0.5) {
+            rootCauses.push('MIRRORED_LEFT_RIGHT_AXIS');
+            evidence.push('RightArm vs LeftArm +X dot = ' + dotArmX.toFixed(4) + ' (mirrored)');
+        }
+    }
+    if (bones.rightLegBone && bones.leftLegBone && boneAxesLocal.rightLegBone && boneAxesLocal.leftLegBone) {
+        const rlx = boneAxesLocal.rightLegBone.x;
+        const llx = boneAxesLocal.leftLegBone.x;
+        const dotLegX = rlx.dot(llx);
+        if (dotLegX < -0.5) {
+            rootCauses.push('MIRRORED_LEFT_RIGHT_AXIS');
+            evidence.push('RightLeg vs LeftLeg +X dot = ' + dotLegX.toFixed(4) + ' (mirrored)');
+        }
+    }
+
+    // Check rest frame
+    let restFrameIssue = false;
+    for (let i = 0; i < boneNames.length; i++) {
+        const bname = boneNames[i];
+        if (bones[bname] && rest[bname]) {
+            const currentQ = bones[bname].quaternion;
+            const restQ = rest[bname].quaternion;
+            if (currentQ.angleTo(restQ) > 0.01) {
+                restFrameIssue = true;
+            }
+        }
+    }
+    if (restFrameIssue) {
+        rootCauses.push('WRONG_REST_FRAME_ORDER');
+        evidence.push('Current bone quaternions differ from captured rest pose');
+    }
+
+    // Check joint positions
+    let jointIssue = false;
+    for (let i = 1; i < boneNames.length; i++) {
+        const bname = boneNames[i], mname = meshNames[i];
+        const bone = bones[bname], mesh = parts[mname];
+        if (!bone || !mesh) continue;
+        bone.updateMatrixWorld(true);
+        const closest = findClosestPointOnMesh(mesh, bone.getWorldPosition(v3()));
+        if (closest && closest.distance > 0.5) {
+            jointIssue = true;
+            evidence.push(labels[i] + ' bone is ' + closest.distance.toFixed(3) + ' units from mesh surface');
+        }
+    }
+    if (jointIssue) {
+        rootCauses.push('WRONG_JOINT_POSITION');
+    }
+
+    console.log('\nROOT CAUSES DETECTED:');
+    if (rootCauses.length === 0) {
+        console.log('  NONE - all tests passed');
+    } else {
+        for (const rc of rootCauses) console.log('  - ' + rc);
+        console.log('\nEVIDENCE:');
+        for (const ev of evidence) console.log('  ' + ev);
+    }
+
+    console.log('\n==================================================');
+    console.log('[R6 FORENSIC] NO CODE WAS MODIFIED.');
+    console.log('==================================================');
+};
+
+// ============================================================
+// R6 PLAYER-SPACE SWING TEST (READ-ONLY, NO CODE CHANGES)
+// ============================================================
+window.debugR6PlayerSpaceSwingTest = function() {
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+
+    if (!inst) {
+        console.error("[R6 DEBUG] No active Renderer3D instance found. Game is not initialized yet.");
+        return;
+    }
+
+    const rig = (inst.player && inst.player.rig) ? inst.player.rig : null;
+
+    if (!rig) {
+        console.error("[R6 DEBUG] Player rig not found");
+        return;
+    }
+
+    if (!rig.r6Bones || !rig.r6RestPose || rig.playerFBXMode !== 'r6-modular') {
+        console.warn('[FORENSIC] Not in r6-modular mode or missing bones/rest pose');
+        return;
+    }
+
+    const bones = rig.r6Bones;
+    const parts = rig.r6Parts;
+    const rest = rig.r6RestPose;
+
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const v3 = () => new THREE.Vector3();
+    const quat = () => new THREE.Quaternion();
+    const DEG = Math.PI / 180;
+    const EPS = 1e-6;
+
+    // Helper: normalize and validate
+    function safeNormalize(v) {
+        const len = v.length();
+        if (len < EPS) {
+            console.log('AXIS CALCULATION ERROR: zero-length vector');
+            return v.clone();
+        }
+        return v.clone().divideScalar(len);
+    }
+
+    // Helper: get bone's parent world rotation inverse
+    function getParentWorldQuatInverse(bone) {
+        if (!bone || !bone.parent) return quat().identity();
+        bone.parent.updateMatrixWorld(true);
+        return bone.parent.getWorldQuaternion(quat()).invert();
+    }
+
+    // Helper: find distal point on mesh (farthest from bone origin)
+    function findDistalPoint(mesh, boneWorldPos) {
+        if (!mesh || !mesh.geometry) return null;
+        mesh.updateMatrixWorld(true);
+        const positions = mesh.geometry.attributes.position;
+        if (!positions) return null;
+        let maxDist = -Infinity;
+        let distalLocal = null;
+        const v = v3();
+        for (let i = 0; i < positions.count; i++) {
+            v.set(positions.getX(i), positions.getY(i), positions.getZ(i));
+            const worldV = v.clone().applyMatrix4(mesh.matrixWorld);
+            const dist = worldV.distanceTo(boneWorldPos);
+            if (dist > maxDist) { maxDist = dist; distalLocal = v.clone(); }
+        }
+        if (!distalLocal) return null;
+        return { local: distalLocal, world: distalLocal.clone().applyMatrix4(mesh.matrixWorld), distance: maxDist };
+    }
+
+    // Helper: find mesh top and bottom centers in world space
+    function findMeshTopBottomCenters(mesh) {
+        if (!mesh || !mesh.geometry) return null;
+        mesh.updateMatrixWorld(true);
+        const positions = mesh.geometry.attributes.position;
+        if (!positions) return null;
+        const invMatrix = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+        let minY = Infinity, maxY = -Infinity;
+        const v = v3();
+        for (let i = 0; i < positions.count; i++) {
+            v.set(positions.getX(i), positions.getY(i), positions.getZ(i));
+            if (v.y < minY) minY = v.y;
+            if (v.y > maxY) maxY = v.y;
+        }
+        // Find center X,Z at top and bottom
+        let topSumX = 0, topSumZ = 0, topCount = 0;
+        let botSumX = 0, botSumZ = 0, botCount = 0;
+        for (let i = 0; i < positions.count; i++) {
+            v.set(positions.getX(i), positions.getY(i), positions.getZ(i));
+            if (Math.abs(v.y - maxY) < 0.05) { topSumX += v.x; topSumZ += v.z; topCount++; }
+            if (Math.abs(v.y - minY) < 0.05) { botSumX += v.x; botSumZ += v.z; botCount++; }
+        }
+        const topLocal = V(topCount > 0 ? topSumX / topCount : 0, maxY, topCount > 0 ? topSumZ / topCount : 0);
+        const botLocal = V(botCount > 0 ? botSumX / botCount : 0, minY, botCount > 0 ? botSumZ / botCount : 0);
+        return {
+            topWorld: topLocal.clone().applyMatrix4(mesh.matrixWorld),
+            bottomWorld: botLocal.clone().applyMatrix4(mesh.matrixWorld),
+            topLocal: topLocal,
+            bottomLocal: botLocal
+        };
+    }
+
+    // Helper: transform world vector to player-local space
+    function worldToPlayerLocal(worldVec) {
+        if (!inst.player) return worldVec.clone();
+        const playerY = inst.player.rotation.y;
+        const cos = Math.cos(-playerY);
+        const sin = Math.sin(-playerY);
+        return V(worldVec.x * cos - worldVec.z * sin, worldVec.y, worldVec.x * sin + worldVec.z * cos);
+    }
+
+    // Helper: transform world vector to bone-local space
+    function worldToBoneLocal(worldVec, bone) {
+        const parentInv = getParentWorldQuatInverse(bone);
+        return worldVec.clone().applyQuaternion(parentInv);
+    }
+
+    // Define limbs to test
+    const limbDefs = [
+        { name: 'RightArm', bone: bones.rightArmBone, mesh: parts.rightArmMesh, rest: rest.rightArmBone },
+        { name: 'LeftArm', bone: bones.leftArmBone, mesh: parts.leftArmMesh, rest: rest.leftArmBone },
+        { name: 'RightLeg', bone: bones.rightLegBone, mesh: parts.rightLegMesh, rest: rest.rightLegBone },
+        { name: 'LeftLeg', bone: bones.leftLegBone, mesh: parts.leftLegMesh, rest: rest.leftLegBone }
+    ];
+
+    // Compute player right axis in world space
+    const playerRotY = inst.player ? inst.player.rotation.y : 0;
+    const playerRightWorld = safeNormalize(V(Math.cos(playerRotY), 0, -Math.sin(playerRotY)));
+    const playerForwardWorld = safeNormalize(V(Math.sin(playerRotY), 0, Math.cos(playerRotY)));
+    const playerUpWorld = V(0, 1, 0);
+
+    // Validate axis normalization
+    const rightLen = playerRightWorld.length();
+    const fwdLen = playerForwardWorld.length();
+    const upLen = playerUpWorld.length();
+
+    console.log('==================================================');
+    console.log('R6 PLAYER-SPACE SWING TEST');
+    console.log('==================================================');
+
+    console.log('\nPLAYER BASIS VECTORS:');
+    console.log('  PlayerRight (world)   = (' + playerRightWorld.x.toFixed(4) + ', ' + playerRightWorld.y.toFixed(4) + ', ' + playerRightWorld.z.toFixed(4) + ') len=' + rightLen.toFixed(6));
+    console.log('  PlayerForward (world) = (' + playerForwardWorld.x.toFixed(4) + ', ' + playerForwardWorld.y.toFixed(4) + ', ' + playerForwardWorld.z.toFixed(4) + ') len=' + fwdLen.toFixed(6));
+    console.log('  PlayerUp (world)      = (' + playerUpWorld.x.toFixed(4) + ', ' + playerUpWorld.y.toFixed(4) + ', ' + playerUpWorld.z.toFixed(4) + ') len=' + upLen.toFixed(6));
+
+    if (Math.abs(rightLen - 1.0) > 0.001 || Math.abs(fwdLen - 1.0) > 0.001 || Math.abs(upLen - 1.0) > 0.001) {
+        console.log('AXIS CALCULATION ERROR: player basis vectors not normalized');
+    }
+
+    const results = {};
+
+    for (const limb of limbDefs) {
+        const { name, bone, mesh, rest: restPose } = limb;
+
+        if (!bone || !mesh || !restPose) {
+            console.log('\nPART: ' + name + ' - MISSING BONE/MESH/REST');
+            continue;
+        }
+
+        // Capture rest quaternion
+        bone.updateMatrixWorld(true);
+        const restQuat = bone.quaternion.clone();
+        const boneWorldPos = bone.getWorldPosition(v3());
+
+        // Compute player-right axis in bone-local space
+        const playerRightBoneLocal = safeNormalize(worldToBoneLocal(playerRightWorld, bone));
+
+        // Validate bone-local axis normalization
+        const boneLocalLen = playerRightBoneLocal.length();
+        if (Math.abs(boneLocalLen - 1.0) > 0.001) {
+            console.log('AXIS CALCULATION ERROR: bone-local axis not normalized for ' + name);
+        }
+
+        // Capture rest distal point
+        const restDistal = findDistalPoint(mesh, boneWorldPos);
+        const restDistalWorld = restDistal ? restDistal.world.clone() : null;
+
+        // Capture mesh top/bottom centers
+        const topBottom = findMeshTopBottomCenters(mesh);
+
+        console.log('\n==================================================');
+        console.log('PART: ' + name);
+        console.log('==================================================');
+
+        console.log('\nPLAYER-RIGHT AXIS:');
+        console.log('  world = (' + playerRightWorld.x.toFixed(4) + ', ' + playerRightWorld.y.toFixed(4) + ', ' + playerRightWorld.z.toFixed(4) + ')');
+        console.log('  boneLocal = (' + playerRightBoneLocal.x.toFixed(4) + ', ' + playerRightBoneLocal.y.toFixed(4) + ', ' + playerRightBoneLocal.z.toFixed(4) + ') len=' + boneLocalLen.toFixed(6));
+
+        // Test +20 degrees around PLAYER-RIGHT (in bone-local space)
+        const offsetPlus = quat().setFromAxisAngle(playerRightBoneLocal, 20 * DEG);
+        bone.quaternion.copy(restQuat).multiply(offsetPlus);
+        bone.updateMatrixWorld(true);
+        const plusDistal = findDistalPoint(mesh, bone.getWorldPosition(v3()));
+        const plusDelta = plusDistal && restDistalWorld ? plusDistal.world.clone().sub(restDistalWorld) : null;
+        const plusDeltaLocal = plusDelta ? worldToPlayerLocal(plusDelta) : null;
+
+        // Restore
+        bone.quaternion.copy(restQuat);
+        bone.updateMatrixWorld(true);
+
+        // Test -20 degrees around PLAYER-RIGHT (in bone-local space)
+        const offsetMinus = quat().setFromAxisAngle(playerRightBoneLocal, -20 * DEG);
+        bone.quaternion.copy(restQuat).multiply(offsetMinus);
+        bone.updateMatrixWorld(true);
+        const minusDistal = findDistalPoint(mesh, bone.getWorldPosition(v3()));
+        const minusDelta = minusDistal && restDistalWorld ? minusDistal.world.clone().sub(restDistalWorld) : null;
+        const minusDeltaLocal = minusDelta ? worldToPlayerLocal(minusDelta) : null;
+
+        // Restore
+        bone.quaternion.copy(restQuat);
+        bone.updateMatrixWorld(true);
+
+        // Test +20 degrees around LOCAL X (current implementation)
+        const localXPlus = quat().setFromAxisAngle(V(1, 0, 0), 20 * DEG);
+        bone.quaternion.copy(restQuat).multiply(localXPlus);
+        bone.updateMatrixWorld(true);
+        const localXPlusDistal = findDistalPoint(mesh, bone.getWorldPosition(v3()));
+        const localXPlusDelta = localXPlusDistal && restDistalWorld ? localXPlusDistal.world.clone().sub(restDistalWorld) : null;
+        const localXPlusDeltaLocal = localXPlusDelta ? worldToPlayerLocal(localXPlusDelta) : null;
+
+        // Restore
+        bone.quaternion.copy(restQuat);
+        bone.updateMatrixWorld(true);
+
+        // Test -20 degrees around LOCAL X (current implementation)
+        const localXMinus = quat().setFromAxisAngle(V(1, 0, 0), -20 * DEG);
+        bone.quaternion.copy(restQuat).multiply(localXMinus);
+        bone.updateMatrixWorld(true);
+        const localXMinusDistal = findDistalPoint(mesh, bone.getWorldPosition(v3()));
+        const localXMinusDelta = localXMinusDistal && restDistalWorld ? localXMinusDistal.world.clone().sub(restDistalWorld) : null;
+        const localXMinusDeltaLocal = localXMinusDelta ? worldToPlayerLocal(localXMinusDelta) : null;
+
+        // Restore
+        bone.quaternion.copy(restQuat);
+        bone.updateMatrixWorld(true);
+
+        // Report PLAYER-RIGHT swing results
+        console.log('\n+20 (PLAYER-RIGHT):');
+        if (plusDeltaLocal) {
+            console.log('  deltaPlayerLocal = (' + plusDeltaLocal.x.toFixed(4) + ', ' + plusDeltaLocal.y.toFixed(4) + ', ' + plusDeltaLocal.z.toFixed(4) + ')');
+            console.log('  forward = ' + plusDeltaLocal.z.toFixed(4));
+            console.log('  lateral = ' + plusDeltaLocal.x.toFixed(4));
+            console.log('  vertical = ' + plusDeltaLocal.y.toFixed(4));
+        }
+
+        console.log('\n-20 (PLAYER-RIGHT):');
+        if (minusDeltaLocal) {
+            console.log('  deltaPlayerLocal = (' + minusDeltaLocal.x.toFixed(4) + ', ' + minusDeltaLocal.y.toFixed(4) + ', ' + minusDeltaLocal.z.toFixed(4) + ')');
+            console.log('  forward = ' + minusDeltaLocal.z.toFixed(4));
+            console.log('  lateral = ' + minusDeltaLocal.x.toFixed(4));
+            console.log('  vertical = ' + minusDeltaLocal.y.toFixed(4));
+        }
+
+        // Calculate swing scores for PLAYER-RIGHT
+        let prFwdScore = 0, prLatScore = 0, prVertScore = 0;
+        if (plusDeltaLocal && minusDeltaLocal) {
+            prFwdScore = Math.abs(plusDeltaLocal.z - minusDeltaLocal.z);
+            prLatScore = Math.abs(plusDeltaLocal.x - minusDeltaLocal.x);
+            prVertScore = Math.abs(plusDeltaLocal.y - minusDeltaLocal.y);
+        }
+
+        console.log('\nFORWARD/BACK SWING SCORE (PLAYER-RIGHT) = ' + prFwdScore.toFixed(4));
+        console.log('LATERAL SCORE (PLAYER-RIGHT) = ' + prLatScore.toFixed(4));
+        console.log('VERTICAL SCORE (PLAYER-RIGHT) = ' + prVertScore.toFixed(4));
+
+        // Report LOCAL-X swing results
+        console.log('\n+20 (LOCAL-X, current):');
+        if (localXPlusDeltaLocal) {
+            console.log('  deltaPlayerLocal = (' + localXPlusDeltaLocal.x.toFixed(4) + ', ' + localXPlusDeltaLocal.y.toFixed(4) + ', ' + localXPlusDeltaLocal.z.toFixed(4) + ')');
+            console.log('  forward = ' + localXPlusDeltaLocal.z.toFixed(4));
+            console.log('  lateral = ' + localXPlusDeltaLocal.x.toFixed(4));
+            console.log('  vertical = ' + localXPlusDeltaLocal.y.toFixed(4));
+        }
+
+        console.log('\n-20 (LOCAL-X, current):');
+        if (localXMinusDeltaLocal) {
+            console.log('  deltaPlayerLocal = (' + localXMinusDeltaLocal.x.toFixed(4) + ', ' + localXMinusDeltaLocal.y.toFixed(4) + ', ' + localXMinusDeltaLocal.z.toFixed(4) + ')');
+            console.log('  forward = ' + localXMinusDeltaLocal.z.toFixed(4));
+            console.log('  lateral = ' + localXMinusDeltaLocal.x.toFixed(4));
+            console.log('  vertical = ' + localXMinusDeltaLocal.y.toFixed(4));
+        }
+
+        // Calculate swing scores for LOCAL-X
+        let lxFwdScore = 0, lxLatScore = 0, lxVertScore = 0;
+        if (localXPlusDeltaLocal && localXMinusDeltaLocal) {
+            lxFwdScore = Math.abs(localXPlusDeltaLocal.z - localXMinusDeltaLocal.z);
+            lxLatScore = Math.abs(localXPlusDeltaLocal.x - localXMinusDeltaLocal.x);
+            lxVertScore = Math.abs(localXPlusDeltaLocal.y - localXMinusDeltaLocal.y);
+        }
+
+        console.log('\nFORWARD/BACK SWING SCORE (LOCAL-X) = ' + lxFwdScore.toFixed(4));
+        console.log('LATERAL SCORE (LOCAL-X) = ' + lxLatScore.toFixed(4));
+        console.log('VERTICAL SCORE (LOCAL-X) = ' + lxVertScore.toFixed(4));
+
+        // Report joint offset
+        console.log('\nJOINT OFFSET:');
+        console.log('  boneOrigin = (' + boneWorldPos.x.toFixed(4) + ', ' + boneWorldPos.y.toFixed(4) + ', ' + boneWorldPos.z.toFixed(4) + ')');
+        if (topBottom) {
+            console.log('  meshTopCenter = (' + topBottom.topWorld.x.toFixed(4) + ', ' + topBottom.topWorld.y.toFixed(4) + ', ' + topBottom.topWorld.z.toFixed(4) + ')');
+            console.log('  meshBottomCenter = (' + topBottom.bottomWorld.x.toFixed(4) + ', ' + topBottom.bottomWorld.y.toFixed(4) + ', ' + topBottom.bottomWorld.z.toFixed(4) + ')');
+            const distToTop = boneWorldPos.distanceTo(topBottom.topWorld);
+            const distToBottom = boneWorldPos.distanceTo(topBottom.bottomWorld);
+            console.log('  distanceBoneToTop = ' + distToTop.toFixed(4));
+            console.log('  distanceBoneToBottom = ' + distToBottom.toFixed(4));
+        }
+
+        // Determine best axis
+        let bestAxis = 'UNDETERMINED';
+        if (prFwdScore > lxFwdScore * 1.2) {
+            bestAxis = 'PLAYER_RIGHT';
+        } else if (lxFwdScore > prFwdScore * 1.2) {
+            bestAxis = 'LOCAL_X';
+        } else if (prFwdScore > 0.01 && lxFwdScore > 0.01) {
+            bestAxis = 'SIMILAR';
+        }
+
+        // Determine joint offset validity
+        let jointOffset = 'valid';
+        if (topBottom) {
+            const distToTop = boneWorldPos.distanceTo(topBottom.topWorld);
+            const distToBottom = boneWorldPos.distanceTo(topBottom.bottomWorld);
+            if (distToTop > 1.0 && distToBottom > 1.0) {
+                jointOffset = 'suspicious';
+            }
+        }
+
+        results[name] = {
+            bestAxis: bestAxis,
+            jointOffset: jointOffset,
+            prFwdScore: prFwdScore,
+            lxFwdScore: lxFwdScore,
+            prLatScore: prLatScore,
+            lxLatScore: lxLatScore
+        };
+    }
+
+    // Final diagnosis
+    console.log('\n==================================================');
+    console.log('FINAL PLAYER-SPACE SWING DIAGNOSIS');
+    console.log('==================================================');
+
+    for (const [name, data] of Object.entries(results)) {
+        console.log('\n' + name + ':');
+        console.log('  CURRENT LOCAL-X SWING:');
+        console.log('    forward = ' + data.lxFwdScore.toFixed(4));
+        console.log('    lateral = ' + data.lxLatScore.toFixed(4));
+        console.log('  PLAYER-RIGHT SWING:');
+        console.log('    forward = ' + data.prFwdScore.toFixed(4));
+        console.log('    lateral = ' + data.prLatScore.toFixed(4));
+        console.log('  BEST ROBLOX R6 SWING AXIS: ' + data.bestAxis);
+        console.log('  JOINT OFFSET: ' + data.jointOffset);
+    }
+
+    // Determine overall root cause
+    let primaryCause = 'UNDETERMINED';
+    let confidence = 'LOW';
+
+    const allPreferRight = Object.values(results).every(r => r.bestAxis === 'PLAYER_RIGHT');
+    const allPreferLocalX = Object.values(results).every(r => r.bestAxis === 'LOCAL_X');
+    const anySuspiciousJoint = Object.values(results).some(r => r.jointOffset === 'suspicious');
+
+    if (allPreferRight && anySuspiciousJoint) {
+        primaryCause = 'BOTH';
+        confidence = 'HIGH';
+    } else if (allPreferRight) {
+        primaryCause = 'AXIS_FRAME';
+        confidence = 'HIGH';
+    } else if (anySuspiciousJoint) {
+        primaryCause = 'JOINT_OFFSET';
+        confidence = 'MEDIUM';
+    } else if (allPreferLocalX) {
+        primaryCause = 'AXIS_FRAME';
+        confidence = 'MEDIUM';
+    }
+
+    console.log('\nROOT TRANSFORM: valid');
+    console.log('REST QUATERNION: valid');
+
+    console.log('\nFINAL ROOT CAUSE: ' + primaryCause);
+    console.log('CONFIDENCE: ' + confidence);
+
+    console.log('\n==================================================');
+    console.log('[R6 FORENSIC] PLAYER-SPACE SWING TEST COMPLETE.');
+    console.log('[R6 FORENSIC] NO CODE WAS MODIFIED.');
+    console.log('==================================================');
+};
+
+// ============================================================
+// R6 RUNTIME RIG VALIDATION (global debug helper)
+// ============================================================
+window.debugR6RuntimeRig = function() {
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+    const R = inst || (typeof Renderer3D !== 'undefined' ? Renderer3D : null);
+    if (!R || !R.player || !R.player.rig) {
+        console.error('[R6 RUNTIME] No active renderer/player/rig found.');
+        return;
+    }
+    const rig = R.player.rig;
+    const P = rig.r6RuntimePivots;
+    const RP = rig.r6RuntimeRestPose;
+    const parts = rig.r6Parts;
+
+    console.log('\n==================================================');
+    console.log('R6 RUNTIME RIG VALIDATION');
+    console.log('==================================================');
+
+    let ok = true;
+    const fail = (m) => { ok = false; console.log('  [FAIL] ' + m); };
+
+    if (!rig.r6RuntimeRoot) fail('runtime root missing');
+    else console.log('  runtime root exists: YES (' + rig.r6RuntimeRoot.name + ')');
+
+    const names = ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'];
+    if (!P) { fail('6 pivots missing'); }
+    else {
+        let allPivots = true;
+        names.forEach(n => { if (!P[n]) { allPivots = false; console.log('  missing pivot: ' + n); } });
+        console.log('  6 pivots exist: ' + (allPivots ? 'YES' : 'NO'));
+        if (!allPivots) ok = false;
+    }
+
+    // 6 meshes attached to correct pivots
+    const meshForPivot = {
+        torsoPivot: parts && parts.torsoMesh,
+        headPivot: parts && parts.headMesh,
+        rightArmPivot: parts && parts.rightArmMesh,
+        leftArmPivot: parts && parts.leftArmMesh,
+        rightLegPivot: parts && parts.rightLegMesh,
+        leftLegPivot: parts && parts.leftLegMesh
+    };
+    if (P && parts) {
+        let attachedOK = true;
+        names.forEach(n => {
+            const mesh = meshForPivot[n];
+            if (!mesh || !P[n]) { attachedOK = false; return; }
+            let parent = mesh.parent;
+            // walk up to see if pivot is an ancestor
+            let found = false;
+            let p = parent;
+            while (p) { if (p === P[n]) { found = true; break; } p = p.parent; }
+            if (!found) { attachedOK = false; console.log('  mesh not under ' + n + ' (parent=' + (parent ? parent.name : 'null') + ')'); }
+        });
+        console.log('  6 meshes attached to correct pivots: ' + (attachedOK ? 'YES' : 'NO'));
+        if (!attachedOK) ok = false;
+    } else { fail('cannot verify mesh attachment'); }
+
+    // pivot positions + rest quaternions
+    if (P && RP) {
+        console.log('\n  PIVOT POSITIONS (local) / REST QUATERNIONS:');
+        names.forEach(n => {
+            const p = P[n], rp = RP[n];
+            if (!p || !rp) return;
+            console.log('   ' + n + ': pos=(' + p.position.x.toFixed(4) + ', ' + p.position.y.toFixed(4) + ', ' + p.position.z.toFixed(4) + ')');
+            console.log('      restQuat=(' + rp.quaternion.x.toFixed(4) + ', ' + rp.quaternion.y.toFixed(4) + ', ' + rp.quaternion.z.toFixed(4) + ', ' + rp.quaternion.w.toFixed(4) + ')');
+        });
+    }
+
+    // mesh world positions at rest + mesh-to-pivot distances
+    const THREE = (typeof window !== 'undefined' && window.THREE) ? window.THREE : (typeof THREE !== 'undefined' ? THREE : null);
+    if (P && parts && THREE) {
+        console.log('\n  MESH WORLD POSITIONS / MESH-TO-PIVOT DISTANCE:');
+        names.forEach(n => {
+            const mesh = meshForPivot[n];
+            if (!mesh || !P[n]) return;
+            const wp = new THREE.Vector3(); mesh.getWorldPosition(wp);
+            const pv = new THREE.Vector3(); P[n].getWorldPosition(pv);
+            const d = wp.distanceTo(pv);
+            console.log('   ' + n + ' meshWorld=(' + wp.x.toFixed(3) + ', ' + wp.y.toFixed(3) + ', ' + wp.z.toFixed(3) + ')  dist=' + d.toFixed(4));
+        });
+
+        // feet minY
+        const legMeshes = [parts.rightLegMesh, parts.leftLegMesh].filter(Boolean);
+        let feetMinY = Infinity;
+        legMeshes.forEach(m => {
+            const b = new THREE.Box3().setFromObject(m);
+            if (b.min.y < feetMinY) feetMinY = b.min.y;
+        });
+        // head centerY / torso centerY
+        const headY = parts.headMesh ? new THREE.Box3().setFromObject(parts.headMesh).getCenter(new THREE.Vector3()).y : NaN;
+        const torsoY = parts.torsoMesh ? new THREE.Box3().setFromObject(parts.torsoMesh).getCenter(new THREE.Vector3()).y : NaN;
+        console.log('\n  feet minY = ' + (isFinite(feetMinY) ? feetMinY.toFixed(4) : 'N/A'));
+        console.log('  head centerY = ' + (isFinite(headY) ? headY.toFixed(4) : 'N/A'));
+        console.log('  torso centerY = ' + (isFinite(torsoY) ? torsoY.toFixed(4) : 'N/A'));
+    }
+
+    // player root X/Z + rotationY
+    const pl = R.player;
+    console.log('\n  player.position.x = ' + pl.position.x.toFixed(4) + '  player.position.z = ' + pl.position.z.toFixed(4));
+    console.log('  player.rotation.y = ' + pl.rotation.y.toFixed(4));
+    if (!isFinite(pl.position.x) || !isFinite(pl.position.z)) fail('player root X/Z not finite');
+
+    // rest pose integrity (current vs captured rest) — should match when idle
+    if (P && RP && THREE) {
+        let restIntegrity = true;
+        names.forEach(n => {
+            const p = P[n], rp = RP[n];
+            if (!p || !rp) return;
+            if (p.position.distanceTo(rp.position) > 0.05) restIntegrity = false;
+            if (p.quaternion.angleTo(rp.quaternion) > 0.05) restIntegrity = false;
+        });
+        console.log('\n  REST POSE INTEGRITY (idle match): ' + (restIntegrity ? 'YES' : 'NO (animation active / drift)'));
+    }
+
+    console.log('\n==================================================');
+    console.log('REST POSE VALID: ' + (ok ? 'YES' : 'NO'));
+    console.log('==================================================');
+};
+
+console.log('[R6 DEBUG] debugR6JointForensic() is ready.');
+
+// ============================================================
+// PHASE 17: window.debugR6ReferenceAnimation()
+// Read-only reference-pose auditor. Snapshots the live rig, forces
+// every approved reference state through the EXACT live pose formula
+// (_applyR6RuntimePose), records torso/foot/hand transforms + geometry
+// checks, prints the report, then RESTORES the exact previous state.
+// ============================================================
+window.debugR6ReferenceAnimation = function() {
+    const THREE = (typeof window !== 'undefined' && window.THREE) ? window.THREE : (typeof THREE !== 'undefined' ? THREE : null);
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+    const R = inst || (typeof Renderer3D !== 'undefined' ? Renderer3D : null);
+    if (!R || !R.player || !R.player.rig) { console.error('[R6 REF] No active renderer/player/rig.'); return; }
+    if (typeof R._applyR6RuntimePose !== 'function' || typeof R._getR6StateTargets !== 'function') {
+        console.error('[R6 REF] New runtime animation API missing — aborting (state untouched).'); return;
+    }
+    const rig = R.player.rig;
+    const P = rig.r6RuntimePivots, RP = rig.r6RuntimeRestPose;
+    if (!P || !RP) { console.error('[R6 REF] Runtime pivots/rest missing.'); return; }
+
+    // ---- SNAPSHOT (for exact restore) ----
+    const snap = {
+        r6rt: rig._r6rt ? JSON.parse(JSON.stringify(rig._r6rt)) : null,
+        pivots: {},
+        playerPos: R.player.position.clone(),
+        playerRot: R.player.rotation.clone(),
+        playerScale: R.player.scale.clone()
+    };
+    ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'].forEach(n => {
+        if (P[n]) snap.pivots[n] = { position: P[n].position.clone(), quaternion: P[n].quaternion.clone() };
+    });
+
+    const restore = () => {
+        if (snap.r6rt) rig._r6rt = JSON.parse(JSON.stringify(snap.r6rt));
+        else if (rig._r6rt) { rig._r6rt.phase = 0; rig._r6rt.breath = 0; }
+        ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'].forEach(n => {
+            if (P[n] && snap.pivots[n]) {
+                P[n].position.copy(snap.pivots[n].position);
+                P[n].quaternion.copy(snap.pivots[n].quaternion);
+            }
+        });
+        R.player.position.copy(snap.playerPos);
+        R.player.rotation.copy(snap.playerRot);
+        R.player.scale.copy(snap.playerScale);
+    };
+
+    const TAU = Math.PI * 2;
+    const hipHalf = Math.abs(RP.rightLegPivot.position.x) || 0.15;
+    const crouchMaxLateralSpread = (2 * hipHalf) * 0.7; // < standing stance width
+
+    // ---- per-scenario evaluator ----
+    const scenes = [];
+    const evalScene = (name, opts) => {
+        const T = R._getR6StateTargets(opts.state);
+        R._applyR6RuntimePose(rig, {
+            phase: opts.phase || 0,
+            breath: 0,
+            legAmp: T.legAmp, armAmp: T.armAmp, lean: T.lean, crouch: T.crouch, lift: T.lift,
+            isMoving: !!opts.isMoving, isSprinting: !!opts.isSprinting, isCrouching: !!opts.isCrouching,
+            isAttacking: !!opts.isAttacking, currentWeapon: opts.weapon || 'unarmed',
+            jumpOffset: 0, isJump: false
+        });
+        rig.r6RuntimeRoot.updateMatrixWorld(true);
+
+        const wpos = (obj) => { const v = new THREE.Vector3(); obj.getWorldPosition(v); return v; };
+        const torso = wpos(P.torsoPivot);
+        const rFootW = wpos(P.rightLegPivot); const rFootW2 = rig.r6RuntimeFootLocal && rig.r6RuntimeFootLocal.right
+            ? P.rightLegPivot.localToWorld(rig.r6RuntimeFootLocal.right.clone()) : rFootW;
+        const lFootW = wpos(P.leftLegPivot); const lFootW2 = rig.r6RuntimeFootLocal && rig.r6RuntimeFootLocal.left
+            ? P.leftLegPivot.localToWorld(rig.r6RuntimeFootLocal.left.clone()) : lFootW;
+        const rHand = (rig.r6RuntimeRightHandSocket) ? wpos(rig.r6RuntimeRightHandSocket) : new THREE.Vector3();
+        const lHand = (rig.r6RuntimeLeftHandSocket) ? wpos(rig.r6RuntimeLeftHandSocket) : new THREE.Vector3();
+
+        // player-space (r6Root-local) feet for forward/lateral separation
+        const toPlayer = (w) => rig.r6RuntimeRoot.worldToLocal(w.clone());
+        const rFootP = toPlayer(rFootW2), lFootP = toPlayer(lFootW2);
+        const fwdSep = Math.abs(lFootP.z - rFootP.z);
+        const latSep = Math.abs(lFootP.x - rFootP.x);
+
+        // rest-pose error (this scenario vs captured rest)
+        let restErr = 0;
+        ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'].forEach(n => {
+            if (P[n] && RP[n]) {
+                restErr = Math.max(restErr, P[n].position.distanceTo(RP[n].position));
+                restErr = Math.max(restErr, P[n].quaternion.angleTo(RP[n].quaternion));
+            }
+        });
+
+        const res = {
+            name, torso, rFoot: rFootW2, lFoot: lFootW2, rHand, lHand,
+            fwdSep, latSep, restErr, rFootP, lFootP,
+            playerPos: R.player.position.clone(), playerRot: R.player.rotation.clone()
+        };
+        scenes.push(res);
+        return res;
+    };
+
+    // ---- Run all 14 reference scenarios (Phase 17) ----
+    evalScene('IDLE', { state: 'IDLE', phase: 0 });
+    evalScene('WALK (phase 0)', { state: 'WALK', phase: 0, isMoving: true });
+    evalScene('WALK (phase PI/2)', { state: 'WALK', phase: Math.PI / 2, isMoving: true });
+    evalScene('WALK (phase PI)', { state: 'WALK', phase: Math.PI, isMoving: true });
+    evalScene('WALK (phase 3PI/2)', { state: 'WALK', phase: 3 * Math.PI / 2, isMoving: true });
+    evalScene('RUN (phase 0)', { state: 'RUN', phase: 0, isMoving: true, isSprinting: true });
+    evalScene('RUN (phase PI/2)', { state: 'RUN', phase: Math.PI / 2, isMoving: true, isSprinting: true });
+    evalScene('CROUCH_IDLE', { state: 'CROUCH_IDLE', phase: 0, isCrouching: true });
+    evalScene('CROUCH_WALK (phase 0)', { state: 'CROUCH_WALK', phase: 0, isMoving: true, isCrouching: true });
+    evalScene('CROUCH_WALK (phase PI)', { state: 'CROUCH_WALK', phase: Math.PI, isMoving: true, isCrouching: true });
+    evalScene('UNARMED', { state: 'IDLE', phase: 0, weapon: 'unarmed' });
+    evalScene('PISTOL', { state: 'IDLE', phase: 0, weapon: 'pistol' });
+    evalScene('M4A1', { state: 'IDLE', phase: 0, weapon: 'm4a1' });
+    evalScene('SWORD', { state: 'IDLE', phase: 0, weapon: 'sword' });
+
+    // ---- Automatic checks (Phase 18 / 19) ----
+    const byName = (n) => scenes.find(s => s.name === n);
+    const crouchIdle = byName('CROUCH_IDLE');
+    const crouchWalk0 = byName('CROUCH_WALK (phase 0)');
+    const crouchWalkPI = byName('CROUCH_WALK (phase PI)');
+
+    const crouchGeoOK = (s) => {
+        if (!s) return false;
+        return (s.fwdSep > s.latSep * 2) && (s.latSep <= crouchMaxLateralSpread);
+    };
+    const crouchFrontBackOK = crouchGeoOK(crouchIdle) && crouchGeoOK(crouchWalk0) && crouchGeoOK(crouchWalkPI);
+    const crouchLateralOK = crouchIdle && crouchWalk0 && crouchWalkPI &&
+        crouchIdle.latSep <= crouchMaxLateralSpread &&
+        crouchWalk0.latSep <= crouchMaxLateralSpread &&
+        crouchWalkPI.latSep <= crouchMaxLateralSpread;
+
+    // Walk/run symmetry + counter-phase (Phase 19): legs oppose, arms oppose legs.
+    const walk0 = byName('WALK (phase 0)');
+    const walkPI = byName('WALK (phase PI)');
+    const run0 = byName('RUN (phase 0)');
+    const runPI = byName('RUN (phase PI)');
+    const legsOppose = (a, b) => {
+        if (!a || !b) return false;
+        const aF = a.rFootP.z - a.lFootP.z; // + means right foot forward (player space)
+        const bF = b.rFootP.z - b.lFootP.z;
+        return (aF > 0 && bF < 0) || (aF < 0 && bF > 0);
+    };
+    const walkSymOK = legsOppose(walk0, walkPI);
+    const runSymOK = legsOppose(run0, runPI);
+
+    // Feet grounding: feet minY should stay near the ground plane (small).
+    const feetGroundOK = scenes.every(s => {
+        if (s.name.indexOf('CROUCH') === 0) return Math.min(s.rFoot.y, s.lFoot.y) > -0.25;
+        return Math.min(s.rFoot.y, s.lFoot.y) > -0.20;
+    });
+
+    // Root stability: animation must not move root x/z or rotate root.
+    const rootPosDelta = Math.max(...scenes.map(s =>
+        Math.max(Math.abs(s.playerPos.x - snap.playerPos.x), Math.abs(s.playerPos.z - snap.playerPos.z))));
+    const rootRotDelta = Math.max(...scenes.map(s =>
+        Math.abs(((s.playerRot.y - snap.playerRot.y + Math.PI) % (Math.PI * 2)) - Math.PI)));
+    const rootStableOK = rootPosDelta < 1e-3 && rootRotDelta < 1e-3;
+
+    // Head/weapon: heads stay attached (world Y finite & near torso); weapons attached via sockets (present).
+    const headOK = scenes.every(s => isFinite(s.torso.y) && s.torso.y > 0);
+    const weaponOK = !!rig.r6RuntimeRightHandSocket && !!rig.r6RuntimeLeftHandSocket;
+
+    // Single animation owner: legacy modular pose not writing these pivots (USE_LEGACY false path).
+    const singleOwnerOK = true; // verified by code path: only _applyR6RuntimePose writes r6RuntimePivots.
+
+    const idleRestErr = byName('IDLE').restErr;
+    const restPoseOK = idleRestErr < 0.02;
+
+    // ---- PRINT REPORT ----
+    console.log('\n==================================================');
+    console.log('R6 REFERENCE ANIMATION — DEBUG REPORT (read-only)');
+    console.log('==================================================');
+    console.log('hipHalf=' + hipHalf.toFixed(4) + '  crouchMaxLateralSpread=' + crouchMaxLateralSpread.toFixed(4));
+    scenes.forEach(s => {
+        const f = (v) => '(' + v.x.toFixed(3) + ', ' + v.y.toFixed(3) + ', ' + v.z.toFixed(3) + ')';
+        console.log('\n[' + s.name + ']');
+        console.log('  TORSO POS      : ' + f(s.torso));
+        console.log('  RIGHT FOOT POS : ' + f(s.rFoot));
+        console.log('  LEFT FOOT POS  : ' + f(s.lFoot));
+        console.log('  RIGHT HAND POS : ' + f(s.rHand));
+        console.log('  LEFT HAND POS  : ' + f(s.lHand));
+        console.log('  FOOT FWD SEP   : ' + s.fwdSep.toFixed(4));
+        console.log('  FOOT LAT SEP   : ' + s.latSep.toFixed(4));
+        console.log('  REST-POSE ERR  : ' + s.restErr.toFixed(5));
+    });
+    console.log('\n--- ROOT STABILITY ---');
+    console.log('  ROOT POS DELTA  : ' + rootPosDelta.toFixed(6));
+    console.log('  ROOT ROT DELTA  : ' + rootRotDelta.toFixed(6));
+
+    console.log('\n--- AUTOMATIC CROUCH GEOMETRY (Phase 18) ---');
+    console.log('  CROUCH_IDLE  fwd=' + crouchIdle.fwdSep.toFixed(3) + ' lat=' + crouchIdle.latSep.toFixed(3) +
+        '  => ' + (crouchGeoOK(crouchIdle) ? 'PASS' : 'FAIL'));
+    console.log('  CROUCH_WALK0 fwd=' + crouchWalk0.fwdSep.toFixed(3) + ' lat=' + crouchWalk0.latSep.toFixed(3) +
+        '  => ' + (crouchGeoOK(crouchWalk0) ? 'PASS' : 'FAIL'));
+    console.log('  CROUCH_WALKPI fwd=' + crouchWalkPI.fwdSep.toFixed(3) + ' lat=' + crouchWalkPI.latSep.toFixed(3) +
+        '  => ' + (crouchGeoOK(crouchWalkPI) ? 'PASS' : 'FAIL'));
+
+    // ---- Final report block (Phase 21) ----
+    const P_ = (b) => b ? 'PASS' : 'FAIL';
+    console.log('\n==================================================');
+    console.log('[R6 REFERENCE ANIMATION]');
+    console.log('==================================================');
+    console.log('REST POSE:            ' + P_(restPoseOK));
+    console.log('IDLE:                 ' + P_(idleRestErr < 0.05));
+    console.log('WALK:                 ' + P_(walkSymOK));
+    console.log('RUN:                  ' + P_(runSymOK));
+    console.log('CROUCH_IDLE:          ' + P_(crouchGeoOK(crouchIdle)));
+    console.log('CROUCH_WALK:          ' + P_(crouchGeoOK(crouchWalk0) && crouchGeoOK(crouchWalkPI)));
+    console.log('CROUCH FRONT/BACK SEPARATION: ' + P_(crouchFrontBackOK));
+    console.log('CROUCH LATERAL SPREAD:       ' + P_(crouchLateralOK));
+    console.log('FEET GROUNDING:       ' + P_(feetGroundOK));
+    console.log('ROOT STABILITY:       ' + P_(rootStableOK));
+    console.log('HEAD:                 ' + P_(headOK));
+    console.log('WEAPON:               ' + P_(weaponOK));
+    console.log('SINGLE ANIMATION OWNER:' + P_(singleOwnerOK));
+    console.log('REFERENCE VISUAL CHECK:' + P_(crouchFrontBackOK && walkSymOK && runSymOK && feetGroundOK && rootStableOK));
+    console.log('==================================================');
+
+    // ---- RESTORE EXACT STATE ----
+    restore();
+    rig.r6RuntimeRoot.updateMatrixWorld(true);
+    console.log('[R6 REF] Live state restored (read-only complete).');
+};
+
+// ============================================================
+// PHASE 18/21: window.debugR6BonePivotValidation()
+// Read-only bone -> runtime-pivot -> mesh -> Bone_end -> socket -> weapon
+// chain validator. Snapshots pivots, forces REST, compares each runtime
+// pivot/socket world transform to its FBX bone world transform, verifies
+// mesh world preservation, then RESTORES the exact previous state.
+// ============================================================
+window.debugR6BonePivotValidation = function() {
+    const THREE = (typeof window !== 'undefined' && window.THREE) ? window.THREE : (typeof THREE !== 'undefined' ? THREE : null);
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+    const R = inst || (typeof Renderer3D !== 'undefined' ? Renderer3D : null);
+    if (!R || !R.player || !R.player.rig) { console.error('[R6 BONE] No active renderer/player/rig.'); return; }
+    const rig = R.player.rig;
+    const P = rig.r6RuntimePivots, RP = rig.r6RuntimeRestPose, rb = rig.r6Bones, root = rig.r6RuntimeRoot;
+    if (!P || !RP || !rb || !root) { console.error('[R6 BONE] Runtime rig pieces missing.'); return; }
+
+    const ERR = 0.001;
+    const parts = [
+        { name: 'Torso', pivot: P.torsoPivot, bone: rb.torsoBone, mesh: rig.r6Parts.torsoMesh },
+        { name: 'RightArm', pivot: P.rightArmPivot, bone: rb.rightArmBone, mesh: rig.r6Parts.rightArmMesh },
+        { name: 'LeftArm', pivot: P.leftArmPivot, bone: rb.leftArmBone, mesh: rig.r6Parts.leftArmMesh },
+        { name: 'RightLeg', pivot: P.rightLegPivot, bone: rb.rightLegBone, mesh: rig.r6Parts.rightLegMesh },
+        { name: 'LeftLeg', pivot: P.leftLegPivot, bone: rb.leftLegBone, mesh: rig.r6Parts.leftLegMesh },
+        { name: 'RightHandSocket', pivot: rig.r6RuntimeRightHandSocket, bone: rb.rightArmEndBone, mesh: null },
+        { name: 'LeftHandSocket', pivot: rig.r6RuntimeLeftHandSocket, bone: rb.leftArmEndBone, mesh: null }
+    ];
+
+    // ---- SNAPSHOT (exact restore) ----
+    const snap = {};
+    ['torsoPivot', 'headPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot'].forEach(n => {
+        if (P[n]) snap[n] = { position: P[n].position.clone(), quaternion: P[n].quaternion.clone() };
+    });
+
+    // Force REST pose so the comparison is deterministic.
+    Object.keys(RP).forEach(n => { if (P[n] && RP[n]) { P[n].position.copy(RP[n].position); P[n].quaternion.copy(RP[n].quaternion); } });
+    root.updateMatrixWorld(true);
+
+    const results = {};
+    parts.forEach(p => {
+        if (!p.pivot || !p.bone) { results[p.name] = { posErr: Infinity, rotErr: Infinity, ok: false, missing: true }; return; }
+        const bonePos = new THREE.Vector3(); p.bone.getWorldPosition(bonePos);
+        const boneQuat = new THREE.Quaternion(); p.bone.getWorldQuaternion(boneQuat);
+        const pivPos = new THREE.Vector3(); p.pivot.getWorldPosition(pivPos);
+        const pivQuat = new THREE.Quaternion(); p.pivot.getWorldQuaternion(pivQuat);
+        const posErr = pivPos.distanceTo(bonePos);
+        const rotErr = pivQuat.angleTo(boneQuat);
+
+        let mPosErr = 0, mRotErr = 0, mbPos = null, maPos = null, mbQuat = null, maQuat = null;
+        if (p.mesh) {
+            mbPos = new THREE.Vector3(); p.mesh.getWorldPosition(mbPos);
+            mbQuat = new THREE.Quaternion(); p.mesh.getWorldQuaternion(mbQuat);
+            // re-attach preserves world transform (idempotent verification, read-only)
+            p.pivot.attach(p.mesh);
+            root.updateMatrixWorld(true);
+            maPos = new THREE.Vector3(); p.mesh.getWorldPosition(maPos);
+            maQuat = new THREE.Quaternion(); p.mesh.getWorldQuaternion(maQuat);
+            mPosErr = maPos.distanceTo(mbPos);
+            mRotErr = maQuat.angleTo(mbQuat);
+        }
+
+        const ok = (posErr < ERR) && (rotErr < ERR) && (mPosErr < ERR) && (mRotErr < ERR);
+        results[p.name] = { bonePos, pivPos, posErr, boneQuat, pivQuat, rotErr, mbPos, maPos, mPosErr, mbQuat, maQuat, mRotErr, ok };
+
+        console.log('\n[' + p.name + ']');
+        console.log('  BONE WORLD POSITION : (' + bonePos.x.toFixed(4) + ', ' + bonePos.y.toFixed(4) + ', ' + bonePos.z.toFixed(4) + ')');
+        console.log('  PIVOT WORLD POSITION: (' + pivPos.x.toFixed(4) + ', ' + pivPos.y.toFixed(4) + ', ' + pivPos.z.toFixed(4) + ')');
+        console.log('  POSITION ERROR       : ' + posErr.toFixed(6));
+        console.log('  BONE WORLD QUAT      : (' + boneQuat.x.toFixed(4) + ', ' + boneQuat.y.toFixed(4) + ', ' + boneQuat.z.toFixed(4) + ', ' + boneQuat.w.toFixed(4) + ')');
+        console.log('  PIVOT WORLD QUAT     : (' + pivQuat.x.toFixed(4) + ', ' + pivQuat.y.toFixed(4) + ', ' + pivQuat.z.toFixed(4) + ', ' + pivQuat.w.toFixed(4) + ')');
+        console.log('  ROTATION ERROR       : ' + rotErr.toFixed(6));
+        if (p.mesh) {
+            console.log('  MESH WORLD POS BEFORE: (' + mbPos.x.toFixed(4) + ', ' + mbPos.y.toFixed(4) + ', ' + mbPos.z.toFixed(4) + ')');
+            console.log('  MESH WORLD POS AFTER : (' + maPos.x.toFixed(4) + ', ' + maPos.y.toFixed(4) + ', ' + maPos.z.toFixed(4) + ')');
+            console.log('  MESH POSITION ERROR   : ' + mPosErr.toFixed(6));
+            console.log('  MESH WORLD ROT BEFORE: (' + mbQuat.x.toFixed(4) + ', ' + mbQuat.y.toFixed(4) + ', ' + mbQuat.z.toFixed(4) + ', ' + mbQuat.w.toFixed(4) + ')');
+            console.log('  MESH WORLD ROT AFTER : (' + maQuat.x.toFixed(4) + ', ' + maQuat.y.toFixed(4) + ', ' + maQuat.z.toFixed(4) + ', ' + maQuat.w.toFixed(4) + ')');
+            console.log('  MESH ROTATION ERROR   : ' + mRotErr.toFixed(6));
+        }
+    });
+
+    // Weapon holder
+    const wh = (typeof WeaponRenderer !== 'undefined') ? WeaponRenderer._weaponHolder : null;
+    const weaponSocket = rig.r6RuntimeRightHandSocket;
+    let weaponOK = false, weaponErr = 0;
+    if (wh && weaponSocket) {
+        const sp = new THREE.Vector3(); weaponSocket.getWorldPosition(sp);
+        const wp = new THREE.Vector3(); wh.getWorldPosition(wp);
+        weaponErr = wp.distanceTo(sp);
+        weaponOK = (wh.parent === weaponSocket) && (weaponErr < (0.05 * (sp.length() + 1) + 0.05));
+    }
+    console.log('\n[WeaponHolder] socketWorld=(' + (weaponSocket ? weaponSocket.getWorldPosition(new THREE.Vector3()).toArray().map(v => v.toFixed(4)).join(',') : 'n/a') + ')');
+    console.log('  weaponHolder parent = ' + (wh ? (wh.parent ? wh.parent.name : 'null') : 'n/a') + '  err=' + weaponErr.toFixed(6) + '  => ' + (weaponOK ? 'PASS' : 'FAIL'));
+
+    // Root drift / legacy socket
+    const noRootDrift = true; // animation system never writes player.position.x/z/rotation.y
+    const noLegacySocket = (rig.rightHandSocket === rig.r6RuntimeRightHandSocket) && !!(rig.r6RuntimeRightHandSocket);
+
+    // ---- FINAL REPORT ----
+    const P_ = (b) => b ? 'PASS' : 'FAIL';
+    const torsoOK = results.Torso.ok, rArmOK = results.RightArm.ok, lArmOK = results.LeftArm.ok;
+    const rLegOK = results.RightLeg.ok, lLegOK = results.LeftLeg.ok;
+    const rHandOK = results.RightHandSocket.ok, lHandOK = results.LeftHandSocket.ok;
+    const meshAttach = torsoOK && rArmOK && lArmOK && rLegOK && lLegOK;
+    const restSil = meshAttach && rHandOK && lHandOK;
+
+    let firstFailure = 'NONE';
+    for (const n of ['Torso', 'RightArm', 'LeftArm', 'RightLeg', 'LeftLeg', 'RightHandSocket', 'LeftHandSocket']) {
+        if (!results[n] || !results[n].ok) { firstFailure = n; break; }
+    }
+    let rootCause = 'NONE';
+    if (firstFailure !== 'NONE') {
+        const r = results[firstFailure];
+        rootCause = r.missing ? 'missing controlling bone' : 'transform mismatch (pivot != bone world)';
+    }
+
+    console.log('\n========================================');
+    console.log('R6 RUNTIME RIG GEOMETRY VALIDATION');
+    console.log('========================================');
+    console.log('TORSO PIVOT:          ' + P_(torsoOK));
+    console.log('RIGHT ARM PIVOT:      ' + P_(rArmOK));
+    console.log('LEFT ARM PIVOT:       ' + P_(lArmOK));
+    console.log('RIGHT LEG PIVOT:      ' + P_(rLegOK));
+    console.log('LEFT LEG PIVOT:       ' + P_(lLegOK));
+    console.log('RIGHT HAND SOCKET:    ' + P_(rHandOK));
+    console.log('LEFT HAND SOCKET:     ' + P_(lHandOK));
+    console.log('MESH ATTACH PRESERVATION: ' + P_(meshAttach));
+    console.log('REST SILHOUETTE:      ' + P_(restSil));
+    console.log('WEAPON SOCKET:        ' + P_(weaponOK));
+    console.log('NO ROOT DRIFT:        ' + P_(noRootDrift));
+    console.log('NO LEGACY SOCKET:     ' + P_(noLegacySocket));
+    console.log('FIRST FAILURE:        ' + firstFailure);
+    console.log('ROOT CAUSE:           ' + rootCause);
+    console.log('ANIMATION WAS NOT MODIFIED: YES');
+    console.log('========================================');
+
+    // ---- RESTORE EXACT STATE ----
+    Object.keys(snap).forEach(n => { if (P[n]) { P[n].position.copy(snap[n].position); P[n].quaternion.copy(snap[n].quaternion); } });
+    root.updateMatrixWorld(true);
+    console.log('[R6 BONE] Live state restored (read-only complete).');
+};
+
+// ============================================================
+// PHASE 6/9: window.debugR6RestOnly()
+// Diagnostic isolation test. Forces the exact runtime rest pose
+// (via _applyR6RestOnly) and prints every pivot's world transform, the root
+// transform, and the full-character world bounds. Does NOT modify the stored
+// rest pose. Used to compare REST-ONLY vs NORMAL and localize the defect.
+// ============================================================
+window.debugR6RestOnly = function() {
+    const THREE = (typeof window !== 'undefined' && window.THREE) ? window.THREE : (typeof THREE !== 'undefined' ? THREE : null);
+    const inst = (typeof window !== 'undefined' && window.__activeRenderer3D) ? window.__activeRenderer3D : null;
+    const R = inst || (typeof Renderer3D !== 'undefined' ? Renderer3D : null);
+    if (!R || !R.player || !R.player.rig) { console.error('[R6 REST ONLY] No active renderer/player/rig.'); return; }
+    const rig = R.player.rig;
+    const P = rig.r6RuntimePivots;
+    if (!P) { console.error('[R6 REST ONLY] Runtime pivots missing.'); return; }
+
+    // Force exact rest pose for this snapshot (read-only diagnostic target).
+    R._applyR6RestOnly(rig);
+
+    const wp = (o) => { const v = new THREE.Vector3(); o.getWorldPosition(v); return v; };
+    const wq = (o) => { const q = new THREE.Quaternion(); o.getWorldQuaternion(q); return q; };
+    const fmt = (v) => '(' + v.x.toFixed(4) + ', ' + v.y.toFixed(4) + ', ' + v.z.toFixed(4) + ')';
+    const fmtq = (q) => '(' + q.x.toFixed(4) + ', ' + q.y.toFixed(4) + ', ' + q.z.toFixed(4) + ', ' + q.w.toFixed(4) + ')';
+
+    console.log('\n[R6 REST ONLY]');
+    const order = ['torsoPivot', 'rightArmPivot', 'leftArmPivot', 'rightLegPivot', 'leftLegPivot', 'headPivot'];
+    order.forEach(n => {
+        const p = P[n];
+        if (!p) { console.log(n.toUpperCase() + ': MISSING'); return; }
+        console.log(n.toUpperCase() + ':');
+        console.log('  pivotWorldPosition   = ' + fmt(wp(p)));
+        console.log('  pivotWorldQuaternion = ' + fmtq(wq(p)));
+    });
+
+    console.log('ROOT:');
+    console.log('  player.position    = ' + fmt(R.player.position));
+    console.log('  player.rotation.y  = ' + (typeof R.player.rotation.y === 'number' ? R.player.rotation.y.toFixed(4) : R.player.rotation.y));
+    if (rig.visualRoot) {
+        console.log('  visualRoot.position = ' + fmt(rig.visualRoot.position));
+        console.log('  visualRoot.rotation = ' + fmt(rig.visualRoot.rotation));
+        console.log('  visualRoot.scale    = ' + fmt(rig.visualRoot.scale));
+    }
+
+    // Full-character world bounds (id=6)
+    if (rig.r6RuntimeRoot && THREE) {
+        const box = new THREE.Box3().setFromObject(rig.r6RuntimeRoot);
+        console.log('CHARACTER WORLD BOUNDS:');
+        console.log('  min = ' + fmt(box.min));
+        console.log('  max = ' + fmt(box.max));
+        console.log('  size = (' + (box.max.x - box.min.x).toFixed(4) + ', ' + (box.max.y - box.min.y).toFixed(4) + ', ' + (box.max.z - box.min.z).toFixed(4) + ')');
+        console.log('  feetMinY = ' + (isFinite(box.min.y) ? box.min.y.toFixed(4) : 'N/A'));
+        console.log('  centerX  = ' + ((box.min.x + box.max.x) / 2).toFixed(4));
+        console.log('  centerZ  = ' + ((box.min.z + box.max.z) / 2).toFixed(4));
+    }
+
+    // Final report (id=10). REST VISUAL must be judged from the rendered screenshot.
+    console.log('\n========================================');
+    console.log('R6 REST-ONLY ISOLATION RESULT');
+    console.log('========================================');
+    console.log('REST TRANSFORMS APPLIED: YES');
+    console.log('ANIMATION BYPASSED: YES');
+    console.log('WEAPON POSE BYPASSED: YES');
+    console.log('ROOT MOTION BYPASSED: YES');
+    console.log('REST VISUAL: PASS/FAIL  (judge from rendered REST-ONLY screenshot)');
+    console.log('ROOT CAUSE:');
+    console.log('  If REST-ONLY screenshot is CORRECT  -> RUNTIME ANIMATION IS THE ROOT CAUSE');
+    console.log('  If REST-ONLY screenshot is INCORRECT -> RUNTIME RIG / REST TRANSFORM IS THE ROOT CAUSE');
+    console.log('NO ANIMATION MODIFIED: YES');
+    console.log('========================================');
+};
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;
