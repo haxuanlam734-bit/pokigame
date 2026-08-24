@@ -180,7 +180,10 @@ const WeaponRenderer = {
 
         for (const id in defs) {
             const def = defs[id];
-            if (!def.modelPath) continue;
+            if (!def.modelPath) {
+                this._createFallbackModel(id, def);
+                continue;
+            }
             this._loadModel(loader, id, def);
         }
     },
@@ -204,6 +207,9 @@ const WeaponRenderer = {
                 self._models[weaponId] = model;
                 self._weaponHolder.add(model);
                 console.log('Load model thanh cong: ' + weaponId + ' (' + def.modelPath + ')');
+                if (weaponId === 'grenade') {
+                    console.log('[GRENADE] Model loaded successfully from', def.modelPath);
+                }
 
                 if (typeof WeaponSystem !== 'undefined' && WeaponSystem.currentId === weaponId) {
                     self._showModel(weaponId);
@@ -213,6 +219,9 @@ const WeaponRenderer = {
             undefined,
             function(err) {
                 console.error('Loi load model ' + weaponId + ' (' + def.modelPath + '):', err);
+                if (weaponId === 'grenade') {
+                    console.error('[GRENADE ERROR] Failed to load model:', def.modelPath, err);
+                }
                 self._createFallbackModel(weaponId, def);
                 resolve(null);
             }
@@ -274,6 +283,39 @@ const WeaponRenderer = {
             const group = new THREE.Group();
             group.add(mesh);
             group.add(guard);
+            group.name = weaponId + '_fallback';
+            group.visible = false;
+            this._models[weaponId] = group;
+            this._weaponHolder.add(group);
+            this._createFallbackGripMarkers(weaponId, group);
+        } else if (weaponId === 'grenade') {
+            const group = new THREE.Group();
+            const bodyGeo = new THREE.CylinderGeometry(0.08, 0.09, 0.18, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3d4a2e, roughness: 0.7, metalness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.rotation.z = Math.PI / 2;
+            group.add(body);
+
+            const capGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8);
+            const capMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5, metalness: 0.6 });
+            const cap = new THREE.Mesh(capGeo, capMat);
+            cap.position.set(0, 0.11, 0);
+            cap.rotation.z = Math.PI / 2;
+            group.add(cap);
+
+            const fuseGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.06, 6);
+            const fuseMat = new THREE.MeshStandardMaterial({ color: 0xcc8844, roughness: 0.9, metalness: 0.1 });
+            const fuse = new THREE.Mesh(fuseGeo, fuseMat);
+            fuse.position.set(0, 0.14, 0);
+            fuse.rotation.z = Math.PI / 2;
+            group.add(fuse);
+
+            const bandGeo = new THREE.TorusGeometry(0.095, 0.015, 6, 8);
+            const bandMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.4, metalness: 0.7 });
+            const band = new THREE.Mesh(bandGeo, bandMat);
+            band.rotation.y = Math.PI / 2;
+            group.add(band);
+
             group.name = weaponId + '_fallback';
             group.visible = false;
             this._models[weaponId] = group;
@@ -418,7 +460,7 @@ const WeaponRenderer = {
             model.rotation.set(a.rx || 0, a.ry || 0, a.rz || 0);
         }
 
-        if (weaponId !== 'sword' && this._muzzleFlashObj) {
+        if (weaponId !== 'sword' && weaponId !== 'grenade' && this._muzzleFlashObj) {
             if (this._muzzleFlashObj.parent !== model) {
                 model.add(this._muzzleFlashObj);
                 this._muzzleFlashObj.position.set(0, 0, 0.45);

@@ -1653,7 +1653,7 @@
                 <div class="med-item" id="btn-bandage">
                     <div class="med-icon">🩹</div>
                     <div class="med-info">
-                        <span class="med-name">Băng gạc (Z)</span>
+                        <span class="med-name">Băng gạc (H)</span>
                         <span class="med-count" id="count-bandage">x0</span>
                     </div>
                 </div>
@@ -1773,6 +1773,9 @@
                 </div>
                 <div class="weapon-slot" id="slot-ak" onclick="if(typeof WeaponSystem!=='undefined')WeaponSystem.equip('ak')">
                     <span class="key-num">3</span> 💥 M4A1
+                </div>
+                <div class="weapon-slot" id="slot-grenade" onclick="if(typeof WeaponSystem!=='undefined')WeaponSystem.equip('grenade')">
+                    <span class="key-num">4</span> 💣 Grenade
                 </div>
             </div>
 
@@ -1965,6 +1968,7 @@
     <script src="src/rendering/renderer-3d.js"></script>
     <script src="src/combat/weapon-system.js"></script>
     <script src="src/combat/weapon-renderer.js"></script>
+    <script src="src/combat/grenade.js"></script>
     <script src="src/entities/wall-3d.js"></script>
     <script src="src/entities/tower-3d.js"></script>
     <script src="src/entities/minter-3d.js"></script>

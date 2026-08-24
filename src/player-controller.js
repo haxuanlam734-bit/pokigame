@@ -106,6 +106,15 @@ const PlayerController = {
         this.isSprinting = false;
         this.isCrouching = false;
         this.speed = this.normalSpeed;
+
+        if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.reset) {
+            GrenadeSystem.reset();
+        }
+        if (typeof WeaponSystem !== 'undefined') {
+            WeaponSystem._grenadeCount = (typeof WEAPON_DEFS !== 'undefined' && WEAPON_DEFS.grenade) ? (WEAPON_DEFS.grenade.reserveAmmo || 3) : 3;
+            WeaponSystem._grenadeAiming = false;
+            WeaponSystem._grenadeThrown = false;
+        }
     },
 
     init: function() {
@@ -155,11 +164,23 @@ const PlayerController = {
         document.addEventListener('click', this._onScreenClick);
 
         // --- LANG NGHE PHIM CHUYEN VU KHI VA NAP DAN ---
-        // 1 = Sword (kiem), 2 = Pistol, 3 = AK/M4
+        // Keys 1-3 = fixed weapons, 4-6 = dynamic weapon slots
         this._onWeaponKeyDown = function(e) {
             if (e.key === '1' && typeof WeaponSystem !== 'undefined') WeaponSystem.equip('sword');
             if (e.key === '2' && typeof WeaponSystem !== 'undefined') WeaponSystem.equip('pistol');
             if (e.key === '3' && typeof WeaponSystem !== 'undefined') WeaponSystem.equip('ak');
+            if (e.key === '4' && typeof WeaponSystem !== 'undefined') {
+                const slot4 = WeaponSystem.getDynamicSlot('4');
+                if (slot4) WeaponSystem.equip(slot4);
+            }
+            if (e.key === '5' && typeof WeaponSystem !== 'undefined') {
+                const slot5 = WeaponSystem.getDynamicSlot('5');
+                if (slot5) WeaponSystem.equip(slot5);
+            }
+            if (e.key === '6' && typeof WeaponSystem !== 'undefined') {
+                const slot6 = WeaponSystem.getDynamicSlot('6');
+                if (slot6) WeaponSystem.equip(slot6);
+            }
             // R duoc WeaponSystem xu ly trong update()
         };
         window.addEventListener('keydown', this._onWeaponKeyDown);
@@ -425,11 +446,29 @@ const PlayerController = {
 
         const isAttacking = (typeof WeaponSystem !== 'undefined' && (WeaponSystem._meleeAttacking || (InputManager.isMouseDown && WeaponSystem.currentId !== 'sword'))) || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim);
         let playerAnim = 'idle';
-        if (isAttacking) {
-            playerAnim = 'attack';
+
+        // Animation priority system for FBX model
+        // DEATH > ATTACK/SHOOT/THROW/MELEE > JUMP > CROUCH > RUN > WALK > IDLE
+        if (this.isDead) {
+            playerAnim = 'death';
+        } else if (isAttacking) {
+            // Determine attack type based on weapon
+            const currentWeapon = typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol';
+            if (currentWeapon === 'sword') {
+                playerAnim = 'melee';
+            } else if (currentWeapon === 'grenade') {
+                playerAnim = 'bomb';
+            } else {
+                playerAnim = 'shoot';
+            }
+        } else if (!this.isGrounded && this.velocityY > 0.1) {
+            playerAnim = 'jump';
+        } else if (this.isCrouching && this.hasMovementInput) {
+            playerAnim = 'crouch';
         } else if (this.hasMovementInput) {
             playerAnim = this.isSprinting ? 'run' : 'walk';
         }
+
         if (Renderer3D && Renderer3D.setPlayerAnimation) {
             Renderer3D.setPlayerAnimation(playerAnim, 0.18);
         }
@@ -446,7 +485,7 @@ const PlayerController = {
                 isGrounded: this.isGrounded,
                 isCrouching: this.isCrouching,
                 isAttacking: isAttacking,
-                currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol',
+                currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'unarmed',
                 aimPitch: InputManager ? InputManager.cameraPitch : 0,
                 isFiring: typeof WeaponSystem !== 'undefined' ? WeaponSystem.isFiring : false
             }
@@ -462,7 +501,14 @@ const PlayerController = {
         this.isRespawning = true;
         this.respawnTimer = CONFIG.RESPAWN_DELAY_MS;
 
-        // Disable movement
+        if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.cancelAiming) {
+            GrenadeSystem.cancelAiming();
+        }
+        if (typeof WeaponSystem !== 'undefined') {
+            WeaponSystem._grenadeAiming = false;
+            WeaponSystem._grenadeThrown = false;
+        }
+
         this.velocity = { x: 0, z: 0 };
         this.targetVelocity = { x: 0, z: 0 };
         this.hasMovementInput = false;
@@ -470,7 +516,6 @@ const PlayerController = {
         this.isCrouching = false;
         this.velocityY = 0;
 
-        // Show death overlay
         const deathOverlay = document.getElementById('death-overlay');
         if (deathOverlay) deathOverlay.style.display = 'flex';
 
@@ -500,6 +545,14 @@ const PlayerController = {
         this.respawnTimer = 0;
         this.isSprinting = false;
         this.isCrouching = false;
+
+        if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.cancelAiming) {
+            GrenadeSystem.cancelAiming();
+        }
+        if (typeof WeaponSystem !== 'undefined') {
+            WeaponSystem._grenadeAiming = false;
+            WeaponSystem._grenadeThrown = false;
+        }
 
         // Restore HP
         if (typeof GameState !== 'undefined') {

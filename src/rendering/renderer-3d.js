@@ -3,6 +3,15 @@
  * TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o scene 3D, camera, lighting, vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  vÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â½ cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c entity
  */
 
+// ============================================================
+// R6 RUNTIME DEBUG SWITCHES (READ-ONLY DIAGNOSTICS)
+// ============================================================
+const PLAYER_R6_FREEZE_POSE = (typeof window !== 'undefined' && window.PLAYER_R6_FREEZE_POSE) ? window.PLAYER_R6_FREEZE_POSE : false;
+const PLAYER_R6_DEBUG_VISUALS = (typeof window !== 'undefined' && window.PLAYER_R6_DEBUG_VISUALS) ? window.PLAYER_R6_DEBUG_VISUALS : false;
+const PLAYER_R6_LOG_FRAMES = (typeof window !== 'undefined' && window.PLAYER_R6_LOG_FRAMES) ? window.PLAYER_R6_LOG_FRAMES : 30;
+const PLAYER_R6_TRACE_WRITES = (typeof window !== 'undefined' && window.PLAYER_R6_TRACE_WRITES) ? window.PLAYER_R6_TRACE_WRITES : false;
+
+
 function applyVisualReferenceLighting() {
     const L = CONFIG.LIGHTING;
 
@@ -2225,23 +2234,1754 @@ let Renderer3D = {
         // Build procedural fallback rig immediately
         this._buildProceduralPlayerRig(rig);
 
-        // Asynchronously load the upgraded Roblox player model GLB
-        this._loadPlayerGLB(rig);
+        // Asynchronously load the FBX player model (primary)
+        this._loadPlayerFBX(rig);
 
         console.log('🚶 Nhân vật Player 3D được khởi tạo');
     },
 
+    // ================================================================
+    // PLAYER FBX LOADER - Tích hợp model FBX mới với skeleton/bones
+    // ================================================================
+
+    _loadPlayerFBX: function(rig) {
+        // Tìm file FBX trong thư mục player
+        const fbxPath = 'src/assets/character/player/noob Untitled.fbx';
+
+        let fbxLoader = null;
+        if (typeof FBXLoader !== 'undefined') {
+            fbxLoader = new FBXLoader();
+        } else if (typeof THREE !== 'undefined' && typeof THREE.FBXLoader !== 'undefined') {
+            fbxLoader = new THREE.FBXLoader();
+        } else if (this._fbxLoader) {
+            fbxLoader = this._fbxLoader;
+        }
+
+        if (!fbxLoader) {
+            console.warn('[PLAYER FBX] FBXLoader không khả dụng, thử GLB fallback...');
+            this._loadPlayerGLB(rig);
+            return;
+        }
+
+        // Cache loader cho reuse
+        this._fbxLoader = fbxLoader;
+
+        fbxLoader.load(fbxPath, (fbx) => {
+            console.log('[PLAYER FBX] Model loaded');
+
+            // ============================================================
+            // PHASE 1: READ-ONLY FORENSIC AUDIT (không thay đổi gì)
+            // ============================================================
+            this._auditFBX(fbx);
+
+            // Sau khi audit xong, mới tiếp tục setup
+            this._setupPlayerFBX(rig, fbx);
+        }, undefined, (err) => {
+            console.warn('[PLAYER FBX] Load failed -> fallback to GLB player:', err?.message || err);
+            this._loadPlayerGLB(rig);
+        });
+    },
+
+    /**
+     * FORENSIC AUDIT - Chỉ đọc và report, KHÔNG modify
+     * Mục đích: Xác định cấu trúc thực sự của FBX trước khi quyết định integration
+     */
+    _auditFBX: function(originalRoot) {
+        console.log('\n');
+        console.log('############################################################');
+        console.log('#                PLAYER FBX FORENSIC AUDIT                 #');
+        console.log('############################################################');
+        console.log('\n');
+
+        // Clone để test mà không ảnh hưởng original
+        const root = originalRoot;
+
+        // Đảm bảo matrix world được update
+        root.updateMatrixWorld(true);
+
+        // ============================================================
+        // A. PRINT ENTIRE OBJECT HIERARCHY
+        // ============================================================
+        console.log('========================================================');
+        console.log('A. ENTIRE OBJECT HIERARCHY');
+        console.log('========================================================');
+
+        const allNodes = [];
+        root.traverse((node) => {
+            allNodes.push(node);
+        });
+
+        // Build hierarchy tree
+        const printNode = (node, depth) => {
+            const indent = '  '.repeat(depth);
+            const type = node.type || 'unknown';
+            const isBone = node.isBone === true;
+            const isMesh = node.isMesh === true;
+            const isSkinnedMesh = node.isSkinnedMesh === true;
+            const isGroup = node.isGroup === true;
+
+            let typeStr = type;
+            if (isBone) typeStr = 'Bone';
+            else if (isSkinnedMesh) typeStr = 'SkinnedMesh';
+            else if (isMesh) typeStr = 'Mesh';
+            else if (isGroup) typeStr = 'Group';
+
+            const pos = node.position ? `pos(${node.position.x.toFixed(3)}, ${node.position.y.toFixed(3)}, ${node.position.z.toFixed(3)})` : '';
+            const rot = node.rotation ? `rot(${node.rotation.x.toFixed(2)}, ${node.rotation.y.toFixed(2)}, ${node.rotation.z.toFixed(2)})` : '';
+            const scl = node.scale ? `scale(${node.scale.x.toFixed(2)}, ${node.scale.y.toFixed(2)}, ${node.scale.z.toFixed(2)})` : '';
+
+            console.log(`${indent}${node.name || '(unnamed)'} [${typeStr}] ${pos} ${rot} ${scl}`);
+        };
+
+        // Find root-level nodes
+        const printHierarchy = (node, depth) => {
+            printNode(node, depth);
+            if (node.children) {
+                node.children.forEach(child => printHierarchy(child, depth + 1));
+            }
+        };
+
+        // Print from root
+        printHierarchy(root, 0);
+
+        console.log('\n');
+
+        // ============================================================
+        // B. FOR EVERY MESH, PRINT COMPLETE PARENT CHAIN
+        // ============================================================
+        console.log('========================================================');
+        console.log('B. MESH PARENT CHAINS');
+        console.log('========================================================');
+
+        const meshes = [];
+        root.traverse((node) => {
+            if (node.isMesh === true || node.isSkinnedMesh === true) {
+                meshes.push(node);
+            }
+        });
+
+        meshes.forEach((mesh, i) => {
+            console.log(`\n--- Mesh[${i}]: "${mesh.name}" ---`);
+
+            const chain = [];
+            let current = mesh;
+            while (current) {
+                const type = current.isBone === true ? 'Bone' :
+                             current.isMesh === true ? 'Mesh' :
+                             current.isSkinnedMesh === true ? 'SkinnedMesh' :
+                             current.isGroup === true ? 'Group' : current.type;
+                chain.push(`${current.name || '(unnamed)'}[${type}]`);
+                current = current.parent;
+            }
+
+            console.log('  Parent chain (mesh -> root):');
+            chain.forEach((item, idx) => {
+                const indent = '    ' + '  '.repeat(idx);
+                if (idx === 0) {
+                    console.log(`${indent}${item} (THIS MESH)`);
+                } else {
+                    console.log(`${indent}^- ${item}`);
+                }
+            });
+        });
+
+        console.log('\n');
+
+        // ============================================================
+        // C. PRINT WORLD TRANSFORM OF EVERY MESH
+        // ============================================================
+        console.log('========================================================');
+        console.log('C. MESH WORLD TRANSFORMS (before normalization)');
+        console.log('========================================================');
+
+        const meshWorldData = [];
+
+        meshes.forEach((mesh, i) => {
+            console.log(`\n--- Mesh[${i}]: "${mesh.name}" ---`);
+
+            // Local transform
+            console.log(`  Local position: (${mesh.position.x.toFixed(3)}, ${mesh.position.y.toFixed(3)}, ${mesh.position.z.toFixed(3)})`);
+            console.log(`  Local rotation: (${mesh.rotation.x.toFixed(3)}, ${mesh.rotation.y.toFixed(3)}, ${mesh.rotation.z.toFixed(3)})`);
+            console.log(`  Local scale: (${mesh.scale.x.toFixed(3)}, ${mesh.scale.y.toFixed(3)}, ${mesh.scale.z.toFixed(3)})`);
+
+            // World transform
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            mesh.getWorldPosition(worldPos);
+            mesh.getWorldQuaternion(worldQuat);
+            mesh.getWorldScale(worldScale);
+
+            console.log(`  World position: (${worldPos.x.toFixed(3)}, ${worldPos.y.toFixed(3)}, ${worldPos.z.toFixed(3)})`);
+            console.log(`  World scale: (${worldScale.x.toFixed(3)}, ${worldScale.y.toFixed(3)}, ${worldScale.z.toFixed(3)})`);
+
+            // Geometry bounds
+            if (mesh.geometry) {
+                mesh.geometry.computeBoundingBox();
+                const geoBox = mesh.geometry.boundingBox;
+                const geoSize = new THREE.Vector3();
+                geoBox.getSize(geoSize);
+                console.log(`  Geometry bounds min: (${geoBox.min.x.toFixed(3)}, ${geoBox.min.y.toFixed(3)}, ${geoBox.min.z.toFixed(3)})`);
+                console.log(`  Geometry bounds max: (${geoBox.max.x.toFixed(3)}, ${geoBox.max.y.toFixed(3)}, ${geoBox.max.z.toFixed(3)})`);
+                console.log(`  Geometry size: (${geoSize.x.toFixed(3)}, ${geoSize.y.toFixed(3)}, ${geoSize.z.toFixed(3)})`);
+            }
+
+            // World bounding box
+            const worldBox = new THREE.Box3().setFromObject(mesh);
+            const worldBoxSize = new THREE.Vector3();
+            const worldBoxCenter = new THREE.Vector3();
+            worldBox.getSize(worldBoxSize);
+            worldBox.getCenter(worldBoxCenter);
+
+            console.log(`  World bounds min: (${worldBox.min.x.toFixed(3)}, ${worldBox.min.y.toFixed(3)}, ${worldBox.min.z.toFixed(3)})`);
+            console.log(`  World bounds max: (${worldBox.max.x.toFixed(3)}, ${worldBox.max.y.toFixed(3)}, ${worldBox.max.z.toFixed(3)})`);
+            console.log(`  World size: (${worldBoxSize.x.toFixed(3)}, ${worldBoxSize.y.toFixed(3)}, ${worldBoxSize.z.toFixed(3)})`);
+            console.log(`  World center: (${worldBoxCenter.x.toFixed(3)}, ${worldBoxCenter.y.toFixed(3)}, ${worldBoxCenter.z.toFixed(3)})`);
+
+            meshWorldData.push({
+                mesh: mesh,
+                name: mesh.name,
+                worldPos: worldPos.clone(),
+                worldScale: worldScale.clone(),
+                worldSize: worldBoxSize.clone(),
+                worldCenter: worldBoxCenter.clone()
+            });
+        });
+
+        console.log('\n');
+
+        // ============================================================
+        // D. PRINT WORLD TRANSFORM OF EVERY BONE
+        // ============================================================
+        console.log('========================================================');
+        console.log('D. BONE WORLD TRANSFORMS');
+        console.log('========================================================');
+
+        const bones = [];
+        root.traverse((node) => {
+            if (node.isBone === true) {
+                bones.push(node);
+            }
+        });
+
+        bones.forEach((bone, i) => {
+            console.log(`\n--- Bone[${i}]: "${bone.name}" ---`);
+
+            const parent = bone.parent;
+            const parentName = parent ? parent.name : 'none';
+            const parentType = parent ? (parent.isBone === true ? 'Bone' : parent.type) : 'none';
+
+            console.log(`  Parent: "${parentName}" (${parentType})`);
+            console.log(`  Local position: (${bone.position.x.toFixed(3)}, ${bone.position.y.toFixed(3)}, ${bone.position.z.toFixed(3)})`);
+            console.log(`  Local rotation: (${bone.rotation.x.toFixed(3)}, ${bone.rotation.y.toFixed(3)}, ${bone.rotation.z.toFixed(3)})`);
+            console.log(`  Local scale: (${bone.scale.x.toFixed(3)}, ${bone.scale.y.toFixed(3)}, ${bone.scale.z.toFixed(3)})`);
+
+            const worldPos = new THREE.Vector3();
+            bone.getWorldPosition(worldPos);
+            console.log(`  World position: (${worldPos.x.toFixed(3)}, ${worldPos.y.toFixed(3)}, ${worldPos.z.toFixed(3)})`);
+
+            // Count children
+            const childBones = bone.children.filter(c => c.isBone === true);
+            const childMeshes = bone.children.filter(c => c.isMesh === true || c.isSkinnedMesh === true);
+            console.log(`  Children bones: ${childBones.length} (${childBones.map(b => b.name).join(', ')})`);
+            console.log(`  Children meshes: ${childMeshes.length} (${childMeshes.map(m => m.name).join(', ')})`);
+        });
+
+        console.log('\n');
+
+        // ============================================================
+        // E. ANALYZE BONE HIERARCHY STRUCTURE
+        // ============================================================
+        console.log('========================================================');
+        console.log('E. BONE HIERARCHY ANALYSIS');
+        console.log('========================================================');
+
+        // Build bone chains
+        const boneChains = [];
+        const visitedBones = new Set();
+
+        const traceBoneChain = (bone, chain) => {
+            visitedBones.add(bone);
+            const childBones = bone.children.filter(c => c.isBone === true && !visitedBones.has(c));
+
+            if (childBones.length === 0) {
+                boneChains.push([...chain, bone]);
+            } else {
+                childBones.forEach(child => {
+                    traceBoneChain(child, [...chain, bone]);
+                });
+            }
+        };
+
+        // Find root bones (bones whose parent is not a bone)
+        const rootBones = bones.filter(b => !b.parent || b.parent.isBone !== true);
+
+        console.log(`Root bones: ${rootBones.length}`);
+        rootBones.forEach(rb => {
+            console.log(`  "${rb.name}" at world (${rb.getWorldPosition(new THREE.Vector3()).x.toFixed(2)}, ${rb.getWorldPosition(new THREE.Vector3()).y.toFixed(2)}, ${rb.getWorldPosition(new THREE.Vector3()).z.toFixed(2)})`);
+            traceBoneChain(rb, []);
+        });
+
+        console.log(`\nBone chains (${boneChains.length}):`);
+        boneChains.forEach((chain, i) => {
+            const chainStr = chain.map(b => b.name).join(' -> ');
+            console.log(`  Chain[${i}]: ${chainStr} (length: ${chain.length})`);
+        });
+
+        // Check if this looks like a humanoid skeleton
+        const maxChainLength = boneChains.reduce((max, chain) => Math.max(max, chain.length), 0);
+        const hasHipsLikeBone = bones.some(b => /hip|pelvis|waist|root/i.test(b.name));
+        const hasSpineLikeBone = bones.some(b => /spine|chest|torso/i.test(b.name));
+        const hasHeadLikeBone = bones.some(b => /head|skull|neck/i.test(b.name));
+        const hasArmLikeBone = bones.some(b => /arm|hand|clavicle/i.test(b.name));
+        const hasLegLikeBone = bones.some(b => /leg|thigh|calf|foot/i.test(b.name));
+
+        console.log(`\nHumanoid indicators:`);
+        console.log(`  Max bone chain length: ${maxChainLength}`);
+        console.log(`  Has hips/pelvis-like bone: ${hasHipsLikeBone}`);
+        console.log(`  Has spine/chest-like bone: ${hasSpineLikeBone}`);
+        console.log(`  Has head/neck-like bone: ${hasHeadLikeBone}`);
+        console.log(`  Has arm/hand-like bone: ${hasArmLikeBone}`);
+        console.log(`  Has leg/foot-like bone: ${hasLegLikeBone}`);
+
+        const humanoidScore = [hasHipsLikeBone, hasSpineLikeBone, hasHeadLikeBone, hasArmLikeBone, hasLegLikeBone].filter(Boolean).length;
+        console.log(`  Humanoid score: ${humanoidScore}/5`);
+
+        console.log('\n');
+
+        // ============================================================
+        // F. TEST BONE-TO-MESH CONTROL (ROTATION TEST)
+        // ============================================================
+        console.log('========================================================');
+        console.log('F. BONE-TO-MESH CONTROL TEST (rotation experiment)');
+        console.log('========================================================');
+
+        // Store original transforms
+        const originalTransforms = new Map();
+        root.traverse((node) => {
+            originalTransforms.set(node, {
+                position: node.position.clone(),
+                rotation: node.rotation.clone(),
+                scale: node.scale.clone()
+            });
+        });
+
+        const testResults = [];
+
+        // Test each bone: rotate it, see which meshes move
+        bones.forEach((testBone, boneIdx) => {
+            console.log(`\n--- Testing Bone[${boneIdx}]: "${testBone.name}" ---`);
+
+            // Save mesh world positions before
+            const beforePositions = new Map();
+            meshes.forEach(mesh => {
+                const pos = new THREE.Vector3();
+                mesh.getWorldPosition(pos);
+                beforePositions.set(mesh, pos);
+            });
+
+            // Rotate bone by ~30 degrees around Z
+            testBone.rotation.z += 0.5; // ~28.6 degrees
+            testBone.updateMatrixWorld(true);
+            root.updateMatrixWorld(true);
+
+            // Check which meshes moved
+            const movedMeshes = [];
+            meshes.forEach(mesh => {
+                const afterPos = new THREE.Vector3();
+                mesh.getWorldPosition(afterPos);
+
+                const beforePos = beforePositions.get(mesh);
+                const distance = beforePos.distanceTo(afterPos);
+
+                if (distance > 0.01) {
+                    movedMeshes.push({
+                        mesh: mesh,
+                        name: mesh.name,
+                        distance: distance
+                    });
+                }
+            });
+
+            if (movedMeshes.length === 0) {
+                console.log(`  NO MESHES MOVED when rotating "${testBone.name}"`);
+            } else {
+                console.log(`  ${movedMeshes.length} meshes moved:`);
+                movedMeshes.forEach(m => {
+                    console.log(`    - "${m.name}" moved ${m.distance.toFixed(3)} units`);
+                });
+            }
+
+            testResults.push({
+                boneName: testBone.name,
+                movedMeshes: movedMeshes.map(m => m.name)
+            });
+
+            // Restore original transforms
+            originalTransforms.forEach((transform, node) => {
+                node.position.copy(transform.position);
+                node.rotation.copy(transform.rotation);
+                node.scale.copy(transform.scale);
+            });
+            root.updateMatrixWorld(true);
+        });
+
+        console.log('\n');
+
+        // ============================================================
+        // G. DETECT R6-STYLE MODULAR BODY PARTS
+        // ============================================================
+        console.log('========================================================');
+        console.log('G. R6/MODULAR BODY PART DETECTION');
+        console.log('========================================================');
+
+        const r6PartNames = ['Head', 'Torso', 'ArmL', 'ArmR', 'LegL', 'LegR',
+                            'Left Arm', 'Right Arm', 'Left Leg', 'Right Leg',
+                            'LeftFoot', 'RightFoot', 'LeftHand', 'RightHand',
+                            'LeftLowerArm', 'RightLowerArm', 'LeftLowerLeg', 'RightLowerLeg',
+                            'LeftUpperArm', 'RightUpperArm', 'LeftUpperLeg', 'RightUpperLeg',
+                            'UpperTorso', 'LowerTorso'];
+
+        const detectedParts = [];
+        meshes.forEach(mesh => {
+            const meshNameLower = mesh.name.toLowerCase();
+            const isR6Part = r6PartNames.some(part => {
+                const partLower = part.toLowerCase();
+                return meshNameLower === partLower || meshNameLower.includes(partLower);
+            });
+
+            if (isR6Part) {
+                detectedParts.push(mesh.name);
+            }
+        });
+
+        console.log(`R6-style body part names detected: ${detectedParts.length}`);
+        detectedParts.forEach(p => console.log(`  - ${p}`));
+
+        const isR6Style = detectedParts.length >= 3 || detectedParts.length >= meshes.length * 0.5;
+        console.log(`\nModel appears to be R6/modular style: ${isR6Style ? 'YES' : 'NO'}`);
+
+        console.log('\n');
+
+        // ============================================================
+        // H. ROOT/PIVOT PROBLEM ANALYSIS
+        // ============================================================
+        console.log('========================================================');
+        console.log('H. ROOT/PIVOT PROBLEM ANALYSIS');
+        console.log('========================================================');
+
+        // Find overall bounds
+        const overallBox = new THREE.Box3().setFromObject(root);
+        const overallSize = new THREE.Vector3();
+        overallBox.getSize(overallSize);
+        console.log(`Overall root bounds size: (${overallSize.x.toFixed(2)}, ${overallSize.y.toFixed(2)}, ${overallSize.z.toFixed(2)})`);
+        console.log(`Overall root bounds min: (${overallBox.min.x.toFixed(2)}, ${overallBox.min.y.toFixed(2)}, ${overallBox.min.z.toFixed(2)})`);
+        console.log(`Overall root bounds max: (${overallBox.max.x.toFixed(2)}, ${overallBox.max.y.toFixed(2)}, ${overallBox.max.z.toFixed(2)})`);
+
+        // Find which node contributes most to bounds
+        let largestNode = null;
+        let largestSize = 0;
+        const nodeBounds = [];
+
+        root.traverse((node) => {
+            if (node.isMesh === true || node.isSkinnedMesh === true) {
+                const nodeBox = new THREE.Box3().setFromObject(node);
+                const nodeSize = new THREE.Vector3();
+                nodeBox.getSize(nodeSize);
+                const maxSizeDim = Math.max(nodeSize.x, nodeSize.y, nodeSize.z);
+
+                nodeBounds.push({
+                    name: node.name,
+                    type: node.type,
+                    size: nodeSize.clone(),
+                    maxDim: maxSizeDim
+                });
+
+                if (maxSizeDim > largestSize) {
+                    largestSize = maxSizeDim;
+                    largestNode = node;
+                }
+            }
+        });
+
+        console.log(`\nLargest mesh by dimension: "${largestNode ? largestNode.name : 'none'}" (${largestSize.toFixed(2)})`);
+
+        console.log('\nAll mesh sizes:');
+        nodeBounds.sort((a, b) => b.maxDim - a.maxDim);
+        nodeBounds.forEach(nb => {
+            console.log(`  "${nb.name}": (${nb.size.x.toFixed(2)}, ${nb.size.y.toFixed(2)}, ${nb.size.z.toFixed(2)}) maxDim=${nb.maxDim.toFixed(2)}`);
+        });
+
+        console.log('\n');
+
+        // ============================================================
+        // I. CHECK FOR HIDDEN/HELPER GEOMETRY
+        // ============================================================
+        console.log('========================================================');
+        console.log('I. HIDDEN/HELPER GEOMETRY CHECK');
+        console.log('========================================================');
+
+        const hiddenMeshes = [];
+        const helperObjects = [];
+        const cameras = [];
+        const lights = [];
+
+        root.traverse((node) => {
+            if (node.isMesh === true || node.isSkinnedMesh === true) {
+                if (node.visible === false) {
+                    hiddenMeshes.push(node);
+                }
+            }
+            if (node.isCamera === true) cameras.push(node);
+            if (node.isLight === true) lights.push(node);
+
+            // Check for helper-like names
+            if (/helper|locator|null|joint|ik|constraint|target|pole/i.test(node.name)) {
+                helperObjects.push(node);
+            }
+        });
+
+        console.log(`Invisible meshes: ${hiddenMeshes.length}`);
+        hiddenMeshes.forEach(m => console.log(`  - "${m.name}"`));
+
+        console.log(`Cameras: ${cameras.length}`);
+        cameras.forEach(c => console.log(`  - "${c.name}"`));
+
+        console.log(`Lights: ${lights.length}`);
+        lights.forEach(l => console.log(`  - "${l.name}"`));
+
+        console.log(`Helper/locator objects: ${helperObjects.length}`);
+        helperObjects.forEach(h => console.log(`  - "${h.name}" [${h.type}]`));
+
+        console.log('\n');
+
+        // ============================================================
+        // J. TEST VISUAL NORMALIZATION ON CLONE
+        // ============================================================
+        console.log('========================================================');
+        console.log('J. VISUAL NORMALIZATION TEST');
+        console.log('========================================================');
+
+        // Clone for testing
+        const clone = root.clone(true);
+        clone.updateMatrixWorld(true);
+
+        // Calculate bounds of clone
+        const cloneBox = new THREE.Box3().setFromObject(clone);
+        const cloneSize = new THREE.Vector3();
+        const cloneCenter = new THREE.Vector3();
+        cloneBox.getSize(cloneSize);
+        cloneBox.getCenter(cloneCenter);
+
+        console.log(`Clone raw size: (${cloneSize.x.toFixed(2)}, ${cloneSize.y.toFixed(2)}, ${cloneSize.z.toFixed(2)})`);
+
+        // Normalize clone
+        const targetHeight = 1.8;
+        const normScale = targetHeight / Math.max(cloneSize.y, 0.01);
+        const normContainer = new THREE.Group();
+        normContainer.scale.setScalar(normScale);
+        clone.position.set(-cloneCenter.x, -cloneBox.min.y, -cloneCenter.z);
+        normContainer.add(clone);
+        normContainer.updateMatrixWorld(true);
+
+        // Check final bounds
+        const finalNormBox = new THREE.Box3().setFromObject(normContainer);
+        const finalNormSize = new THREE.Vector3();
+        const finalNormCenter = new THREE.Vector3();
+        finalNormBox.getSize(finalNormSize);
+        finalNormBox.getCenter(finalNormCenter);
+
+        console.log(`After normalization:`);
+        console.log(`  Scale applied: ${normScale.toFixed(4)}`);
+        console.log(`  Final size: (${finalNormSize.x.toFixed(2)}, ${finalNormSize.y.toFixed(2)}, ${finalNormSize.z.toFixed(2)})`);
+        console.log(`  Final minY: ${finalNormBox.min.y.toFixed(2)}`);
+        console.log(`  Final maxY: ${finalNormBox.max.y.toFixed(2)}`);
+        console.log(`  Final centerX: ${finalNormCenter.x.toFixed(2)}`);
+        console.log(`  Final centerZ: ${finalNormCenter.z.toFixed(2)}`);
+
+        // Check if meshes form a coherent character
+        // Measure distances between expected body parts
+        console.log('\n  Mesh positions after normalization:');
+        clone.traverse((node) => {
+            if (node.isMesh === true) {
+                const wp = new THREE.Vector3();
+                node.getWorldPosition(wp);
+                console.log(`    "${node.name}": (${wp.x.toFixed(2)}, ${wp.y.toFixed(2)}, ${wp.z.toFixed(2)})`);
+            }
+        });
+
+        console.log('\n');
+
+        // ============================================================
+        // FINAL CLASSIFICATION
+        // ============================================================
+        console.log('############################################################');
+        console.log('#                PLAYER FBX FORENSIC REPORT                #');
+        console.log('############################################################');
+
+        console.log(`\nMODEL TYPE:`);
+
+        let classification = 'UNKNOWN';
+        let reason = '';
+
+        if (humanoidScore >= 3 && maxChainLength >= 4) {
+            classification = 'SKINNED_HUMANOID (or equivalent)';
+            reason = 'Has humanoid bone chain indicators';
+        } else if (isR6Style && testResults.some(r => r.movedMeshes.length > 0)) {
+            classification = 'MODULAR_R6_BODY_PARTS_WITH_USABLE_RIG';
+            reason = 'R6-style meshes with bone control detected';
+        } else if (isR6Style) {
+            classification = 'MODULAR_R6_BODY_PARTS_WITH_NO_USABLE_RIG';
+            reason = 'R6-style meshes but no bone control demonstrated';
+        } else if (bones.length > 0 && meshes.length > 0) {
+            classification = 'GENERIC_BONES_PLUS_STATIC_MESHES';
+            reason = 'Has bones and meshes but no demonstrated relationship';
+        } else {
+            classification = 'STATIC_MESHES_ONLY';
+            reason = 'No usable bone hierarchy';
+        }
+
+        console.log(`  Classification: ${classification}`);
+        console.log(`  Reason: ${reason}`);
+
+        console.log(`\nSUMMARY:`);
+        console.log(`  Total nodes: ${allNodes.length}`);
+        console.log(`  Meshes: ${meshes.length}`);
+        console.log(`  Bones: ${bones.length}`);
+        console.log(`  Bone chains: ${boneChains.length}`);
+        console.log(`  Max chain length: ${maxChainLength}`);
+        console.log(`  Humanoid score: ${humanoidScore}/5`);
+        console.log(`  R6-style parts: ${detectedParts.length}`);
+        console.log(`  Bones controlling meshes: ${testResults.filter(r => r.movedMeshes.length > 0).length}`);
+
+        console.log(`\nRECOMMENDATION:`);
+        if (classification.includes('HUMANOID')) {
+            console.log('  -> Can use standard bone animation');
+        } else if (classification.includes('WITH_USABLE_RIG')) {
+            console.log('  -> Can reconstruct as rigid bone-part character');
+        } else if (classification.includes('NO_USABLE_RIG')) {
+            console.log('  -> Use as static meshes with procedural transforms');
+        } else {
+            console.log('  -> Keep procedural player, use FBX as static visual only');
+        }
+
+        console.log('\n############################################################');
+        console.log('#                     END OF AUDIT                         #');
+        console.log('############################################################');
+        console.log('\n');
+    },
+
+    _setupPlayerFBX: function(rig, fbx) {
+        const root = fbx;
+
+        // ============================================================
+        // BƯỚC 1: Phân tích model - bones, meshes, hierarchy
+        // ============================================================
+
+        const boneList = [];
+        const meshList = [];
+        const skinnedMeshList = [];
+        let hasSkinWeights = false;
+
+        // Đảm bảo matrix world được update trước khi phân tích
+        root.updateMatrixWorld(true);
+
+        root.traverse((c) => {
+            if (c.isBone === true) {
+                boneList.push(c);
+            }
+            if (c.isMesh === true) {
+                meshList.push(c);
+                c.castShadow = true;
+                c.receiveShadow = true;
+                c.frustumCulled = false;
+            }
+            if (c.isSkinnedMesh === true) {
+                skinnedMeshList.push(c);
+                if (c.geometry && c.geometry.attributes.skinIndex && c.geometry.attributes.skinWeight) {
+                    hasSkinWeights = true;
+                }
+            }
+        });
+
+        // ============================================================
+        // BƯỚC 2: Phân tích parent của từng mesh (QUAN TRỌNG)
+        // ============================================================
+
+        let meshesUnderBones = 0;
+        const meshParentInfo = [];
+
+        meshList.forEach((mesh, i) => {
+            const parent = mesh.parent;
+            const parentIsBone = parent ? parent.isBone === true : false;
+            const parentName = parent ? parent.name : 'none';
+            const parentType = parent ? parent.type : 'none';
+
+            if (parentIsBone) {
+                meshesUnderBones++;
+            }
+
+            // Tính world position
+            const worldPos = new THREE.Vector3();
+            mesh.getWorldPosition(worldPos);
+
+            // Geometry bounding box
+            if (mesh.geometry) {
+                mesh.geometry.computeBoundingBox();
+            }
+
+            meshParentInfo.push({
+                mesh: mesh,
+                parent: parent,
+                parentIsBone: parentIsBone,
+                parentName: parentName,
+                parentType: parentType,
+                worldPos: worldPos
+            });
+
+            console.log(`[PLAYER FBX]   Mesh[${i}]: "${mesh.name}" | parent: "${parentName}" | parentIsBone: ${parentIsBone} | parentType: ${parentType}`);
+        });
+
+        console.log(`[PLAYER FBX] Meshes parented to bones: ${meshesUnderBones}/${meshList.length}`);
+
+        // ============================================================
+        // BƯỚC 3: Xác định loại model
+        // ============================================================
+
+        const hasSkinnedMesh = skinnedMeshList.length > 0 && hasSkinWeights;
+        const animations = root.animations || (fbx.animations ? fbx.animations : []);
+        const hasAnimation = animations.length > 0;
+
+        let playerFBXAnimated = false;
+        let playerFBXMode = 'none';
+        let modelType = 'UNKNOWN';
+        let validatedVisual = false;
+
+        if (hasSkinnedMesh) {
+            // TYPE A: Skinned animated character
+            modelType = hasAnimation ? 'SKINNED_ANIMATED' : 'SKINNED_NO_ANIM';
+            playerFBXAnimated = true;
+            playerFBXMode = 'skinned';
+        } else if (meshesUnderBones >= Math.max(1, meshList.length * 0.5) && boneList.length >= 3) {
+            // Check for verified R6-modular structure before generic rigid-bone-part
+            const R6_MESH_NAMES = ['Head', 'Torso', 'ArmR', 'ArmL', 'LegR', 'LegL'];
+            const foundR6Count = meshList.filter(m => R6_MESH_NAMES.includes(m.name)).length;
+
+            if (foundR6Count >= 5) {
+                modelType = 'MODULAR_R6_BODY_PARTS_WITH_USABLE_RIG';
+                playerFBXAnimated = true;
+                playerFBXMode = 'r6-modular';
+            } else {
+                // TYPE B: Rigid bone-part (nếu >= 50% meshes nằm dưới bones và có ít nhất 3 bones)
+                modelType = 'RIGID_BONE_PART';
+                playerFBXAnimated = true;
+                playerFBXMode = 'rigid-bone-part';
+            }
+        } else if (hasAnimation && boneList.length > 0) {
+            // Có animation nhưng không có skinned mesh - có thể rigid
+            modelType = 'HAS_ANIM_NO_SKIN';
+            playerFBXAnimated = true;
+            playerFBXMode = 'rigid-bone-part';
+        } else {
+            // TYPE C: Static mesh
+            modelType = 'STATIC_MESH';
+            playerFBXAnimated = false;
+            playerFBXMode = 'static';
+        }
+
+        console.log('========================================');
+        console.log('[PLAYER FBX] MODEL ANALYSIS');
+        console.log('========================================');
+        console.log('[PLAYER FBX] MODEL TYPE:', modelType);
+        console.log('[PLAYER FBX] Bones:', boneList.length);
+        console.log('[PLAYER FBX] Meshes:', meshList.length);
+        console.log('[PLAYER FBX] SkinnedMeshes:', skinnedMeshList.length);
+        console.log('[PLAYER FBX] Has skin weights:', hasSkinWeights);
+        console.log('[PLAYER FBX] Animation clips:', animations.length);
+        console.log('[PLAYER FBX] Player FBX Animated:', playerFBXAnimated ? 'YES' : 'NO');
+        console.log('[PLAYER FBX] Player FBX Mode:', playerFBXMode);
+        console.log('========================================');
+
+        // Log bone hierarchy
+        console.log('[PLAYER FBX] Bone hierarchy:');
+        const printHierarchy = (obj, depth = 0) => {
+            const indent = '  '.repeat(depth);
+            const type = obj.isBone === true ? '[Bone]' : (obj.isMesh === true ? '[Mesh]' : '[Group]');
+            const pos = obj.position ? ` pos(${obj.position.x.toFixed(2)}, ${obj.position.y.toFixed(2)}, ${obj.position.z.toFixed(2)})` : '';
+            console.log(`${indent}${type} "${obj.name || '(unnamed)'}"${pos}`);
+            if (obj.children && depth < 10) {
+                obj.children.forEach(child => printHierarchy(child, depth + 1));
+            }
+        };
+
+        // Tìm root bone
+        let rootBone = null;
+        root.traverse((c) => {
+            if (rootBone) return;
+            if (c.isBone === true) {
+                let top = c;
+                while (top.parent && top.parent.isBone === true) {
+                    top = top.parent;
+                }
+                rootBone = top;
+            }
+        });
+
+        if (rootBone) {
+            printHierarchy(rootBone);
+        } else {
+            console.log('[PLAYER FBX] No root bone found, showing root children:');
+            root.children.forEach(child => printHierarchy(child));
+        }
+
+        // ============================================================
+        // BƯỚC 4: Normalize transform
+        // ============================================================
+
+        // Tính bounding box từ root (sau khi đã updateMatrixWorld)
+        const box = new THREE.Box3().setFromObject(root);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        console.log('[PLAYER FBX] Raw Size:', size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2));
+        console.log('[PLAYER FBX] Raw Center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
+        console.log('[PLAYER FBX] Raw Min:', box.min.x.toFixed(2), box.min.y.toFixed(2), box.min.z.toFixed(2));
+        console.log('[PLAYER FBX] Raw Max:', box.max.x.toFixed(2), box.max.y.toFixed(2), box.max.z.toFixed(2));
+
+        const targetHeight = 1.8;
+        const scale = targetHeight / Math.max(size.y, 0.01);
+        console.log('[PLAYER FBX] Scale:', scale.toFixed(4));
+
+        // Tạo visualRoot - chỉ visualRoot chịu trách nhiệm scale
+        const visualRoot = new THREE.Group();
+        visualRoot.name = 'playerVisualRoot';
+        visualRoot.scale.setScalar(scale);
+
+        rig.fbxVisualYawOffset = -Math.PI / 2;
+        visualRoot.rotation.y = rig.fbxVisualYawOffset;
+
+        // Position model trong visualRoot - KHÔNG nhân translation bằng scale
+        // visualRoot sẽ scale position này
+        root.position.set(-center.x, -box.min.y, -center.z);
+        visualRoot.add(root);
+
+        // Update matrix world để tính final bounding box
+        visualRoot.updateMatrixWorld(true);
+
+        // ============================================================
+        // BƯỚC 5: Validate final transform
+        // ============================================================
+
+        const finalBox = new THREE.Box3().setFromObject(visualRoot);
+        const finalSize = new THREE.Vector3();
+        const finalCenter = new THREE.Vector3();
+        finalBox.getSize(finalSize);
+        finalBox.getCenter(finalCenter);
+
+        console.log('========================================');
+        console.log('[PLAYER FBX] FINAL TRANSFORM VALIDATION');
+        console.log('========================================');
+        console.log('[PLAYER FBX] Final size:', finalSize.x.toFixed(2), finalSize.y.toFixed(2), finalSize.z.toFixed(2));
+        console.log('[PLAYER FBX] Final minY:', finalBox.min.y.toFixed(2));
+        console.log('[PLAYER FBX] Final maxY:', finalBox.max.y.toFixed(2));
+        console.log('[PLAYER FBX] Final centerX:', finalCenter.x.toFixed(2));
+        console.log('[PLAYER FBX] Final centerZ:', finalCenter.z.toFixed(2));
+
+        // Validate
+        const heightOk = Math.abs(finalSize.y - targetHeight) < 0.3;
+        const feetOk = Math.abs(finalBox.min.y) < 0.1;
+        const centerOk = Math.abs(finalCenter.x) < 0.5 && Math.abs(finalCenter.z) < 0.5;
+        const sizeOk = finalSize.x > 0.1 && finalSize.x < 5 && finalSize.z > 0.1 && finalSize.z < 5;
+
+        validatedVisual = heightOk && feetOk && sizeOk;
+
+        console.log('[PLAYER FBX] Height OK:', heightOk, '(expected ~1.8, got', finalSize.y.toFixed(2), ')');
+        console.log('[PLAYER FBX] Feet OK:', feetOk, '(expected ~0, got', finalBox.min.y.toFixed(2), ')');
+        console.log('[PLAYER FBX] Center OK:', centerOk);
+        console.log('[PLAYER FBX] Size OK:', sizeOk);
+        console.log('[PLAYER FBX] Valid visual:', validatedVisual ? 'YES' : 'NO');
+        console.log('========================================');
+
+        // Nếu validation thất bại, giữ procedural rig
+        if (!validatedVisual) {
+            console.error('[PLAYER FBX] Transform validation FAILED. Keeping procedural rig.');
+            this.playerMixer = null;
+            this.playerActions = {};
+            this.currentPlayerAnim = 'idle';
+            return;
+        }
+
+        // ============================================================
+        // BƯỚC 6: Bone Matching
+        // ============================================================
+
+        const boneCache = this._findPlayerBones(root, meshList);
+
+        console.log('========================================');
+        console.log('[PLAYER FBX] BONE MAPPING RESULTS');
+        console.log('========================================');
+        console.log('[PLAYER FBX] RightHand:', boneCache.rightHand ? boneCache.rightHand.name : 'NOT FOUND');
+        console.log('[PLAYER FBX] LeftHand:', boneCache.leftHand ? boneCache.leftHand.name : 'NOT FOUND');
+        console.log('[PLAYER FBX] Head:', boneCache.head ? boneCache.head.name : 'NOT FOUND');
+        console.log('[PLAYER FBX] Spine:', boneCache.spine ? boneCache.spine.name : 'NOT FOUND');
+        console.log('[PLAYER FBX] Pelvis:', boneCache.pelvis ? boneCache.pelvis.name : 'NOT FOUND');
+        console.log('[PLAYER FBX] RightUpperArm:', boneCache.rightUpperArm ? boneCache.rightUpperArm.name : 'NOT FOUND');
+        console.log('[PLAYER FBX] LeftUpperArm:', boneCache.leftUpperArm ? boneCache.leftUpperArm.name : 'NOT FOUND');
+
+        // ============================================================
+        // BƯỚC 6.5: R6-MODULAR EXPLICIT MAPPING (nếu phát hiện mode)
+        // ============================================================
+
+        if (playerFBXMode === 'r6-modular') {
+            console.log('========================================');
+            console.log('[PLAYER R6] MODULAR R6 MAPPING');
+            console.log('========================================');
+
+            const findMeshByName = (name) => meshList.find(m => m.name === name) || null;
+
+            const headMesh = findMeshByName('Head');
+            const torsoMesh = findMeshByName('Torso');
+            const rightArmMesh = findMeshByName('ArmR');
+            const leftArmMesh = findMeshByName('ArmL');
+            const rightLegMesh = findMeshByName('LegR');
+            const leftLegMesh = findMeshByName('LegL');
+
+            rig.r6Parts = {
+                headMesh: headMesh,
+                torsoMesh: torsoMesh,
+                rightArmMesh: rightArmMesh,
+                leftArmMesh: leftArmMesh,
+                rightLegMesh: rightLegMesh,
+                leftLegMesh: leftLegMesh
+            };
+
+            const getControllingBone = (mesh) => {
+                if (!mesh || !mesh.parent) return null;
+                let p = mesh.parent;
+                while (p) {
+                    if (p.isBone === true) return p;
+                    p = p.parent;
+                }
+                return null;
+            };
+
+            const torsoBone = getControllingBone(torsoMesh);
+            const rightArmBone = getControllingBone(rightArmMesh);
+            const leftArmBone = getControllingBone(leftArmMesh);
+            const rightLegBone = getControllingBone(rightLegMesh);
+            const leftLegBone = getControllingBone(leftLegMesh);
+
+            const rightArmEndBone = rightArmBone ? rightArmBone.children.find(c => c.isBone === true) : null;
+            const leftArmEndBone = leftArmBone ? leftArmBone.children.find(c => c.isBone === true) : null;
+
+            rig.r6Bones = {
+                torsoBone: torsoBone,
+                rightArmBone: rightArmBone,
+                leftArmBone: leftArmBone,
+                rightLegBone: rightLegBone,
+                leftLegBone: leftLegBone,
+                rightArmEndBone: rightArmEndBone,
+                leftArmEndBone: leftArmEndBone
+            };
+
+            console.log('[PLAYER R6] Head mesh:', headMesh ? headMesh.name : 'MISSING');
+            console.log('[PLAYER R6] Torso mesh:', torsoMesh ? torsoMesh.name : 'MISSING');
+            console.log('[PLAYER R6] RightArm mesh:', rightArmMesh ? rightArmMesh.name : 'MISSING');
+            console.log('[PLAYER R6] LeftArm mesh:', leftArmMesh ? leftArmMesh.name : 'MISSING');
+            console.log('[PLAYER R6] RightLeg mesh:', rightLegMesh ? rightLegMesh.name : 'MISSING');
+            console.log('[PLAYER R6] LeftLeg mesh:', leftLegMesh ? leftLegMesh.name : 'MISSING');
+            console.log('[PLAYER R6] Torso bone:', torsoBone ? torsoBone.name : 'MISSING');
+            console.log('[PLAYER R6] RightArm bone:', rightArmBone ? rightArmBone.name : 'MISSING');
+            console.log('[PLAYER R6] LeftArm bone:', leftArmBone ? leftArmBone.name : 'MISSING');
+            console.log('[PLAYER R6] RightLeg bone:', rightLegBone ? rightLegBone.name : 'MISSING');
+            console.log('[PLAYER R6] LeftLeg bone:', leftLegBone ? leftLegBone.name : 'MISSING');
+            console.log('[PLAYER R6] RightArm endpoint:', rightArmEndBone ? rightArmEndBone.name : 'MISSING');
+            console.log('[PLAYER R6] LeftArm endpoint:', leftArmEndBone ? leftArmEndBone.name : 'MISSING');
+
+            // Validation
+            const r6Valid = torsoBone && rightArmBone && leftArmBone && rightLegBone && leftLegBone;
+            console.log('[PLAYER R6] All controlling bones found:', r6Valid ? 'YES' : 'NO');
+
+            if (!r6Valid) {
+                console.error('[PLAYER R6] Mapping incomplete - falling back to rigid-bone-part mode');
+                playerFBXMode = 'rigid-bone-part';
+                rig.playerFBXMode = 'rigid-bone-part';
+            }
+        }
+
+        // Kiểm tra rightHand !== leftHand
+        let rightHandBoneValid = false;
+        let leftHandBoneValid = false;
+
+        if (boneCache.rightHand && boneCache.leftHand && boneCache.rightHand === boneCache.leftHand) {
+            console.error('[PLAYER FBX] Invalid hand mapping: rightHand === leftHand');
+            boneCache.rightHand = null;
+            boneCache.leftHand = null;
+        }
+
+        if (boneCache.rightHand && boneCache.rightHand.isBone === true) {
+            rightHandBoneValid = true;
+        }
+        if (boneCache.leftHand && boneCache.leftHand.isBone === true) {
+            leftHandBoneValid = true;
+        }
+
+        console.log('[PLAYER FBX] RightHand bone valid:', rightHandBoneValid ? 'YES' : 'NO');
+        console.log('[PLAYER FBX] LeftHand bone valid:', leftHandBoneValid ? 'YES' : 'NO');
+
+        // ============================================================
+        // BƯỚC 7: Animation Setup (chỉ khi có SkinnedMesh và Animation)
+        // ============================================================
+
+        if (hasAnimation && hasSkinnedMesh) {
+            this.playerMixer = new THREE.AnimationMixer(root);
+            this.playerActions = {};
+
+            animations.forEach((clip) => {
+                const action = this.playerMixer.clipAction(clip);
+                const name = (clip.name || '').toLowerCase();
+
+                if (this._matchAnimKeywords(name, ['idle', 'breathing', 'standing', 'wait'])) {
+                    this.playerActions['idle'] = action;
+                } else if (this._matchAnimKeywords(name, ['walk', 'locomotion'])) {
+                    this.playerActions['walk'] = action;
+                } else if (this._matchAnimKeywords(name, ['run', 'sprint', 'jog', 'dash'])) {
+                    this.playerActions['run'] = action;
+                } else if (this._matchAnimKeywords(name, ['jump', 'leap', 'hop'])) {
+                    this.playerActions['jump'] = action;
+                } else if (this._matchAnimKeywords(name, ['crouch', 'sit', 'duck', 'crouching'])) {
+                    this.playerActions['crouch'] = action;
+                } else if (this._matchAnimKeywords(name, ['shoot', 'fire', 'attack', 'gun', 'rifle', 'pistol'])) {
+                    this.playerActions['shoot'] = action;
+                } else if (this._matchAnimKeywords(name, ['slash', 'sword', 'melee', 'strike', 'hit'])) {
+                    this.playerActions['melee'] = action;
+                } else if (this._matchAnimKeywords(name, ['throw', 'grenade', 'bomb', 'toss'])) {
+                    this.playerActions['bomb'] = action;
+                } else if (this._matchAnimKeywords(name, ['death', 'die', 'dead', 'dying', 'fall'])) {
+                    this.playerActions['death'] = action;
+                }
+            });
+
+            if (!this.playerActions['idle'] && animations.length > 0) {
+                this.playerActions['idle'] = this.playerMixer.clipAction(animations[0]);
+            }
+            if (!this.playerActions['walk'] && animations.length > 1) {
+                this.playerActions['walk'] = this.playerMixer.clipAction(animations[1]);
+            }
+            if (!this.playerActions['run'] && animations.length > 2) {
+                this.playerActions['run'] = this.playerMixer.clipAction(animations[2]);
+            }
+
+            console.log('[PLAYER FBX] Mapped animation actions:', Object.keys(this.playerActions));
+
+            if (this.playerActions['idle']) {
+                this.playerActions['idle'].reset().fadeIn(0.15).play();
+                this.currentPlayerAnim = 'idle';
+            }
+        } else {
+            this.playerMixer = null;
+            this.playerActions = {};
+            if (modelType === 'RIGID_BONE_PART') {
+                console.log('[PLAYER FBX] No animation clips. Using procedural bone animation for rigid bone-part.');
+            } else if (playerFBXMode === 'r6-modular') {
+                console.log('[PLAYER R6] No animation clips. Using procedural R6 modular animation.');
+            } else {
+                console.log('[PLAYER FBX] No animation clips and no skinned mesh.');
+            }
+        }
+
+        // ============================================================
+        // BƯỚC 8: Hand Sockets (chỉ khi có bone hợp lệ)
+        // ============================================================
+
+        let rightHandSocket = null;
+        let leftHandSocket = null;
+
+        if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
+            const rb = rig.r6Bones;
+            if (rb.rightArmEndBone) {
+                rightHandSocket = new THREE.Group();
+                rightHandSocket.name = 'rightHandSocket';
+                rightHandSocket.position.set(0, 0, 0);
+                rightHandSocket.rotation.set(0, 0, 0);
+                rightHandSocket.scale.set(1, 1, 1);
+                rb.rightArmEndBone.add(rightHandSocket);
+                console.log('[PLAYER R6] RightHand socket created on endpoint:', rb.rightArmEndBone.name);
+            } else {
+                console.warn('[PLAYER R6] RightArm endpoint (Bone_end) not found - no socket created');
+            }
+
+            if (rb.leftArmEndBone) {
+                leftHandSocket = new THREE.Group();
+                leftHandSocket.name = 'leftHandSocket';
+                leftHandSocket.position.set(0, 0, 0);
+                leftHandSocket.rotation.set(0, 0, 0);
+                leftHandSocket.scale.set(1, 1, 1);
+                rb.leftArmEndBone.add(leftHandSocket);
+                console.log('[PLAYER R6] LeftHand socket created on endpoint:', rb.leftArmEndBone.name);
+            } else {
+                console.warn('[PLAYER R6] LeftArm endpoint (Bone_end) not found - no socket created');
+            }
+        } else if (rightHandBoneValid) {
+            rightHandSocket = new THREE.Group();
+            rightHandSocket.name = 'rightHandSocket';
+            rightHandSocket.position.set(0, 0, 0);
+            rightHandSocket.rotation.set(0, 0, 0);
+            boneCache.rightHand.add(rightHandSocket);
+            console.log('[PLAYER FBX] RightHand socket created on bone:', boneCache.rightHand.name);
+        } else {
+            console.warn('[PLAYER FBX] RightHand bone not found or invalid - no socket created');
+        }
+
+        if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
+            // leftHandSocket already handled above
+        } else if (leftHandBoneValid) {
+            leftHandSocket = new THREE.Group();
+            leftHandSocket.name = 'leftHandSocket';
+            leftHandSocket.position.set(0, 0, 0);
+            leftHandSocket.rotation.set(0, 0, 0);
+            boneCache.leftHand.add(leftHandSocket);
+            console.log('[PLAYER FBX] LeftHand socket created on bone:', boneCache.leftHand.name);
+        } else {
+            console.warn('[PLAYER FBX] LeftHand bone not found or invalid - no socket created');
+        }
+
+        // ============================================================
+        // BƯỚC 9: Replace procedural rig (chỉ khi validated)
+        // ============================================================
+
+        if (!validatedVisual) {
+            console.error('[PLAYER FBX] Cannot replace procedural rig - validation failed');
+            return;
+        }
+
+        // Xóa procedural rig cũ
+        while (rig.children.length > 0) {
+            rig.remove(rig.children[0]);
+        }
+
+        rig.add(visualRoot);
+        rig.visualRoot = visualRoot;
+        rig.bones = boneCache;
+        rig.playerFBXAnimated = playerFBXAnimated;
+        rig.playerFBXMode = playerFBXMode;
+        rig.rightHandBoneValid = rightHandBoneValid;
+        rig.leftHandBoneValid = leftHandBoneValid;
+        rig.meshList = meshList;
+        rig.meshParentInfo = meshParentInfo;
+
+        // ============================================================
+        // BƯỚC 8.5: R6-MODULAR REST POSE + HEAD PIVOT
+        // ============================================================
+
+        if (playerFBXMode === 'r6-modular' && rig.r6Bones) {
+            const rb = rig.r6Bones;
+
+            rig.r6RestPose = {
+                torsoBone: rb.torsoBone ? { position: rb.torsoBone.position.clone(), quaternion: rb.torsoBone.quaternion.clone(), scale: rb.torsoBone.scale.clone() } : null,
+                rightArmBone: rb.rightArmBone ? { position: rb.rightArmBone.position.clone(), quaternion: rb.rightArmBone.quaternion.clone(), scale: rb.rightArmBone.scale.clone() } : null,
+                leftArmBone: rb.leftArmBone ? { position: rb.leftArmBone.position.clone(), quaternion: rb.leftArmBone.quaternion.clone(), scale: rb.leftArmBone.scale.clone() } : null,
+                rightLegBone: rb.rightLegBone ? { position: rb.rightLegBone.position.clone(), quaternion: rb.rightLegBone.quaternion.clone(), scale: rb.rightLegBone.scale.clone() } : null,
+                leftLegBone: rb.leftLegBone ? { position: rb.leftLegBone.position.clone(), quaternion: rb.leftLegBone.quaternion.clone(), scale: rb.leftLegBone.scale.clone() } : null,
+            };
+
+            console.log('[PLAYER R6] Rest pose captured:', !!rig.r6RestPose.torsoBone, !!rig.r6RestPose.rightArmBone, !!rig.r6RestPose.leftArmBone, !!rig.r6RestPose.rightLegBone, !!rig.r6RestPose.leftLegBone);
+
+            if (PLAYER_R6_TRACE_WRITES) {
+                this._enableR6WriteTracer();
+            }
+
+            // Head pivot for standalone Head mesh.
+            // The normalized FBX already provides the correct Head transform under
+            // visualRoot. headPivot is ONLY an animation pivot and MUST stay identity
+            // scaled, otherwise the Head receives the normalized visualRoot scale a
+            // second time (double-scaling -> microscopic Head).
+            if (rig.r6Parts && rig.r6Parts.headMesh) {
+                const headMesh = rig.r6Parts.headMesh;
+
+                visualRoot.updateMatrixWorld(true);
+
+                // Locate the pivot at the Head's existing normalized position (in
+                // visualRoot local space) so head-bob rotates the Head in place.
+                const headWorldPos = new THREE.Vector3();
+                headMesh.getWorldPosition(headWorldPos);
+                const headLocalPos = visualRoot.worldToLocal(headWorldPos.clone());
+
+                const headPivot = new THREE.Group();
+                headPivot.name = 'headPivot';
+                headPivot.scale.set(1, 1, 1);
+                headPivot.quaternion.identity();
+                headPivot.position.copy(headLocalPos);
+
+                visualRoot.add(headPivot);
+                visualRoot.updateMatrixWorld(true);
+
+                // Reparent preserving the already-normalized Head world transform.
+                // attach() divides out visualRoot's uniform scale, so the Head keeps
+                // its correct normalized world scale (no double scaling).
+                headPivot.attach(headMesh);
+
+                rig.headPivot = headPivot;
+                rig.headPivotRestY = headPivot.position.y;
+
+                // Store the corrected base transform ONCE; animation is additive from here.
+                rig.r6HeadBasePosition = headMesh.position.clone();
+                rig.r6HeadBaseQuaternion = headMesh.quaternion.clone();
+                rig.r6HeadBaseScale = headMesh.scale.clone();
+
+                visualRoot.updateMatrixWorld(true);
+
+                if (rig.r6Parts.torsoMesh) {
+                    const headBox = new THREE.Box3().setFromObject(headMesh);
+                    const torsoBox = new THREE.Box3().setFromObject(rig.r6Parts.torsoMesh);
+
+                    const headWorldPos2 = new THREE.Vector3();
+                    headMesh.getWorldPosition(headWorldPos2);
+                    const headWorldScale = new THREE.Vector3();
+                    headMesh.getWorldScale(headWorldScale);
+                    const torsoWorldPos = new THREE.Vector3();
+                    rig.r6Parts.torsoMesh.getWorldPosition(torsoWorldPos);
+
+                    const headCenter = new THREE.Vector3();
+                    headBox.getCenter(headCenter);
+                    const headSize = headBox.max.y - headBox.min.y;
+
+                    console.log('[PLAYER R6] HEAD FINAL:', {
+                        parent: headMesh.parent ? headMesh.parent.name : 'none',
+                        worldPos: `(${headWorldPos2.x.toFixed(3)}, ${headWorldPos2.y.toFixed(3)}, ${headWorldPos2.z.toFixed(3)})`,
+                        worldScale: `(${headWorldScale.x.toFixed(4)}, ${headWorldScale.y.toFixed(4)}, ${headWorldScale.z.toFixed(4)})`,
+                        worldBounds: `min(${headBox.min.x.toFixed(3)}, ${headBox.min.y.toFixed(3)}, ${headBox.min.z.toFixed(3)}) max(${headBox.max.x.toFixed(3)}, ${headBox.max.y.toFixed(3)}, ${headBox.max.z.toFixed(3)})`,
+                        headCenterY: headCenter.y.toFixed(3),
+                        headSize: headSize.toFixed(3),
+                        headPivotWorldPos: `(${headWorldPos.x.toFixed(3)}, ${headWorldPos.y.toFixed(3)}, ${headWorldPos.z.toFixed(3)})`,
+                        torsoWorldPos: `(${torsoWorldPos.x.toFixed(3)}, ${torsoWorldPos.y.toFixed(3)}, ${torsoWorldPos.z.toFixed(3)})`
+                    });
+                }
+
+                console.log('[PLAYER R6] Head pivot created (identity-scaled)');
+
+                if (typeof this._r6HeadForensicRan === 'undefined') {
+                    this._r6HeadForensicRan = false;
+                }
+                if (!this._r6HeadForensicRan) {
+                    this._debugR6HeadForensic(rig);
+                    this._r6HeadForensicRan = true;
+                }
+            }
+
+            // Expose R6 bones to player
+            if (this.player) {
+                this.player.r6Parts = rig.r6Parts;
+                this.player.r6Bones = rig.r6Bones;
+                this.player.r6RestPose = rig.r6RestPose;
+                this.player.headPivot = rig.headPivot;
+            }
+        }
+
+        // Update player object references
+        if (this.player) {
+            this.player.rightHandSocket = rightHandSocket;
+            this.player.leftHandSocket = leftHandSocket;
+            this.player.bones = boneCache;
+            this.player.body = visualRoot;
+            this.player.head = boneCache.head || null;
+            this.player.visualRoot = visualRoot;
+            this.player.rigMode = playerFBXMode;
+        }
+
+        rig.rightHandSocket = rightHandSocket;
+        rig.leftHandSocket = leftHandSocket;
+
+        // ============================================================
+        // BƯỚC 10: Re-bind weapon holder (chỉ khi có valid socket)
+        // ============================================================
+
+        if ((rightHandSocket) && typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
+            if (WeaponRenderer._weaponHolder.parent) {
+                WeaponRenderer._weaponHolder.parent.remove(WeaponRenderer._weaponHolder);
+            }
+            rightHandSocket.add(WeaponRenderer._weaponHolder);
+            WeaponRenderer._weaponHolder.position.set(0, 0, 0);
+            WeaponRenderer._weaponHolder.rotation.set(0, 0, 0);
+            WeaponRenderer._weaponHolder.visible = true;
+            WeaponRenderer._weaponHolder.traverse(m => {
+                if (m.isMesh) {
+                    m.frustumCulled = false;
+                    m.visible = true;
+                }
+            });
+            if (typeof WeaponSystem !== 'undefined') {
+                WeaponRenderer._showModel(WeaponSystem.currentId);
+            }
+            console.log('[PLAYER FBX] Weapon holder rebound to hand socket');
+        } else {
+            console.warn('[PLAYER FBX] Weapon socket invalid or missing - fallback');
+        }
+
+        // Debug markers
+        if (typeof PLAYER_R6_DEBUG !== 'undefined' && PLAYER_R6_DEBUG) {
+            this._setupBoneDebugMarkers(rig);
+        } else if (typeof PLAYER_BONE_DEBUG !== 'undefined' && PLAYER_BONE_DEBUG && rig && rig.bones) {
+            const colors = {
+                rightHand: 0xff0000,
+                leftHand: 0x00ff00,
+                head: 0xffff00,
+                spine: 0x00ffff,
+                pelvis: 0xff00ff,
+            };
+            this._boneDebugMarkers = this._boneDebugMarkers || [];
+            this._boneDebugMarkers.forEach(m => { if (m.parent) m.parent.remove(m); });
+            this._boneDebugMarkers = [];
+            for (const [boneType, color] of Object.entries(colors)) {
+                if (rig.bones[boneType]) {
+                    const marker = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.04, 8, 8),
+                        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 })
+                    );
+                    rig.bones[boneType].add(marker);
+                    this._boneDebugMarkers.push(marker);
+                }
+            }
+        }
+
+        // ============================================================
+        // BÁO CUỐI CÙNG
+        // ============================================================
+
+        console.log('========================================');
+        console.log('[PLAYER FBX] FINAL REPORT');
+        console.log('========================================');
+        console.log('[PLAYER FBX] MODEL TYPE:', modelType);
+        console.log('[PLAYER FBX] Valid animated character:', playerFBXAnimated ? 'YES' : 'NO');
+        console.log('[PLAYER FBX] Player FBX Mode:', playerFBXMode);
+        console.log('[PLAYER FBX] Skinned meshes:', skinnedMeshList.length);
+        console.log('[PLAYER FBX] Bones:', boneList.length);
+        console.log('[PLAYER FBX] Animation clips:', animations.length);
+
+        if (playerFBXMode === 'r6-modular') {
+            console.log('[PLAYER R6] MODE: r6-modular');
+            console.log('[PLAYER R6] Head:', rig.r6Parts && rig.r6Parts.headMesh ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] Torso bone:', rig.r6Bones && rig.r6Bones.torsoBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] RightArm bone:', rig.r6Bones && rig.r6Bones.rightArmBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] LeftArm bone:', rig.r6Bones && rig.r6Bones.leftArmBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] RightLeg bone:', rig.r6Bones && rig.r6Bones.rightLegBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] LeftLeg bone:', rig.r6Bones && rig.r6Bones.leftLegBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] RightHand endpoint:', rig.r6Bones && rig.r6Bones.rightArmEndBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] LeftHand endpoint:', rig.r6Bones && rig.r6Bones.leftArmEndBone ? 'OK' : 'MISSING');
+            console.log('[PLAYER R6] Rest pose captured:', rig.r6RestPose ? 'YES' : 'NO');
+            console.log('[PLAYER R6] Animation clips:', animations.length);
+            console.log('[PLAYER R6] Procedural animation:', playerFBXAnimated ? 'YES' : 'NO');
+            console.log('[PLAYER R6] Weapon socket:', rightHandSocket ? 'VALID' : 'INVALID');
+            console.log('[PLAYER R6] Using FBX visual:', validatedVisual ? 'YES' : 'NO');
+        } else {
+            console.log('[PLAYER FBX] RightHand:', boneCache.rightHand ? boneCache.rightHand.name : 'NOT FOUND');
+            console.log('[PLAYER FBX] LeftHand:', boneCache.leftHand ? boneCache.leftHand.name : 'NOT FOUND');
+            console.log('[PLAYER FBX] Head:', boneCache.head ? boneCache.head.name : 'NOT FOUND');
+            console.log('[PLAYER FBX] Spine:', boneCache.spine ? boneCache.spine.name : 'NOT FOUND');
+            console.log('[PLAYER FBX] Pelvis:', boneCache.pelvis ? boneCache.pelvis.name : 'NOT FOUND');
+            console.log('[PLAYER FBX] Weapon socket valid:', rightHandBoneValid ? 'YES' : 'NO');
+            console.log('[PLAYER FBX] Valid visual:', validatedVisual ? 'YES' : 'NO');
+            console.log('[PLAYER FBX] Using FBX visual:', validatedVisual ? 'YES' : 'NO');
+            console.log('[PLAYER FBX] Procedural fallback:', validatedVisual ? 'NO' : 'YES');
+        }
+        console.log('========================================');
+    },
+
+    _setupStaticFBXVisual: function(rig, root, box, size, center) {
+        // Hiển thị FBX như static visual khi không có SkinnedMesh
+        const targetHeight = 1.8;
+        const scale = targetHeight / Math.max(size.y, 0.01);
+
+        const visualRoot = new THREE.Group();
+        visualRoot.name = 'playerVisualRoot';
+        visualRoot.scale.setScalar(scale);
+
+        // Position model sao cho chân chạm mặt đất
+        root.position.set(-center.x, -box.min.y, -center.z);
+        visualRoot.add(root);
+
+        // Không xóa procedural rig - giữ nguyên
+        // Chỉ thêm visualRoot vào rig (procedural vẫn hoạt động)
+        rig.add(visualRoot);
+        rig.visualRoot = visualRoot;
+        rig.playerFBXAnimated = false;
+        rig.playerFBXStatic = true;
+
+        // Không tạo bones cho static visual
+        rig.bones = null;
+        rig.rightHandBoneValid = false;
+        rig.leftHandBoneValid = false;
+
+        console.log('[PLAYER FBX] Static visual added. Procedural rig giữ nguyên.');
+    },
+
+    _findPlayerBones: function(root, meshList) {
+        const cache = {
+            rightHand: null,
+            leftHand: null,
+            head: null,
+            spine: null,
+            pelvis: null,
+            rightUpperArm: null,
+            rightForearm: null,
+            leftUpperArm: null,
+            leftForearm: null,
+            rightUpperLeg: null,
+            rightLowerLeg: null,
+            leftUpperLeg: null,
+            leftLowerLeg: null,
+        };
+
+        // Generic bone names that should NOT be matched to specific body parts
+        const GENERIC_NAMES = new Set([
+            'bone', 'bone001', 'bone002', 'bone003', 'bone004', 'bone005',
+            'bone006', 'bone007', 'bone008', 'bone009', 'bone010',
+            'armature', 'root', 'group', 'null', 'scene', 'untitled',
+            'mesh', 'object', 'deformer', 'skeleton', 'rig'
+        ]);
+
+        // Bone alias definitions - chỉ nhận tên rõ ràng, KHÔNG bao gồm upperarm
+        const BONE_ALIASES = {
+            rightHand: [
+                'righthand', 'mixamorigrighthand', 'mixamorig:righthand',
+                'hand_r', 'hand.r', 'handr', 'bip001_r_hand', 'right_hand',
+                'r_hand', 'hand-r', 'rhand', 'rightwrist', 'wrist_r',
+                'righthandindex', 'righthandmiddle', 'rightthumb'
+            ],
+            leftHand: [
+                'lefthand', 'mixamoriglefthand', 'mixamorig:lefthand',
+                'hand_l', 'hand.l', 'handl', 'bip001_l_hand', 'left_hand',
+                'l_hand', 'hand-l', 'lhand', 'leftwrist', 'wrist_l',
+                'lefthandindex', 'lefthandmiddle', 'leftthumb'
+            ],
+            head: [
+                'head', 'mixamorighead', 'mixamorig:head',
+                'bip001_head', 'bip001_head_nub', 'skull', 'headtop',
+                'neck', 'mixamorneck', 'bip001_neck'
+            ],
+            spine: [
+                'spine', 'spine1', 'spine2', 'chest', 'upperchest',
+                'mixamorigspine', 'mixamorigspine1', 'mixamorigspine2',
+                'bip001_spine', 'bip001_spine1', 'bip001_spine2',
+                'torso', 'upperbody', 'mixamorigspine'
+            ],
+            pelvis: [
+                'hips', 'pelvis', 'mixamorigupleg', 'mixamorig:hips',
+                'bip001_pelvis', 'bip001', 'waist', 'lowerbody',
+                'mixamorighips'
+            ],
+            rightUpperArm: [
+                'rightarm', 'mixamorigrightarm', 'mixamorig:rightarm',
+                'arm_r', 'arm.r', 'armr', 'bip001_r_clavicle', 'bip001_r_upperarm',
+                'right_upperarm', 'upperarm_r', 'rightshoulder', 'shoulder_r',
+                'rightclavicle', 'clavicle_r'
+            ],
+            rightForearm: [
+                'rightforearm', 'mixamorigrightforearm', 'mixamorig:rightforearm',
+                'forearm_r', 'forearm.r', 'forearmr', 'bip001_r_forearm',
+                'right_forearm', 'lowerarm_r', 'rightelbow', 'elbow_r'
+            ],
+            leftUpperArm: [
+                'leftarm', 'mixamorigleftarm', 'mixamorig:leftarm',
+                'arm_l', 'arm.l', 'arml', 'bip001_l_clavicle', 'bip001_l_upperarm',
+                'left_upperarm', 'upperarm_l', 'leftshoulder', 'shoulder_l',
+                'leftclavicle', 'clavicle_l'
+            ],
+            leftForearm: [
+                'leftforearm', 'mixamorigleftforearm', 'mixamorig:leftforearm',
+                'forearm_l', 'forearm.l', 'forearml', 'bip001_l_forearm',
+                'left_forearm', 'lowerarm_l', 'leftelbow', 'elbow_l'
+            ],
+            rightUpperLeg: [
+                'rightupleg', 'mixamorigrightupleg', 'mixamorig:rightupleg',
+                'thigh_r', 'thigh.r', 'thighr', 'bip001_r_thigh',
+                'right_upperleg', 'upperleg_r', 'rightleg', 'rightthigh'
+            ],
+            rightLowerLeg: [
+                'rightleg', 'mixamorigrightleg', 'mixamorig:rightleg',
+                'calf_r', 'calf.r', 'calfr', 'bip001_r_calf',
+                'right_lowerleg', 'lowerleg_r', 'rightshin', 'shin_r',
+                'rightknee', 'knee_r', 'rightankle', 'ankle_r', 'foot_r'
+            ],
+            leftUpperLeg: [
+                'leftupleg', 'mixamorigleftupleg', 'mixamorig:leftupleg',
+                'thigh_l', 'thigh.l', 'thighl', 'bip001_l_thigh',
+                'left_upperleg', 'upperleg_l', 'leftleg', 'leftthigh'
+            ],
+            leftLowerLeg: [
+                'leftleg', 'mixamorigleftleg', 'mixamorig:leftleg',
+                'calf_l', 'calf.l', 'calfl', 'bip001_l_calf',
+                'left_lowerleg', 'lowerleg_l', 'leftshin', 'shin_l',
+                'leftknee', 'knee_l', 'leftankle', 'ankle_l', 'foot_l'
+            ],
+        };
+
+        // Mesh name to body part mapping (cho rigid bone-part models)
+        const MESH_NAME_MAP = {
+            'head': 'head',
+            'torso': 'spine',
+            'chest': 'spine',
+            'upperbody': 'spine',
+            'lowerbody': 'pelvis',
+            'pelvis': 'pelvis',
+            'armr': 'rightUpperArm',
+            'rightarm': 'rightUpperArm',
+            'arm_l': 'leftUpperArm',
+            'leftarm': 'leftUpperArm',
+            'forearmr': 'rightForearm',
+            'rightforearm': 'rightForearm',
+            'forearm_l': 'leftForearm',
+            'leftforearm': 'leftForearm',
+            'handr': 'rightHand',
+            'righthand': 'rightHand',
+            'hand_l': 'leftHand',
+            'lefthand': 'leftHand',
+            'legr': 'rightUpperLeg',
+            'rightleg': 'rightUpperLeg',
+            'leg_l': 'leftUpperLeg',
+            'leftleg': 'leftUpperLeg',
+            'calfr': 'rightLowerLeg',
+            'rightshin': 'rightLowerLeg',
+            'calf_l': 'leftLowerLeg',
+            'leftshin': 'leftLowerLeg',
+            'footr': 'rightLowerLeg',
+            'foot_l': 'leftLowerLeg'
+        };
+
+        // Normalize function - lowercase, remove special chars
+        const normalize = (s) => (s || '').toLowerCase().replace(/[\s_\-.:]/g, '');
+
+        // Kiểm tra xem tên có phải generic không
+        const isGenericName = (name) => {
+            const norm = normalize(name);
+            if (GENERIC_NAMES.has(norm)) return true;
+            // Kiểm tra pattern Bone001, Bone002, etc.
+            if (/^bone\d+$/.test(norm)) return true;
+            // Tên quá ngắn (1-2 ký tự) cũng là generic
+            if (norm.length <= 2) return true;
+            return false;
+        };
+
+        // Thu thập tất cả bones (chỉ Bone thật, không phải Group)
+        const allBones = [];
+        root.traverse((c) => {
+            if (c.isBone === true) {
+                allBones.push(c);
+            }
+        });
+
+        console.log('[PLAYER FBX] _findPlayerBones: Found', allBones.length, 'bones');
+
+        // Log tất cả bone names để debug
+        allBones.forEach((bone, i) => {
+            const isGeneric = isGenericName(bone.name);
+            console.log(`[PLAYER FBX]   Bone[${i}]: "${bone.name}" | generic: ${isGeneric ? 'YES' : 'NO'}`);
+        });
+
+        // BƯỚC 1: Tìm match bằng bone name aliases
+        for (const [boneType, aliases] of Object.entries(BONE_ALIASES)) {
+            if (cache[boneType]) continue;
+
+            let bestMatch = null;
+            let bestScore = 0;
+
+            for (const bone of allBones) {
+                if (isGenericName(bone.name)) {
+                    continue;
+                }
+
+                const normName = normalize(bone.name);
+                if (!normName) continue;
+
+                for (const alias of aliases) {
+                    const normAlias = normalize(alias);
+
+                    // Exact match (highest priority)
+                    if (normName === normAlias) {
+                        if (bestScore < 100) {
+                            bestScore = 100;
+                            bestMatch = bone;
+                        }
+                        break;
+                    }
+
+                    // Name ends with alias (e.g., "mixamorig:righthand" matches "righthand")
+                    if (normName.endsWith(normAlias) && normAlias.length > 4) {
+                        if (bestScore < 80) {
+                            bestScore = 80;
+                            bestMatch = bone;
+                        }
+                    }
+
+                    // Alias ends with name (e.g., "righthand" matches "mixamorig:righthand")
+                    if (normAlias.endsWith(normName) && normName.length > 4) {
+                        if (bestScore < 75) {
+                            bestScore = 75;
+                            bestMatch = bone;
+                        }
+                    }
+                }
+            }
+
+            if (bestMatch && bestScore >= 70) {
+                cache[boneType] = bestMatch;
+                console.log(`[PLAYER FBX]   Matched ${boneType} -> "${bestMatch.name}" (score: ${bestScore})`);
+            }
+        }
+
+        // BƯỚC 2: Nếu bone name matching không đủ, dùng mesh name để map
+        if (meshList && meshList.length > 0) {
+            console.log('[PLAYER FBX] Trying mesh name mapping...');
+
+            meshList.forEach((mesh) => {
+                const meshNorm = normalize(mesh.name);
+                if (!meshNorm) return;
+
+                // Tìm body part từ mesh name
+                let bodyPart = null;
+                for (const [meshNameKey, boneType] of Object.entries(MESH_NAME_MAP)) {
+                    if (meshNorm === meshNameKey || meshNorm.includes(meshNameKey)) {
+                        bodyPart = boneType;
+                        break;
+                    }
+                }
+
+                if (!bodyPart) return;
+                if (cache[bodyPart]) return; // Already matched by bone name
+
+                // Tìm parent bone của mesh
+                let parentBone = mesh.parent;
+                while (parentBone && parentBone.isBone !== true) {
+                    parentBone = parentBone.parent;
+                }
+
+                if (parentBone && parentBone.isBone === true) {
+                    // Kiểm tra parent bone có generic không
+                    if (isGenericName(parentBone.name)) {
+                        // Nếu parent generic, tìm bone gần nhất trong hierarchy
+                        // nhưng không gán nếu không thực sự phù hợp
+                        console.log(`[PLAYER FBX]   Mesh "${mesh.name}" has generic parent "${parentBone.name}", skipping`);
+                        return;
+                    }
+
+                    cache[bodyPart] = parentBone;
+                    console.log(`[PLAYER FBX]   Matched ${bodyPart} -> "${parentBone.name}" (from mesh "${mesh.name}")`);
+                }
+            });
+        }
+
+        // Kiểm tra rightHand !== leftHand
+        if (cache.rightHand && cache.leftHand && cache.rightHand === cache.leftHand) {
+            console.error('[PLAYER FBX] Invalid hand mapping: rightHand === leftHand');
+            cache.leftHand = null;
+        }
+
+        return cache;
+    },
+
+    _matchAnimKeywords: function(name, keywords) {
+        const normalized = (name || '').toLowerCase().replace(/[\s_\-.:]/g, '');
+        for (const kw of keywords) {
+            if (normalized.includes(kw.toLowerCase().replace(/[\s_\-.:]/g, ''))) {
+                return true;
+            }
+        }
+        return false;
+    },
+
+    _setupBoneDebugMarkers: function(boneCache) {
+        const colors = {
+            rightHand: 0xff0000,
+            leftHand: 0x00ff00,
+            head: 0xffff00,
+            spine: 0x00ffff,
+            pelvis: 0xff00ff,
+        };
+
+        this._boneDebugMarkers = this._boneDebugMarkers || [];
+
+        // Remove old markers
+        this._boneDebugMarkers.forEach(m => {
+            if (m.parent) m.parent.remove(m);
+        });
+        this._boneDebugMarkers = [];
+
+        // Create new markers
+        for (const [boneType, color] of Object.entries(colors)) {
+            if (boneCache[boneType]) {
+                const marker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.04, 8, 8),
+                    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 })
+                );
+                boneCache[boneType].add(marker);
+                this._boneDebugMarkers.push(marker);
+            }
+        }
+    },
+
     setPlayerAnimation: function(name, duration = 0.2) {
-        if (!this.playerMixer || !this.playerActions) return;
-        const targetAction = this.playerActions[name] || this.playerActions['idle'];
-        if (!targetAction || this.currentPlayerAnim === name) return;
+        // Nếu không có mixer hoặc actions, fallback sang procedural
+        if (!this.playerMixer || !this.playerActions) {
+            this.currentPlayerAnim = name;
+            return;
+        }
+
+        // Tìm action với fallback
+        let targetAction = this.playerActions[name];
+
+        // Fallback logic nếu animation không tồn tại
+        if (!targetAction) {
+            // Thử các fallback options
+            const fallbacks = {
+                'run': ['walk'],
+                'walk': ['run'],
+                'shoot': ['attack', 'idle'],
+                'melee': ['attack', 'idle'],
+                'bomb': ['throw', 'attack', 'idle'],
+                'crouch': ['idle'],
+                'jump': ['idle'],
+            };
+
+            const fbList = fallbacks[name] || ['idle'];
+            for (const fb of fbList) {
+                if (this.playerActions[fb]) {
+                    targetAction = this.playerActions[fb];
+                    break;
+                }
+            }
+
+            // Ultimate fallback - idle đầu tiên
+            if (!targetAction) {
+                targetAction = this.playerActions['idle'];
+            }
+        }
+
+        if (!targetAction) {
+            this.currentPlayerAnim = name;
+            return;
+        }
+
+        // Không restart nếu đã cùng state
+        if (this.currentPlayerAnim === name && targetAction.isRunning()) {
+            return;
+        }
 
         const prevAction = this.playerActions[this.currentPlayerAnim];
         if (prevAction && prevAction !== targetAction) {
             prevAction.fadeOut(duration);
         }
+
         targetAction.reset().fadeIn(duration).play();
         this.currentPlayerAnim = name;
+
+        // Adjust playback rate for speed matching
+        if (name === 'run') {
+            targetAction.setEffectiveTimeScale(1.2);
+        } else if (name === 'walk') {
+            targetAction.setEffectiveTimeScale(1.0);
+        }
     },
 
     updatePlayerAnimationMixer: function(deltaSec) {
@@ -2642,22 +4382,262 @@ let Renderer3D = {
         this.player.rotation.y = rotationY;
 
         const jumpOffset = jumpY || 0;
+        const rig = this.player.rig;
+
+        // Crouch handling - smooth transition
         const targetScaleY = isCrouching ? 0.70 : 1.0;
         if (typeof this.player._currentScaleY === 'undefined') this.player._currentScaleY = 1.0;
         this.player._currentScaleY += (targetScaleY - this.player._currentScaleY) * 0.2;
 
-        const rig = this.player.rig;
         if (rig) {
-            rig.scale.y = this.player._currentScaleY;
-            rig.position.y = isCrouching ? -0.25 : 0;
+            // Nếu có visualRoot (FBX model), xử lý khác với procedural rig
+            if (rig.visualRoot) {
+                if (rig.playerFBXMode === 'r6-modular') {
+                    const baseScale = rig.fbxVisualScale || rig.visualRoot.scale.x;
+                    rig.visualRoot.scale.setScalar(baseScale);
+                    // r6-modular crouch uses a real leg/torso pose, not a squash:
+                    // only a small grounding offset so feet stay planted.
+                    rig.visualRoot.position.y = isCrouching ? -0.12 : 0;
+                } else {
+                    rig.visualRoot.scale.y = this.player._currentScaleY;
+                    rig.visualRoot.position.y = isCrouching ? -0.25 : 0;
+                }
+            } else {
+                // Procedural rig fallback
+                rig.scale.y = this.player._currentScaleY;
+                rig.position.y = isCrouching ? -0.25 : 0;
+            }
         }
 
+        if (rig && rig.playerFBXMode === 'r6-modular' && rig.visualRoot) {
+            const s = rig.visualRoot.scale;
+            const nonUniform =
+                Math.abs(s.x - s.y) > 0.0001 ||
+                Math.abs(s.y - s.z) > 0.0001;
+            if (nonUniform) {
+                console.error(
+                    '[PLAYER R6] INVALID NON-UNIFORM visualRoot SCALE',
+                    s
+                );
+            }
+        }
+
+        // Update animation mixer nếu có (chỉ cho skinned animated)
+        if (this.playerMixer && this.playerActions && rig && rig.playerFBXMode === 'skinned') {
+            // Animation update được gọi từ game loop delta
+        }
+
+        // Procedural fallback cho trạng thái không có animation đang chạy
         const time = Date.now() * 0.008;
         const opts = animOptions || {};
         const isSprinting = opts.isSprinting || false;
         const isAttacking = opts.isAttacking || (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._swingAnim);
-        const currentWeapon = opts.currentWeapon || (typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol');
+        const currentWeapon = opts.currentWeapon || (typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'unarmed');
 
+        // Xác định loại animation dựa trên rig mode
+        if (rig && !rig.visualRoot) {
+            // Procedural rig animation (code cũ - box geometry)
+            this._updateProceduralRig(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
+        } else if (rig && rig.bones && rig.playerFBXAnimated === true) {
+            // FBX model với bone animation
+            if (rig.playerFBXMode === 'r6-modular') {
+                this._updateR6ModularPose(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
+            } else if (rig.playerFBXMode === 'rigid-bone-part') {
+                // Rigid bone-part: dùng procedural bone animation
+                this._updateRigidBonePartPose(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset);
+            } else {
+                // Skinned animated: dùng AnimationMixer (hoặc FBX animation)
+                this._updateFBXWeaponPose(rig, currentWeapon, isAttacking, isMoving, isSprinting, isCrouching, time);
+            }
+        }
+
+        // ============================================================
+        // R6 RUNTIME DIAGNOSTICS (READ-ONLY)
+        // ============================================================
+        if (rig && rig.playerFBXMode === 'r6-modular' && rig.r6Bones && rig.r6RestPose) {
+            if (typeof this._r6FrameCounter === 'undefined') this._r6FrameCounter = 0;
+            this._r6FrameCounter++;
+
+            if (typeof window !== 'undefined' && window.PLAYER_R6_HIDE_WEAPON && WeaponRenderer && WeaponRenderer._weaponHolder) {
+                WeaponRenderer._weaponHolder.visible = false;
+            }
+
+            if (PLAYER_R6_DEBUG_VISUALS && this._r6FrameCounter <= PLAYER_R6_LOG_FRAMES) {
+                console.log('[PLAYER R6] Frame', this._r6FrameCounter, '| Mode:', rig.playerFBXMode, '| Freeze:', PLAYER_R6_FREEZE_POSE);
+                this._logR6RuntimeState(rig);
+            }
+
+            if (this._r6FrameCounter === PLAYER_R6_LOG_FRAMES && PLAYER_R6_DEBUG_VISUALS) {
+                this._scanGreenVerticalObject();
+                this._logR6AnimationWriters();
+            }
+        }
+    },
+
+    _updateRigidBonePartPose: function(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset) {
+        // Procedural animation cho rigid bone-part model
+        const bones = rig.bones;
+        if (!bones) return;
+
+        // Weapon pose definitions
+        const WEAPON_POSE = {
+            pistol: {
+                rightUpperArm: { x: -Math.PI / 2.25, z: 0.03, y: 0 },
+                rightForearm: { x: -0.1, z: 0, y: 0 },
+                rightHand: { x: 0, z: 0, y: 0 },
+                leftUpperArm: { x: -0.15, z: 0.05, y: 0 },
+                leftForearm: { x: 0, z: 0, y: 0 },
+                leftActive: false
+            },
+            ak: {
+                rightUpperArm: { x: -Math.PI / 2.05, z: 0.06, y: 0 },
+                rightForearm: { x: -0.15, z: 0, y: 0 },
+                rightHand: { x: 0, z: 0, y: 0 },
+                leftUpperArm: { x: -Math.PI / 2.2, z: -0.08, y: 0 },
+                leftForearm: { x: -0.2, z: 0, y: 0 },
+                leftActive: true
+            },
+            sword: {
+                rightUpperArm: { x: -0.45, z: -0.25, y: 0 },
+                rightForearm: { x: -0.3, z: 0, y: 0 },
+                rightHand: { x: 0, z: 0, y: 0 },
+                leftUpperArm: { x: -0.15, z: 0.1, y: 0 },
+                leftForearm: { x: 0, z: 0, y: 0 },
+                leftActive: true
+            },
+            unarmed: {
+                rightUpperArm: { x: 0, z: 0, y: 0 },
+                rightForearm: { x: 0, z: 0, y: 0 },
+                rightHand: { x: 0, z: 0, y: 0 },
+                leftUpperArm: { x: 0, z: 0, y: 0 },
+                leftForearm: { x: 0, z: 0, y: 0 },
+                leftActive: false
+            }
+        };
+
+        const pose = WEAPON_POSE[currentWeapon] || null;
+
+        // Helper để set bone rotation an toàn
+        const setBoneRot = (bone, rx, ry, rz) => {
+            if (bone && bone.isBone === true) {
+                bone.rotation.x = rx;
+                bone.rotation.y = ry;
+                bone.rotation.z = rz;
+            }
+        };
+
+        if (isMoving) {
+            const freq = isSprinting ? 1.6 : 1.0;
+            const amp = isSprinting ? 0.75 : 0.50;
+            this.player.position.y = (0.5 - 0.5 * Math.cos(time * freq * 1.5 * 2.0)) * (isCrouching ? 0.03 : 0.07) + jumpOffset;
+
+            // Leg animation
+            if (bones.rightUpperLeg) {
+                setBoneRot(bones.rightUpperLeg, Math.sin(time * freq) * amp, 0, 0);
+            }
+            if (bones.leftUpperLeg) {
+                setBoneRot(bones.leftUpperLeg, -Math.sin(time * freq) * amp, 0, 0);
+            }
+            if (bones.rightLowerLeg) {
+                setBoneRot(bones.rightLowerLeg, Math.max(0, Math.sin(time * freq + 0.5) * 0.3), 0, 0);
+            }
+            if (bones.leftLowerLeg) {
+                setBoneRot(bones.leftLowerLeg, Math.max(0, -Math.sin(time * freq + 0.5) * 0.3), 0, 0);
+            }
+
+            // Arm swing (opposite to legs)
+            if (!isAttacking) {
+                if (bones.rightUpperArm) {
+                    setBoneRot(bones.rightUpperArm, pose.rightUpperArm.x + Math.sin(time * freq) * 0.06, pose.rightUpperArm.y, pose.rightUpperArm.z);
+                }
+                if (bones.rightForearm) {
+                    setBoneRot(bones.rightForearm, pose.rightForearm.x, pose.rightForearm.y, pose.rightForearm.z);
+                }
+                if (bones.leftUpperArm) {
+                    if (pose.leftActive) {
+                        setBoneRot(bones.leftUpperArm, pose.leftUpperArm.x - Math.sin(time * freq) * 0.05, pose.leftUpperArm.y, pose.leftUpperArm.z);
+                    } else {
+                        setBoneRot(bones.leftUpperArm, -0.2 - Math.sin(time * freq) * 0.1, 0, 0.05);
+                    }
+                }
+                if (bones.leftForearm) {
+                    setBoneRot(bones.leftForearm, pose.leftForearm.x, pose.leftForearm.y, pose.leftForearm.z);
+                }
+            }
+
+            // Body lean
+            if (bones.spine) {
+                setBoneRot(bones.spine, isSprinting ? 0.12 : 0.04, 0, 0);
+            }
+        } else {
+            // Idle pose
+            this.player.position.y = jumpOffset;
+
+            const breath = Math.sin(time * 0.3) * 0.02;
+
+            // Legs straight
+            if (bones.rightUpperLeg) setBoneRot(bones.rightUpperLeg, 0, 0, 0);
+            if (bones.leftUpperLeg) setBoneRot(bones.leftUpperLeg, 0, 0, 0);
+            if (bones.rightLowerLeg) setBoneRot(bones.rightLowerLeg, 0, 0, 0);
+            if (bones.leftLowerLeg) setBoneRot(bones.leftLowerLeg, 0, 0, 0);
+
+            // Weapon pose
+            if (!isAttacking) {
+                if (bones.rightUpperArm) {
+                    setBoneRot(bones.rightUpperArm, pose.rightUpperArm.x + breath, pose.rightUpperArm.y, pose.rightUpperArm.z);
+                }
+                if (bones.rightForearm) {
+                    setBoneRot(bones.rightForearm, pose.rightForearm.x, pose.rightForearm.y, pose.rightForearm.z);
+                }
+                if (bones.rightHand) {
+                    setBoneRot(bones.rightHand, breath, 0, 0);
+                }
+                if (bones.leftUpperArm) {
+                    if (pose.leftActive) {
+                        setBoneRot(bones.leftUpperArm, pose.leftUpperArm.x + breath, pose.leftUpperArm.y, pose.leftUpperArm.z);
+                        if (bones.leftForearm) {
+                            setBoneRot(bones.leftForearm, pose.leftForearm.x, pose.leftForearm.y, pose.leftForearm.z);
+                        }
+                    } else {
+                        setBoneRot(bones.leftUpperArm, -0.2 + breath, 0, 0.03);
+                    }
+                }
+            }
+
+            // Spine breathing
+            if (bones.spine) {
+                setBoneRot(bones.spine, breath, 0, 0);
+            }
+            if (bones.head) {
+                setBoneRot(bones.head, -breath * 0.5, 0, 0);
+            }
+        }
+
+        // Crouch handling
+        if (isCrouching && bones.pelvis) {
+            setBoneRot(bones.pelvis, 0.3, 0, 0);
+            // Bend knees
+            if (bones.rightLowerLeg) setBoneRot(bones.rightLowerLeg, -0.5, 0, 0);
+            if (bones.leftLowerLeg) setBoneRot(bones.leftLowerLeg, -0.5, 0, 0);
+        } else if (bones.pelvis) {
+            setBoneRot(bones.pelvis, 0, 0, 0);
+        }
+
+        // Attack animation
+        if (isAttacking && currentWeapon === 'sword') {
+            // Sword swing
+            if (bones.rightUpperArm) setBoneRot(bones.rightUpperArm, -1.2, 0, -0.3);
+            if (bones.rightForearm) setBoneRot(bones.rightForearm, -0.6, 0, 0);
+            if (bones.spine) setBoneRot(bones.spine, 0, 0.2, 0);
+        } else if (isAttacking && currentWeapon === 'grenade') {
+            // Throw animation
+            if (bones.rightUpperArm) setBoneRot(bones.rightUpperArm, -1.5, 0, -0.2);
+            if (bones.rightForearm) setBoneRot(bones.rightForearm, -0.8, 0, 0);
+            if (bones.spine) setBoneRot(bones.spine, 0.1, 0, 0);
+        }
+    },
+
+    _updateProceduralRig: function(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset) {
         const WEAPON_ARM_POSE = {
             ak: {
                 rightArm: { x: -Math.PI / 2.05, z: 0.06, y: 0 },
@@ -2673,28 +4653,30 @@ let Renderer3D = {
                 rightArm: { x: -0.45, z: -0.25, y: 0 },
                 leftArm:  { x: -0.15, z: 0.1, y: 0 },
                 leftActive: true
+            },
+            unarmed: {
+                rightArm: { x: 0, z: 0, y: 0 },
+                leftArm:  { x: 0, z: 0, y: 0 },
+                leftActive: false
             }
         };
-        const pose = WEAPON_ARM_POSE[currentWeapon] || WEAPON_ARM_POSE['pistol'];
+        const pose = WEAPON_ARM_POSE[currentWeapon] || WEAPON_ARM_POSE['unarmed'];
 
         if (isMoving) {
             const freq = isSprinting ? 1.6 : 1.0;
             const amp = isSprinting ? 0.75 : 0.50;
-            this.player.position.y = Math.abs(Math.sin(time * freq * 1.5)) * (isCrouching ? 0.03 : 0.07) + jumpOffset;
+            this.player.position.y = (0.5 - 0.5 * Math.cos(time * freq * 1.5 * 2.0)) * (isCrouching ? 0.03 : 0.07) + jumpOffset;
 
             if (rig) {
-                // Swing legs
                 if (rig.leftLeg) rig.leftLeg.rotation.x = Math.sin(time * freq) * amp;
                 if (rig.rightLeg) rig.rightLeg.rotation.x = -Math.sin(time * freq) * amp;
 
-                // Right arm pose
                 if (rig.rightArm && !isAttacking) {
                     rig.rightArm.rotation.x = pose.rightArm.x + Math.sin(time * freq) * 0.06;
                     rig.rightArm.rotation.z = pose.rightArm.z;
                     rig.rightArm.rotation.y = pose.rightArm.y;
                 }
 
-                // Left arm pose
                 if (rig.leftArm && !isAttacking) {
                     if (pose.leftActive) {
                         rig.leftArm.rotation.x = pose.leftArm.x + Math.sin(time * freq) * 0.05;
@@ -2707,13 +4689,11 @@ let Renderer3D = {
                     }
                 }
 
-                // Torso slight forward lean when sprinting
                 if (rig.torso) {
                     rig.torso.rotation.x = isSprinting ? 0.12 : 0.04;
                 }
             }
         } else {
-            // Idle breathing
             this.player.position.y = jumpOffset;
             if (rig) {
                 const breath = Math.sin(time * 0.3) * 0.03;
@@ -2722,14 +4702,12 @@ let Renderer3D = {
                 if (rig.torso) rig.torso.rotation.x = breath;
                 if (rig.head) rig.head.rotation.x = -breath * 0.5;
 
-                // Right arm idle pose
                 if (rig.rightArm && !isAttacking) {
                     rig.rightArm.rotation.x = pose.rightArm.x + breath;
                     rig.rightArm.rotation.z = pose.rightArm.z;
                     rig.rightArm.rotation.y = pose.rightArm.y;
                 }
 
-                // Left arm idle pose
                 if (rig.leftArm && !isAttacking) {
                     if (pose.leftActive) {
                         rig.leftArm.rotation.x = pose.leftArm.x + breath;
@@ -2744,7 +4722,6 @@ let Renderer3D = {
             }
         }
 
-        // Melee attack animation for Right Arm
         if (rig && rig.rightArm && isAttacking && currentWeapon === 'sword') {
             const swingTimer = (typeof WeaponRenderer !== 'undefined' ? WeaponRenderer._swingTimer : 0) || 0;
             const slashPhase = Math.sin(swingTimer * Math.PI * 3);
@@ -2756,6 +4733,601 @@ let Renderer3D = {
                 rig.leftArm.rotation.y = 0;
             }
         }
+    },
+
+    _updateFBXWeaponPose: function(rig, currentWeapon, isAttacking, isMoving, isSprinting, isCrouching, time) {
+        // Áp dụng weapon pose cho FBX bones
+        // Chỉ override bones khi không có animation đang chạy hoặc blend nhẹ
+        const bones = rig.bones;
+        if (!bones) return;
+
+        // Weapon pose definitions (rotation offsets cho bones)
+        const WEAPON_POSE = {
+            pistol: {
+                rightHand: { rx: -Math.PI / 2.2, ry: 0, rz: 0 },
+                rightForearm: { rx: 0, ry: 0, rz: 0 },
+                leftHand: null,
+                leftForearm: null,
+            },
+            ak: {
+                rightHand: { rx: -Math.PI / 2.0, ry: 0, rz: 0 },
+                rightForearm: { rx: 0, ry: 0, rz: 0 },
+                leftHand: { rx: -Math.PI / 2.1, ry: 0, rz: 0 },
+                leftForearm: { rx: 0, ry: 0, rz: 0 },
+            },
+            sword: {
+                rightHand: { rx: -0.4, ry: 0, rz: -0.3 },
+                rightForearm: { rx: 0, ry: 0, rz: 0 },
+                leftHand: null,
+                leftForearm: null,
+            },
+            grenade: {
+                rightHand: { rx: -0.8, ry: 0, rz: 0 },
+                rightForearm: { rx: 0, ry: 0, rz: 0 },
+                leftHand: null,
+                leftForearm: null,
+            },
+            unarmed: {
+                rightHand: { rx: 0, ry: 0, rz: 0 },
+                rightForearm: { rx: 0, ry: 0, rz: 0 },
+                leftHand: null,
+                leftForearm: null,
+            }
+        };
+
+        const pose = WEAPON_POSE[currentWeapon] || WEAPON_POSE['unarmed'];
+
+        // Apply pose to bones (chỉ khi không có animation)
+        if (this.currentPlayerAnim === 'idle' || !this.playerActions || !this.playerActions[this.currentPlayerAnim]) {
+            if (bones.rightHand && pose.rightHand) {
+                bones.rightHand.rotation.x = pose.rightHand.rx;
+                bones.rightHand.rotation.y = pose.rightHand.ry;
+                bones.rightHand.rotation.z = pose.rightHand.rz;
+            }
+            if (bones.rightForearm && pose.rightForearm) {
+                bones.rightForearm.rotation.x = pose.rightForearm.rx;
+                bones.rightForearm.rotation.y = pose.rightForearm.ry;
+                bones.rightForearm.rotation.z = pose.rightForearm.rz;
+            }
+            if (bones.leftHand && pose.leftHand) {
+                bones.leftHand.rotation.x = pose.leftHand.rx;
+                bones.leftHand.rotation.y = pose.leftHand.ry;
+                bones.leftHand.rotation.z = pose.leftHand.rz;
+            }
+            if (bones.leftForearm && pose.leftForearm) {
+                bones.leftForearm.rotation.x = pose.leftForearm.rx;
+                bones.leftForearm.rotation.y = pose.leftForearm.ry;
+                bones.leftForearm.rotation.z = pose.leftForearm.rz;
+            }
+        }
+
+        // Melee attack animation
+        if (isAttacking && currentWeapon === 'sword' && bones.rightHand) {
+            const swingTimer = (typeof WeaponRenderer !== 'undefined' ? WeaponRenderer._swingTimer : 0) || 0;
+            const slashPhase = Math.sin(swingTimer * Math.PI * 3);
+            bones.rightHand.rotation.x = -Math.PI / 2 - slashPhase * 0.8;
+            bones.rightHand.rotation.y = slashPhase * 0.6;
+        }
+    },
+
+    _updateR6ModularPose: function(rig, time, isMoving, isSprinting, isCrouching, isAttacking, currentWeapon, jumpOffset) {
+        if (!rig.r6Bones || !rig.r6RestPose) return;
+
+        const rb = rig.r6Bones;
+        const rp = rig.r6RestPose;
+        const headPivot = rig.headPivot;
+
+        // --- stable, frame-rate independent animation clock ---
+        const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (typeof this._r6AnimLastMs === 'undefined') this._r6AnimLastMs = nowMs;
+        let dt = (nowMs - this._r6AnimLastMs) / 1000;
+        this._r6AnimLastMs = nowMs;
+        if (!(dt > 0)) dt = 0;
+        if (dt > 0.1) dt = 0.1;
+
+        if (typeof rig._r6Loco === 'undefined') {
+            rig._r6Loco = { phase: 0, breath: 0, freq: 0, legAmp: 0, armAmp: 0, lean: 0, bounce: 0, crouch: 0, torsoCrouch: 0, kneeBend: 0 };
+            this._r6LocoReported = false;
+        }
+        const L = rig._r6Loco;
+
+        const isJump = jumpOffset > 0.01;
+
+        if (PLAYER_R6_FREEZE_POSE) {
+            if (PLAYER_R6_DEBUG_VISUALS && !this._r6FreezeLogOnce) {
+                console.log('[PLAYER R6] FREEZE POSE ACTIVE - restoring rest pose every frame');
+                this._r6FreezeLogOnce = true;
+            }
+            if (rp.torsoBone && rb.torsoBone) rb.torsoBone.quaternion.copy(rp.torsoBone.quaternion);
+            if (rp.rightArmBone && rb.rightArmBone) rb.rightArmBone.quaternion.copy(rp.rightArmBone.quaternion);
+            if (rp.leftArmBone && rb.leftArmBone) rb.leftArmBone.quaternion.copy(rp.leftArmBone.quaternion);
+            if (rp.rightLegBone && rb.rightLegBone) rb.rightLegBone.quaternion.copy(rp.rightLegBone.quaternion);
+            if (rp.leftLegBone && rb.leftLegBone) rb.leftLegBone.quaternion.copy(rp.leftLegBone.quaternion);
+            if (headPivot) {
+                headPivot.rotation.set(0, 0, 0);
+                if (headPivot.position.y !== (rig.headPivotRestY || 0)) headPivot.position.y += ((rig.headPivotRestY || 0) - headPivot.position.y) * 0.2;
+            }
+            return;
+        }
+
+        const eulerToQuat = (rx, ry, rz) => new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'));
+
+        const applyOffsets = (bone, rest, offsets) => {
+            if (!bone || !rest || !offsets || offsets.length === 0) return;
+            if (PLAYER_R6_TRACE_WRITES) {
+                console.log('[PLAYER R6] WRITE:', bone.name, 'offsets:', JSON.stringify(offsets));
+            }
+            const combined = offsets.map(o => eulerToQuat(o.x, o.y, o.z)).reduce((a, b) => a.multiply(b), new THREE.Quaternion());
+            bone.quaternion.copy(rest.quaternion).multiply(combined);
+        };
+
+        // --- state selection (priority: JUMP > CROUCH* > RUN > WALK > IDLE) ---
+        let state = 'IDLE';
+        if (isJump) state = 'JUMP';
+        else if (isCrouching && isMoving) state = 'CROUCH_WALK';
+        else if (isCrouching) state = 'CROUCH_IDLE';
+        else if (isSprinting && isMoving) state = 'RUN';
+        else if (isMoving) state = 'WALK';
+
+        if (typeof this._r6LocoState === 'undefined') this._r6LocoState = '';
+        if (state !== this._r6LocoState) {
+            if (typeof window !== 'undefined' && (window.PLAYER_R6_DEBUG_VISUALS || window.PLAYER_R6_LOCOMOTION_LOG)) {
+                console.log('[PLAYER R6 LOCOMOTION] state =', state);
+            }
+            this._r6LocoState = state;
+        }
+
+        // --- per-state target locomotion parameters ---
+        let tFreq, tLegAmp, tArmAmp, tLean, tBounce, tCrouch, tTorsoCrouch, tKneeBend;
+        switch (state) {
+            case 'RUN':
+                tFreq = 5.2; tLegAmp = 0.55; tArmAmp = 0.42; tLean = 0.18; tBounce = 0.035; tCrouch = 0; tTorsoCrouch = 0; tKneeBend = 0; break;
+            case 'WALK':
+                tFreq = 3.0; tLegAmp = 0.36; tArmAmp = 0.22; tLean = 0.03; tBounce = 0.02; tCrouch = 0; tTorsoCrouch = 0; tKneeBend = 0; break;
+            case 'CROUCH_WALK':
+                tFreq = 2.4; tLegAmp = 0.20; tArmAmp = 0.10; tLean = 0.06; tBounce = 0.008; tCrouch = 1; tTorsoCrouch = 0.18; tKneeBend = 0.55; break;
+            case 'CROUCH_IDLE':
+                tFreq = 1.2; tLegAmp = 0.0; tArmAmp = 0.0; tLean = 0.0; tBounce = 0.004; tCrouch = 1; tTorsoCrouch = 0.20; tKneeBend = 0.6; break;
+            case 'JUMP':
+                tFreq = 3.0; tLegAmp = 0.12; tArmAmp = 0.12; tLean = 0.05; tBounce = 0; tCrouch = 0; tTorsoCrouch = 0; tKneeBend = 0.35; break;
+            default: // IDLE
+                tFreq = 1.2; tLegAmp = 0.0; tArmAmp = 0.0; tLean = 0.0; tBounce = 0.012; tCrouch = 0; tTorsoCrouch = 0; tKneeBend = 0;
+        }
+
+        // --- smooth parameters toward targets (no bone accumulation) ---
+        const k = 1 - Math.exp(-10 * dt);
+        L.freq += (tFreq - L.freq) * k;
+        L.legAmp += (tLegAmp - L.legAmp) * k;
+        L.armAmp += (tArmAmp - L.armAmp) * k;
+        L.lean += (tLean - L.lean) * k;
+        L.bounce += (tBounce - L.bounce) * k;
+        L.crouch += (tCrouch - L.crouch) * k;
+        L.torsoCrouch += (tTorsoCrouch - L.torsoCrouch) * k;
+        L.kneeBend += (tKneeBend - L.kneeBend) * k;
+
+        L.phase += dt * L.freq;
+        L.breath += dt;
+        const phase = L.phase;
+        const s = Math.sin(phase);
+        const breath = Math.sin(L.breath * 1.4) * 0.02;
+
+        const offsets = {
+            torso: [],
+            rightArm: [],
+            leftArm: [],
+            rightLeg: [],
+            leftLeg: []
+        };
+
+        // small stride asymmetry so motion is not perfectly mechanical
+        const asymL = 1.0, asymR = 0.97;
+
+        // legs: opposite phase. Crouch uses OPPOSITE local-X bend signs so the body
+        // center stays aligned (no forward bow) and feet stay near the ground.
+        const legBendR = L.kneeBend * 0.5;
+        const legBendL = -L.kneeBend * 0.5;
+        offsets.rightLeg.push({ x: -s * L.legAmp * asymR + legBendR, y: 0, z: 0 });
+        offsets.leftLeg.push({ x: s * L.legAmp * asymL + legBendL, y: 0, z: 0 });
+
+        // arms: counter-swing to legs (rightArm phase = leftLeg phase).
+        // Explicit weapon categories: FIREARM constrains arm swing, others swing freely.
+        const WEAPON_CATEGORY = {
+            pistol: 'FIREARM', ak: 'FIREARM', m4a1: 'FIREARM', rifle: 'FIREARM',
+            sword: 'SWORD', grenade: 'GRENADE'
+        };
+        const category = WEAPON_CATEGORY[currentWeapon] || 'UNARMED';
+        const weaponArmFactor = category === 'FIREARM' ? 0.12 : 1.0;
+        if (!isAttacking) {
+            const armSwing = s * L.armAmp * weaponArmFactor;
+            offsets.rightArm.push({ x: armSwing + breath * 0.5, y: 0, z: 0 });
+            offsets.leftArm.push({ x: -armSwing + breath * 0.5, y: 0, z: 0 });
+        }
+
+        // torso: forward lean (walk/run), crouch lean, subtle rotational sway, breathing
+        const torsoSway = Math.sin(phase) * L.legAmp * 0.05;
+        offsets.torso.push({ x: L.lean + L.torsoCrouch + breath * 0.3, y: 0, z: torsoSway });
+
+        // jump tuck
+        if (isJump) {
+            offsets.rightLeg.push({ x: 0.15, y: 0, z: 0 });
+            offsets.leftLeg.push({ x: 0.15, y: 0, z: 0 });
+        }
+
+        // weapon pose layered on top (preserves firearm stability + melee attack)
+        const weaponPose = this._getR6WeaponPose(currentWeapon, isAttacking);
+        if (weaponPose) {
+            if (weaponPose.rightArm) offsets.rightArm.push(weaponPose.rightArm);
+            if (weaponPose.leftArm) offsets.leftArm.push(weaponPose.leftArm);
+        }
+
+        applyOffsets(rb.torsoBone, rp.torsoBone, offsets.torso);
+        applyOffsets(rb.rightLegBone, rp.rightLegBone, offsets.rightLeg);
+        applyOffsets(rb.leftLegBone, rp.leftLegBone, offsets.leftLeg);
+        applyOffsets(rb.rightArmBone, rp.rightArmBone, offsets.rightArm);
+        applyOffsets(rb.leftArmBone, rp.leftArmBone, offsets.leftArm);
+
+        // smooth vertical bob (no abs(sin) velocity cusp): rises twice per stride,
+        // feet stay grounded, subtle Roblox-style bounce.
+        const smoothBob = (0.5 - 0.5 * Math.cos(phase * 2.0)) * L.bounce;
+        this.player.position.y = smoothBob + jumpOffset;
+
+        // --- HEAD: keep stable, only tiny motion, never detached ---
+        if (headPivot) {
+            const headAmp = (isMoving ? (isSprinting ? 0.02 : 0.012) : 0.006) * (1 - L.crouch * 0.5);
+            headPivot.rotation.x = Math.sin(phase * (isMoving ? 1 : 0.5)) * headAmp + breath * 0.3;
+            headPivot.rotation.y = Math.sin(phase * 0.5) * 0.015 * (isMoving ? 1 : 0.5);
+            if (Math.abs(headPivot.position.y - (rig.headPivotRestY || 0)) > 1e-4) {
+                headPivot.position.y += ((rig.headPivotRestY || 0) - headPivot.position.y) * Math.min(1, dt * 8);
+            }
+        }
+
+        if (!this._r6LocoReported) {
+            this._r6LocoReported = true;
+            console.log(
+                '[PLAYER R6 LOCOMOTION] FIX COMPLETE\n' +
+                'WALK BOB = FIXED | RUN BOB = FIXED | UNARMED ARM SWING = FIXED | ' +
+                'FIREARM POSE = PRESERVED | CROUCH POSE = FIXED | CROUCH WALK = FIXED | ' +
+                'REST-POSE BASIS = PRESERVED | ROOT AXIS = PRESERVED | HEAD = UNTOUCHED | ' +
+                'MOVEMENT PHYSICS = UNTOUCHED | CAMERA = UNTOUCHED | WEAPON FIRING = UNTOUCHED'
+            );
+        }
+    },
+
+    _getR6WeaponPose: function(weapon, isAttacking) {
+        const base = {
+            unarmed: null,
+            pistol: { rightArm: { x: -Math.PI / 2.25, z: 0.03, y: 0 }, leftArm: null },
+            ak: { rightArm: { x: -Math.PI / 2.05, z: 0.06, y: 0 }, leftArm: { x: -Math.PI / 2.2, z: -0.08, y: 0 } },
+            sword: { rightArm: { x: -0.45, z: -0.25, y: 0 }, leftArm: null },
+            grenade: { rightArm: { x: -0.8, z: -0.1, y: 0 }, leftArm: null }
+        };
+
+        const pose = base[weapon] || null;
+
+        if (isAttacking && weapon === 'sword') {
+            const swingTimer = (typeof WeaponRenderer !== 'undefined' ? WeaponRenderer._swingTimer : 0) || 0;
+            const slashPhase = Math.sin(swingTimer * Math.PI * 3);
+            return {
+                rightArm: { x: -Math.PI / 2 - slashPhase * 0.8, y: slashPhase * 0.6, z: -0.3 },
+                leftArm: { x: -0.2, y: 0, z: 0.15 }
+            };
+        }
+
+        if (isAttacking && weapon === 'grenade') {
+            return {
+                rightArm: { x: -1.5, y: 0, z: -0.2 },
+                leftArm: { x: -0.1, y: 0, z: 0 }
+            };
+        }
+
+        return pose;
+    },
+
+    _setupBoneDebugMarkers: function(rig) {
+        if (typeof PLAYER_R6_DEBUG === 'undefined' || !PLAYER_R6_DEBUG) return;
+        if (!rig.r6Bones) return;
+
+        const markers = [];
+        const addMarker = (parent, color) => {
+            const marker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.04, 8, 8),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 })
+            );
+            parent.add(marker);
+            markers.push(marker);
+        };
+
+        const rb = rig.r6Bones;
+        if (rb.torsoBone) addMarker(rb.torsoBone, 0x00ffff);
+        if (rb.rightArmBone) addMarker(rb.rightArmBone, 0xff0000);
+        if (rb.leftArmBone) addMarker(rb.leftArmBone, 0x00ff00);
+        if (rb.rightLegBone) addMarker(rb.rightLegBone, 0x0000ff);
+        if (rb.leftLegBone) addMarker(rb.leftLegBone, 0xffff00);
+        if (rig.headPivot) addMarker(rig.headPivot, 0xff00ff);
+        if (rb.rightArmEndBone) addMarker(rb.rightArmEndBone, 0xff8800);
+        if (rb.leftArmEndBone) addMarker(rb.leftArmEndBone, 0x88ff00);
+
+        this._boneDebugMarkers = this._boneDebugMarkers || [];
+        this._boneDebugMarkers.push(...markers);
+    },
+
+    _logR6RuntimeState: function(rig) {
+        if (!rig || !rig.r6Bones || !rig.r6RestPose) return;
+        const rb = rig.r6Bones;
+        const rp = rig.r6RestPose;
+
+        const logBone = (name, bone, rest) => {
+            if (!bone) return;
+            const wp = new THREE.Vector3();
+            const wq = new THREE.Quaternion();
+            const ws = new THREE.Vector3();
+            bone.getWorldPosition(wp);
+            bone.getWorldQuaternion(wq);
+            bone.getWorldScale(ws);
+            const delta = rest ? bone.quaternion.angleTo(rest.quaternion) * (180 / Math.PI) : null;
+            console.log(`  ${name}: worldPos=(${wp.x.toFixed(3)}, ${wp.y.toFixed(3)}, ${wp.z.toFixed(3)}) worldScale=(${ws.x.toFixed(4)}, ${ws.y.toFixed(4)}, ${ws.z.toFixed(4)}) deltaDeg=${delta !== null ? delta.toFixed(2) : 'N/A'}`);
+        };
+
+        console.log('[PLAYER R6] === RUNTIME STATE ===');
+        logBone('torsoBone', rb.torsoBone, rp.torsoBone);
+        logBone('rightArmBone', rb.rightArmBone, rp.rightArmBone);
+        logBone('leftArmBone', rb.leftArmBone, rp.leftArmBone);
+        logBone('rightLegBone', rb.rightLegBone, rp.rightLegBone);
+        logBone('leftLegBone', rb.leftLegBone, rp.leftLegBone);
+        if (rig.headPivot) {
+            const wp = new THREE.Vector3();
+            rig.headPivot.getWorldPosition(wp);
+            console.log(`  headPivot: worldPos=(${wp.x.toFixed(3)}, ${wp.y.toFixed(3)}, ${wp.z.toFixed(3)})`);
+        }
+
+        if (this.player) {
+            console.log(`  player.position=(${this.player.position.x.toFixed(3)}, ${this.player.position.y.toFixed(3)}, ${this.player.position.z.toFixed(3)})`);
+            console.log(`  player.rotation=(${this.player.rotation.x.toFixed(3)}, ${this.player.rotation.y.toFixed(3)}, ${this.player.rotation.z.toFixed(3)})`);
+            console.log(`  player.scale=(${this.player.scale.x.toFixed(3)}, ${this.player.scale.y.toFixed(3)}, ${this.player.scale.z.toFixed(3)})`);
+        }
+        if (rig.visualRoot) {
+            console.log(`  visualRoot.position=(${rig.visualRoot.position.x.toFixed(3)}, ${rig.visualRoot.position.y.toFixed(3)}, ${rig.visualRoot.position.z.toFixed(3)})`);
+            console.log(`  visualRoot.scale=(${rig.visualRoot.scale.x.toFixed(4)}, ${rig.visualRoot.scale.y.toFixed(4)}, ${rig.visualRoot.scale.z.toFixed(4)})`);
+            console.log(`  visualRoot.rotation=(${rig.visualRoot.rotation.x.toFixed(4)}, ${rig.visualRoot.rotation.y.toFixed(4)}, ${rig.visualRoot.rotation.z.toFixed(4)})`);
+            console.log(`  fbxVisualYawOffset=${rig.fbxVisualYawOffset !== undefined ? THREE.MathUtils.radToDeg(rig.fbxVisualYawOffset).toFixed(1) + ' deg' : 'N/A'}`);
+        }
+
+        const root = rig.visualRoot ? rig.visualRoot.children[0] : null;
+        if (root) {
+            console.log(`  FBX root.position=(${root.position.x.toFixed(3)}, ${root.position.y.toFixed(3)}, ${root.position.z.toFixed(3)})`);
+            console.log(`  FBX root.scale=(${root.scale.x.toFixed(4)}, ${root.scale.y.toFixed(4)}, ${root.scale.z.toFixed(4)})`);
+        }
+
+        const checkExtreme = (label, pos, scale) => {
+            if (Math.abs(pos.x) > 10 || Math.abs(pos.y) > 10 || Math.abs(pos.z) > 10) {
+                console.log(`  [R6 RUNTIME ERROR] Extreme position in ${label}: (${pos.x.toFixed(3)}, ${pos.y.toFixed(3)}, ${pos.z.toFixed(3)})`);
+            }
+            if (scale.x > 5 || scale.y > 5 || scale.z > 5) {
+                console.log(`  [R6 RUNTIME ERROR] Extreme scale in ${label}: (${scale.x.toFixed(4)}, ${scale.y.toFixed(4)}, ${scale.z.toFixed(4)})`);
+            }
+            if (scale.x < 0.001 || scale.y < 0.001 || scale.z < 0.001) {
+                console.log(`  [R6 RUNTIME ERROR] Near-zero scale in ${label}: (${scale.x.toFixed(6)}, ${scale.y.toFixed(6)}, ${scale.z.toFixed(6)})`);
+            }
+        };
+
+        const r6MeshNames = ['Head', 'Torso', 'ArmR', 'ArmL', 'LegR', 'LegL'];
+        if (rig.meshList) {
+            rig.meshList.forEach(mesh => {
+                if (!r6MeshNames.includes(mesh.name)) return;
+                const wp = new THREE.Vector3();
+                const wq = new THREE.Quaternion();
+                const ws = new THREE.Vector3();
+                mesh.getWorldPosition(wp);
+                mesh.getWorldQuaternion(wq);
+                mesh.getWorldScale(ws);
+                console.log(`  ${mesh.name}: parent=${mesh.parent ? mesh.parent.name : 'none'} visible=${mesh.visible} worldPos=(${wp.x.toFixed(3)}, ${wp.y.toFixed(3)}, ${wp.z.toFixed(3)}) worldScale=(${ws.x.toFixed(4)}, ${ws.y.toFixed(4)}, ${ws.z.toFixed(4)})`);
+                checkExtreme(mesh.name, wp, ws);
+            });
+        }
+
+        if (this.camera && this.player) {
+            const camPos = this.camera.position;
+            const playerPos = this.player.position;
+            const dist = camPos.distanceTo(playerPos);
+            console.log(`  Camera distance from player: ${dist.toFixed(2)}`);
+            console.log(`  Camera position: (${camPos.x.toFixed(2)}, ${camPos.y.toFixed(2)}, ${camPos.z.toFixed(2)})`);
+        }
+    },
+
+    _debugR6HeadForensic: function(rig) {
+        if (!rig || !rig.r6Parts || !rig.r6Parts.headMesh || !rig.r6Parts.torsoMesh) return;
+        const head = rig.r6Parts.headMesh;
+        const torso = rig.r6Parts.torsoMesh;
+        const headPivot = rig.headPivot;
+        const scene = this.scene;
+
+        head.updateMatrixWorld(true);
+        torso.updateMatrixWorld(true);
+
+        const headWP = new THREE.Vector3(); head.getWorldPosition(headWP);
+        const headWQ = new THREE.Quaternion(); head.getWorldQuaternion(headWQ);
+        const headWS = new THREE.Vector3(); head.getWorldScale(headWS);
+        const headWQe = new THREE.Euler().setFromQuaternion(headWQ);
+
+        const torsoWP = new THREE.Vector3(); torso.getWorldPosition(torsoWP);
+        const torsoWQ = new THREE.Quaternion(); torso.getWorldQuaternion(torsoWQ);
+        const torsoWS = new THREE.Vector3(); torso.getWorldScale(torsoWS);
+
+        const headBox = new THREE.Box3().setFromObject(head);
+        const torsoBox = new THREE.Box3().setFromObject(torso);
+
+        const headCenter = new THREE.Vector3();
+        const torsoCenter = new THREE.Vector3();
+        headBox.getCenter(headCenter);
+        torsoBox.getCenter(torsoCenter);
+
+        const chain = [];
+        let p = head;
+        while (p) { chain.push(p.name || p.type); p = p.parent; }
+
+        const mat = head.material;
+        const matInfo = mat ? {
+            type: mat.type,
+            visible: mat.visible,
+            opacity: mat.opacity,
+            transparent: mat.transparent,
+            side: mat.side,
+            color: mat.color ? ('#' + mat.color.getHexString()) : 'N/A'
+        } : null;
+
+        const hpWP = new THREE.Vector3();
+        const hpWS = new THREE.Vector3();
+        if (headPivot) {
+            headPivot.getWorldPosition(hpWP);
+            headPivot.getWorldScale(hpWS);
+        }
+        const hpParent = headPivot ? (headPivot.parent ? headPivot.parent.name : 'none') : 'none';
+
+        const playerWP = new THREE.Vector3();
+        if (this.player) this.player.getWorldPosition(playerWP);
+        const distToPlayer = playerWP.distanceTo(headWP);
+        const camDist = this.camera ? this.camera.position.distanceTo(headWP) : null;
+
+        const headSize = headBox.max.y - headBox.min.y;
+        const headScaleInvalid = headSize < 0.3 || headSize > 5.0;
+        const headAtOrBelowGround = headBox.max.y <= 0;
+        const headDetached = distToPlayer > 3;
+        const headOverlapsTorso = headBox.intersectsBox(torsoBox);
+        const headCulled = head.frustumCulled;
+
+        if (scene) {
+            const marker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.08, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffff00, depthTest: false, transparent: true, opacity: 0.8 })
+            );
+            marker.position.copy(headWP);
+            scene.add(marker);
+            console.log('[PLAYER R6] Debug marker added at head world position');
+        }
+
+        console.log('==================================================');
+        console.log('PLAYER R6 HEAD FORENSIC REPORT');
+        console.log('==================================================');
+        console.log('HEAD:');
+        console.log('parent =', chain[1] || 'none');
+        console.log('worldPosition =', `(${headWP.x.toFixed(3)}, ${headWP.y.toFixed(3)}, ${headWP.z.toFixed(3)})`);
+        console.log('worldScale =', `(${headWS.x.toFixed(4)}, ${headWS.y.toFixed(4)}, ${headWS.z.toFixed(4)})`);
+        console.log('worldBounds =', `min(${headBox.min.x.toFixed(3)}, ${headBox.min.y.toFixed(3)}, ${headBox.min.z.toFixed(3)}) max(${headBox.max.x.toFixed(3)}, ${headBox.max.y.toFixed(3)}, ${headBox.max.z.toFixed(3)})`);
+        console.log('visible =', head.visible);
+        console.log('frustumCulled =', head.frustumCulled);
+        console.log('');
+        console.log('HEAD PIVOT:');
+        console.log('parent =', hpParent);
+        console.log('worldPosition =', hpWP && !Number.isNaN(hpWP.x) ? `(${hpWP.x.toFixed(3)}, ${hpWP.y.toFixed(3)}, ${hpWP.z.toFixed(3)})` : 'N/A');
+        console.log('worldScale =', hpWS && !Number.isNaN(hpWS.x) ? `(${hpWS.x.toFixed(4)}, ${hpWS.y.toFixed(4)}, ${hpWS.z.toFixed(4)})` : 'N/A');
+        console.log('rotation =', headPivot ? `(${headPivot.rotation.x.toFixed(4)}, ${headPivot.rotation.y.toFixed(4)}, ${headPivot.rotation.z.toFixed(4)})` : 'N/A');
+        console.log('');
+        console.log('TORSO:');
+        console.log('worldPosition =', `(${torsoWP.x.toFixed(3)}, ${torsoWP.y.toFixed(3)}, ${torsoWP.z.toFixed(3)})`);
+        console.log('worldScale =', `(${torsoWS.x.toFixed(4)}, ${torsoWS.y.toFixed(4)}, ${torsoWS.z.toFixed(4)})`);
+        console.log('worldBounds =', `min(${torsoBox.min.x.toFixed(3)}, ${torsoBox.min.y.toFixed(3)}, ${torsoBox.min.z.toFixed(3)}) max(${torsoBox.max.x.toFixed(3)}, ${torsoBox.max.y.toFixed(3)}, ${torsoBox.max.z.toFixed(3)})`);
+        console.log('');
+        console.log('COMPARISON:');
+        console.log('headCenterY =', headCenter.y.toFixed(3));
+        console.log('torsoCenterY =', torsoCenter.y.toFixed(3));
+        console.log('headTorsoDistance =', headCenter.distanceTo(torsoCenter).toFixed(3));
+        console.log('');
+        console.log('HEAD_OVERLAPS_TORSO =', headOverlapsTorso);
+        console.log('HEAD_AT_OR_BELOW_GROUND =', headAtOrBelowGround);
+        console.log('HEAD_DETACHED =', headDetached);
+        console.log('HEAD_SCALE_INVALID =', headScaleInvalid);
+        console.log('HEAD_CULLED =', headCulled);
+        console.log('');
+        console.log('DEBUG MARKER POSITION =', `(${headWP.x.toFixed(3)}, ${headWP.y.toFixed(3)}, ${headWP.z.toFixed(3)})`);
+        console.log('');
+
+        if (matInfo) {
+            console.log('MATERIAL:');
+            console.log('type =', matInfo.type);
+            console.log('visible =', matInfo.visible);
+            console.log('opacity =', matInfo.opacity);
+            console.log('transparent =', matInfo.transparent);
+            console.log('side =', matInfo.side);
+            console.log('color =', matInfo.color);
+            console.log('');
+        }
+
+        console.log('PARENT CHAIN:');
+        chain.forEach((name, i) => console.log(i === 0 ? 'Head' : ' <- ' + name));
+        console.log('');
+        console.log('head.layers.mask =', head.layers.mask);
+        console.log('head.renderOrder =', head.renderOrder);
+        console.log('');
+
+        console.log('FINAL DIAGNOSIS:');
+        if (headAtOrBelowGround) console.log('Head is at or below ground level.');
+        if (headDetached) console.log('Head is detached from player.');
+        if (headScaleInvalid) console.log('Head scale is invalid.');
+        if (!head.visible) console.log('Head is not visible.');
+        if (headOverlapsTorso) console.log('Head overlaps torso significantly.');
+        if (camDist !== null) console.log('Camera distance to head:', camDist.toFixed(2));
+        if (!headAtOrBelowGround && !headDetached && !headScaleInvalid && head.visible) {
+            console.log('Head transform appears valid. If still missing, check material/rendering layer or camera frustum.');
+        }
+        console.log('==================================================');
+    },
+
+    _scanGreenVerticalObject: function() {
+        if (!this.scene) return;
+        let greenObj = null;
+        let maxHeight = 0;
+        this.scene.traverse(child => {
+            if (!child.isMesh || !child.material) return;
+            const color = child.material.color || child.material.emissive;
+            if (!color) return;
+            const g = color.g;
+            const r = color.r;
+            const b = color.b;
+            if (g > 0.6 && r < 0.4 && b < 0.4) {
+                const box = new THREE.Box3().setFromObject(child);
+                const h = box.max.y - box.min.y;
+                if (h > maxHeight) {
+                    maxHeight = h;
+                    greenObj = child;
+                }
+            }
+        });
+
+        if (greenObj) {
+            console.log('[PLAYER R6] GREEN OBJECT FOUND:', greenObj.name, '| type:', greenObj.type, '| parent:', greenObj.parent ? greenObj.parent.name : 'none');
+            const wp = new THREE.Vector3();
+            const ws = new THREE.Vector3();
+            greenObj.getWorldPosition(wp);
+            greenObj.getWorldScale(ws);
+            console.log(`  worldPos=(${wp.x.toFixed(3)}, ${wp.y.toFixed(3)}, ${wp.z.toFixed(3)})`);
+            console.log(`  worldScale=(${ws.x.toFixed(3)}, ${ws.y.toFixed(3)}, ${ws.z.toFixed(3)})`);
+            console.log(`  height=${maxHeight.toFixed(3)}`);
+        } else {
+            console.log('[PLAYER R6] No prominent green vertical object found');
+        }
+    },
+
+    _logR6AnimationWriters: function() {
+        console.log('[PLAYER R6] === ANIMATION WRITERS SEARCH ===');
+        console.log('[PLAYER R6] Static search: look for rig.r6Bones, rig.r6RestPose, torsoBone, rightArmBone, leftArmBone, rightLegBone, leftLegBone');
+        console.log('[PLAYER R6] Also search for: .rotation.set, .rotation.x =, .rotation.y =, .rotation.z =, .quaternion.copy, .position.set on these objects');
+        console.log('[PLAYER R6] Run grep/regex in IDE for exact line numbers.');
+    },
+
+    _enableR6WriteTracer: function() {
+        if (!PLAYER_R6_TRACE_WRITES) return;
+        if (!this.player || !this.player.rig || !this.player.rig.r6Bones) return;
+        const rb = this.player.rig.r6Bones;
+        const bones = [rb.torsoBone, rb.rightArmBone, rb.leftArmBone, rb.rightLegBone, rb.leftLegBone].filter(Boolean);
+        bones.forEach(bone => {
+            const originalCopy = bone.quaternion.copy.bind(bone.quaternion);
+            bone.quaternion.copy = function(source) {
+                console.log('[PLAYER R6] TRACE quaternion.copy on', bone.name, 'from', source && source.isQuaternion ? 'Quaternion' : typeof source);
+                console.trace('[PLAYER R6] TRACE call stack');
+                return originalCopy(source);
+            };
+        });
+        console.log('[PLAYER R6] Write tracer enabled on', bones.length, 'bones');
     },
 
     create3DWall: function(x, z) {
@@ -5032,6 +7604,121 @@ Renderer3D.createSplatterEffect = function(x, y, z) {
         requestAnimationFrame(animate);
     }
 };
+
+// ============================================================
+// GLOBAL R6 RUNTIME DEBUG DUMP
+// ============================================================
+window.dumpR6Runtime = function() {
+    const rig = (typeof Renderer3D !== 'undefined' && Renderer3D.player && Renderer3D.player.rig) ? Renderer3D.player.rig : null;
+
+    if (!rig) {
+        console.error('[R6 DEBUG] Player rig not found');
+        return;
+    }
+
+    console.log('========== R6 RUNTIME REPORT ==========');
+
+    // Existing runtime logger
+    if (typeof Renderer3D._logR6RuntimeState === 'function') {
+        Renderer3D._logR6RuntimeState(rig);
+    }
+
+    // Green object scan
+    if (typeof Renderer3D._scanGreenVerticalObject === 'function') {
+        Renderer3D._scanGreenVerticalObject();
+    }
+
+    // Runtime bounding box of actual FBX visual
+    const visual =
+        rig.visualRoot ||
+        rig.playerVisualRoot ||
+        rig;
+
+    visual.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(visual);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+
+    box.getSize(size);
+    box.getCenter(center);
+
+    console.log('[R6 DEBUG] Runtime bounds:', {
+        min: box.min.clone(),
+        max: box.max.clone(),
+        size: size.clone(),
+        center: center.clone()
+    });
+
+    // Player transform
+    if (Renderer3D.player) {
+        Renderer3D.player.updateMatrixWorld(true);
+        console.log('[R6 DEBUG] Player:', {
+            position: Renderer3D.player.position.clone(),
+            rotation: Renderer3D.player.rotation.clone(),
+            scale: Renderer3D.player.scale.clone()
+        });
+    }
+
+    // Camera
+    if (Renderer3D.camera && Renderer3D.player) {
+        Renderer3D.camera.updateMatrixWorld(true);
+
+        const distance =
+            Renderer3D.camera.position.distanceTo(
+                Renderer3D.player.getWorldPosition(new THREE.Vector3())
+            );
+
+        console.log('[R6 DEBUG] Camera:', {
+            position: Renderer3D.camera.position.clone(),
+            distanceToPlayer: distance
+        });
+    }
+
+    // R6 bones
+    const bones = rig.r6Bones;
+    const rest = rig.r6RestPose;
+
+    if (bones) {
+        for (const [name, bone] of Object.entries(bones)) {
+            if (!bone || !bone.isBone) continue;
+
+            bone.updateMatrixWorld(true);
+
+            let deltaDeg = null;
+
+            if (rest && rest[name] && rest[name].quaternion) {
+                deltaDeg =
+                    THREE.MathUtils.radToDeg(
+                        2 *
+                        Math.acos(
+                            Math.min(
+                                1,
+                                Math.abs(
+                                    bone.quaternion.dot(
+                                        rest[name].quaternion
+                                    )
+                                )
+                            )
+                        )
+                    );
+            }
+
+            console.log(`[R6 DEBUG] Bone ${name}:`, {
+                name: bone.name,
+                worldPosition: bone.getWorldPosition(new THREE.Vector3()),
+                worldScale: bone.getWorldScale(new THREE.Vector3()),
+                localPosition: bone.position.clone(),
+                localQuaternion: bone.quaternion.clone(),
+                deltaDeg
+            });
+        }
+    }
+
+    console.log('========== END R6 RUNTIME REPORT ==========');
+};
+
+console.log('[R6 DEBUG] dumpR6Runtime() is ready.');
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Renderer3D;

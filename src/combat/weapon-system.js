@@ -1,7 +1,7 @@
 /**
  * WEAPON-SYSTEM.JS - He thong vu khi hoan chinh
- * Ho tro: Melee | Semi-Auto | Full-Auto | Burst
- * Tich hop Free-Aim TPS, Fixed-Aim FPS, Crouch Zero-Spread (Phim C), 3D Tracers & Hit Marker
+ * Ho tro: Melee | Semi-Auto | Full-Auto | Burst | Throwable (Grenade)
+ * Tich hop Free-Aim TPS, Fixed-Aim FPS, Crouch Zero-Sread (Phim C), 3D Tracers & Hit Marker
  */
 
 // CONSTANTS / ENUMS
@@ -9,7 +9,8 @@ const FIRE_MODE = {
     MELEE:     'MELEE',
     SEMI_AUTO: 'SEMI_AUTO',
     FULL_AUTO: 'FULL_AUTO',
-    BURST:     'BURST'
+    BURST:     'BURST',
+    THROWABLE: 'THROWABLE'
 };
 
 // WEAPON DEFINITIONS (Giam do lech tam toi thieu de ban chuan xac)
@@ -98,6 +99,20 @@ const WEAPON_DEFS = {
             primary: { x: 0, y: -0.10, z: 0.03 },
             support: { x: 0.30, y: -0.08, z: 0.03 }
         }
+    },
+    grenade: {
+        id:              'grenade',
+        name:            'Grenade',
+        fireMode:        FIRE_MODE.THROWABLE,
+        damage:          100,
+        explosionRadius: 12,
+        throwSpeed:      22,
+        gravity:         22,
+        fuseAfterLand:   1.0,
+        reserveAmmo:     3,
+        crosshairType:   'grenade',
+        modelPath:       'src/assets/weapon/ThrowableWeapon.js/grenade_low_poly.glb',
+        attach: { px: 0.48, py: 0.55, pz: 0.10, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 0.18 }
     }
 };
 
@@ -112,7 +127,7 @@ for (const id in WEAPON_DEFS) {
 }
 
 const WeaponSystem = {
-    currentId:          'pistol',
+    currentId:          'unarmed',
     _state:             {},
     _meleeAttacking:    false,
     _meleeAttackTimer:  0,
@@ -126,6 +141,9 @@ const WeaponSystem = {
     _burstShotsLeft:    0,
     _burstTimer:        0,
 
+    // Dynamic weapon slots (keys 4-6)
+    _dynamicWeaponSlots: { '4': 'grenade', '5': null, '6': null },
+
     // Dynamic Spread State
     _currentFireSpread: 0,
     _totalSpread:       0.0025,
@@ -138,6 +156,12 @@ const WeaponSystem = {
 
     // Firing state for animation
     isFiring:           false,
+
+    // Grenade State
+    _grenadeAiming:     false,
+    _grenadeThrown:     false,
+    _grenadeCount:      3,
+    _prevEscapePressed: false,
 
     // Callbacks
     onShoot:            null,
@@ -159,6 +183,8 @@ const WeaponSystem = {
                 lastShotTime: -9999
             };
         }
+
+        this._grenadeCount = WEAPON_DEFS.grenade ? (WEAPON_DEFS.grenade.reserveAmmo || 3) : 3;
 
         // Set default VFX handlers
         this.onShoot = function(def, muzzlePos) {
@@ -188,8 +214,24 @@ const WeaponSystem = {
         };
 
 
-        this.equip('pistol');
-        console.log('\u2705 WeaponSystem san sang. Vu khi:', this.currentId);
+        // Lazy grenade init - chỉ init khi GrenodeSystem đã load
+        this._tryInitGrenade = function() {
+            if (typeof GrenadeSystem !== 'undefined') {
+                if (!GrenadeSystem._grenades) {
+                    GrenadeSystem.init();
+                }
+                return true;
+            }
+            return false;
+        };
+
+        // Thử init ngay, nếu chưa load được sẽ retry khi equip grenade
+        if (!this._tryInitGrenade()) {
+            console.warn('[GRENADE] GrenadeSystem chưa load, sẽ retry khi cần.');
+        }
+
+        this.currentId = 'unarmed';
+        console.log('✅ WeaponSystem sẵn sàng. Vũ khí:', this.currentId);
     },
 
     equip: function(weaponId) {
@@ -198,8 +240,13 @@ const WeaponSystem = {
             return;
         }
         this._stopAllActions();
+        if (typeof GrenadeSystem !== 'undefined') {
+            GrenadeSystem.cancelAiming();
+        }
         const prev = this.currentId;
         this.currentId = weaponId;
+        this._grenadeAiming = false;
+        this._grenadeThrown = false;
         if (typeof WeaponRenderer !== 'undefined') {
             WeaponRenderer.onWeaponChanged(prev, weaponId);
         }
@@ -207,6 +254,9 @@ const WeaponSystem = {
         this._reloading         = false;
         this._reloadTimer       = 0;
         this._fireCooldown      = 0;
+        if (weaponId === 'grenade') {
+            console.log('[GRENADE] equipped, count=' + this._grenadeCount);
+        }
         this._updateAmmoHUD();
         console.log('\u{1F52B} Doi vu khi: ' + prev + ' -> ' + weaponId + ' (' + WEAPON_DEFS[weaponId].name + ')');
     },
@@ -220,6 +270,8 @@ const WeaponSystem = {
         this._meleeAttackTimer = 0;
         if (this._meleeHitDealt) this._meleeHitDealt.clear();
         this.isFiring = false;
+        this._grenadeAiming = false;
+        this._grenadeThrown = false;
     },
 
     update: function(deltaSec) {
@@ -231,7 +283,6 @@ const WeaponSystem = {
         this._updateDynamicSpread(def, deltaSec);
         this._updateHitMarker(deltaSec);
 
-        // Update firing state for animation
         this.isFiring = (InputManager.isMouseDown && !this._reloading && state.currentAmmo > 0 && def.fireMode !== FIRE_MODE.MELEE);
 
         if (this._reloading) {
@@ -241,6 +292,11 @@ const WeaponSystem = {
         }
 
         this._fireCooldown = Math.max(0, this._fireCooldown - deltaSec);
+
+        if (def.fireMode === FIRE_MODE.THROWABLE) {
+            this._updateThrowable(deltaSec);
+            return;
+        }
 
         switch (def.fireMode) {
             case FIRE_MODE.MELEE:     this._updateMelee(def, state, deltaSec);    break;
@@ -252,7 +308,7 @@ const WeaponSystem = {
 
     // ─── Dynamic Spread & Crouch Calculation ──────────
     _updateDynamicSpread: function(def, deltaSec) {
-        if (def.fireMode === FIRE_MODE.MELEE) {
+        if (def.fireMode === FIRE_MODE.MELEE || def.fireMode === FIRE_MODE.THROWABLE) {
             this._totalSpread = 0;
             this._updateCrosshairUI(def);
             return;
@@ -445,6 +501,59 @@ const WeaponSystem = {
                 this._attemptFire(def, state);
             }
         }
+    },
+
+    // ─────────────── THROWABLE (GRENADE) ───────────────
+    _updateThrowable: function(def, state, deltaSec) {
+        if (typeof GameState !== 'undefined' && GameState.buildingMode) return;
+
+        const infiniteAmmo = typeof GameState !== 'undefined' && GameState.adminInfiniteAmmo;
+        if (!infiniteAmmo && this._grenadeCount <= 0) {
+            if (this._grenadeAiming) {
+                if (typeof GrenadeSystem !== 'undefined') {
+                    GrenadeSystem.cancelAiming();
+                }
+                this._grenadeAiming = false;
+            }
+            return;
+        }
+
+        if (InputManager.isMouseJustPressed && !this._grenadeAiming) {
+            // Lazy init grenade nếu chưa load
+            if (typeof GrenadeSystem === 'undefined') {
+                if (!this._tryInitGrenade()) {
+                    console.error('[GRENADE ERROR] Cannot start aiming: GrenadeSystem is not loaded.');
+                    return;
+                }
+            }
+            GrenadeSystem.startAiming();
+            this._grenadeAiming = true;
+            console.log('[GRENADE] aim started');
+            return;
+        }
+
+        if (this._grenadeAiming && InputManager.isMouseJustPressed) {
+            // Lazy init grenade nếu chưa load
+            if (typeof GrenadeSystem === 'undefined') {
+                if (!this._tryInitGrenade()) {
+                    this._grenadeAiming = false;
+                    return;
+                }
+            }
+            GrenadeSystem.throwGrenade();
+            this._grenadeAiming = false;
+            return;
+        }
+
+        const escPressed = InputManager.keys['escape'] || false;
+        if (this._grenadeAiming && escPressed && !this._prevEscapePressed) {
+            if (typeof GrenadeSystem !== 'undefined') {
+                GrenadeSystem.cancelAiming();
+            }
+            this._grenadeAiming = false;
+            console.log('[GRENADE] aim cancelled');
+        }
+        this._prevEscapePressed = escPressed;
     },
 
     // ─────────────── FIRE (UNIFIED AIM & TRACER) ────────────
@@ -657,6 +766,7 @@ const WeaponSystem = {
         const state = this.getCurrentState();
         if (!def || !state) return;
         if (def.fireMode === FIRE_MODE.MELEE) return;
+        if (def.fireMode === FIRE_MODE.THROWABLE) return;
         if (state.currentAmmo >= def.magazineSize) return;
         if (state.reserveAmmo <= 0) { console.log('Het dan du phong'); return; }
         this._firingContinuous = false;
@@ -690,12 +800,15 @@ const WeaponSystem = {
         if (!def) return;
 
         const isMelee = def.fireMode === FIRE_MODE.MELEE;
+        const isThrowable = def.fireMode === FIRE_MODE.THROWABLE;
         const modeName = def.fireMode === FIRE_MODE.SEMI_AUTO ? 'SEMI'
                         : def.fireMode === FIRE_MODE.FULL_AUTO ? 'AUTO'
                         : def.fireMode === FIRE_MODE.BURST     ? 'BURST'
+                        : def.fireMode === FIRE_MODE.THROWABLE ? 'THROW'
                         : 'MELEE';
 
-        // ── New HUD elements ──
+        const grenadeCount = isThrowable ? this._grenadeCount : 0;
+
         const elName = document.getElementById('weapon-name');
         const elMode = document.getElementById('weapon-mode');
         const elCurr = document.getElementById('ammo-current');
@@ -703,20 +816,19 @@ const WeaponSystem = {
 
         if (elName) elName.textContent = def.name;
         if (elMode) elMode.textContent = isReloading ? 'RELOAD...' : modeName;
-        if (elCurr) elCurr.textContent = isMelee ? '∞' : (isReloading ? '—' : state.currentAmmo);
-        if (elMax)  elMax.textContent  = isMelee ? ''  : state.reserveAmmo;
+        if (elCurr) elCurr.textContent = isThrowable ? grenadeCount : (isMelee ? '∞' : (isReloading ? '—' : state.currentAmmo));
+        if (elMax)  elMax.textContent  = isThrowable ? '' : (isMelee ? ''  : state.reserveAmmo);
 
-        // ── Legacy fallback elements (in case still present) ──
         const ammoEl = document.getElementById('ammo-display');
         if (ammoEl) {
-            if (isMelee)          ammoEl.textContent = 'MELEE';
-            else if (isReloading) ammoEl.textContent = 'RELOAD...';
-            else                  ammoEl.textContent = state.currentAmmo + '/' + state.reserveAmmo;
+            if (isThrowable)       ammoEl.textContent = 'x' + grenadeCount;
+            else if (isMelee)      ammoEl.textContent = 'MELEE';
+            else if (isReloading)  ammoEl.textContent = 'RELOAD...';
+            else                   ammoEl.textContent = state.currentAmmo + '/' + state.reserveAmmo;
         }
         const weaponEl = document.getElementById('weapon-display');
         if (weaponEl) weaponEl.textContent = def.name + ' [' + modeName + ']';
 
-        // ── Stamina bar sync ──
         if (typeof GameState !== 'undefined') {
             const staminaBar = document.getElementById('stamina-bar');
             const staminaDisp = document.getElementById('stamina-display');
@@ -725,8 +837,7 @@ const WeaponSystem = {
             if (staminaDisp) staminaDisp.textContent = Math.ceil(GameState.stamina);
         }
 
-        // ── Hotbar slot active state ──
-        ['sword', 'pistol', 'ak'].forEach(id => {
+        ['sword', 'pistol', 'ak', 'grenade'].forEach(id => {
             const slot = document.getElementById('slot-' + id);
             if (slot) slot.classList.toggle('active', this.currentId === id);
         });
@@ -739,8 +850,21 @@ const WeaponSystem = {
         const def = this.getCurrentDef(); const state = this.getCurrentState();
         if (!def || !state) return '';
         if (def.fireMode === FIRE_MODE.MELEE) return 'MELEE';
+        if (def.fireMode === FIRE_MODE.THROWABLE) return 'x' + this._grenadeCount;
         if (this._reloading) return 'RELOAD...';
         return state.currentAmmo + '/' + state.reserveAmmo;
+    },
+    getDynamicSlot: function(slot) {
+        return this._dynamicWeaponSlots && this._dynamicWeaponSlots[slot] ? this._dynamicWeaponSlots[slot] : null;
+    },
+    setDynamicSlot: function(slot, weaponId) {
+        if (!this._dynamicWeaponSlots) this._dynamicWeaponSlots = {};
+        this._dynamicWeaponSlots[slot] = weaponId;
+    },
+    clearDynamicSlot: function(slot) {
+        if (this._dynamicWeaponSlots && this._dynamicWeaponSlots[slot] !== undefined) {
+            this._dynamicWeaponSlots[slot] = null;
+        }
     },
 
     /**

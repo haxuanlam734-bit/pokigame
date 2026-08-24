@@ -201,7 +201,7 @@ const Game = {
 
         document.addEventListener('keydown', (event) => {
             if (event.repeat) return;
-            if (event.key === '4' || event.key === 'z' || event.key === 'Z') useMedical('bandage');
+            if (event.key === 'h' || event.key === 'H' || event.key === 'z' || event.key === 'Z') useMedical('bandage');
             if (event.key === '5' || event.key === 'x' || event.key === 'X') useMedical('medkit');
         });
     },

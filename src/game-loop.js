@@ -64,6 +64,11 @@ const GameLoop = {
             PlayerController.update(deltaTime);
         }
 
+        // Update player animation mixer
+        if (typeof Renderer3D !== 'undefined' && Renderer3D.updatePlayerAnimationMixer) {
+            Renderer3D.updatePlayerAnimationMixer(deltaTime / 1000);
+        }
+
         this.updateUI();
 
         if (typeof Renderer3D !== 'undefined' && Renderer3D.render) {
@@ -100,6 +105,17 @@ const GameLoop = {
 
         if (typeof AudioController !== 'undefined' && AudioController.update) {
             AudioController.update();
+        }
+
+        // Lazy init grenade system n?u ch?a load
+        if (typeof GrenadeSystem !== 'undefined' && typeof WeaponSystem !== 'undefined') {
+            if (!GrenadeSystem._grenades && WeaponSystem._tryInitGrenade) {
+                WeaponSystem._tryInitGrenade();
+            }
+        }
+
+        if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.update) {
+            GrenadeSystem.update(deltaTime);
         }
     },
     
@@ -300,15 +316,17 @@ const GameLoop = {
             const isRld = WeaponSystem.isReloading();
             if (def && state) {
                 const isMelee  = def.fireMode === 'MELEE';
+                const isThrowable = def.fireMode === 'THROWABLE';
                 const modeName = def.fireMode === 'SEMI_AUTO' ? 'SEMI'
                                : def.fireMode === 'FULL_AUTO' ? 'AUTO'
                                : def.fireMode === 'BURST'     ? 'BURST'
+                               : def.fireMode === 'THROWABLE' ? 'THROW'
                                : 'MELEE';
-                if (ammoDisplay)  ammoDisplay.textContent  = isMelee ? 'MELEE' : isRld ? 'RELOAD...' : `${state.currentAmmo}/${state.reserveAmmo}`;
+                if (ammoDisplay)  ammoDisplay.textContent  = isThrowable ? ('x' + (typeof WeaponSystem._grenadeCount !== 'undefined' ? WeaponSystem._grenadeCount : 0)) : (isMelee ? 'MELEE' : isRld ? 'RELOAD...' : `${state.currentAmmo}/${state.reserveAmmo}`);
                 if (weaponDisplay) weaponDisplay.textContent = `${def.name} [${modeName}]`;
                 if (elWeaponName) elWeaponName.textContent = def.name;
                 if (elWeaponMode) elWeaponMode.textContent = isRld ? 'RELOAD...' : modeName;
-                if (elAmmoCurr)   elAmmoCurr.textContent   = isMelee ? '\u221e' : (isRld ? '\u2014' : state.currentAmmo);
+                if (elAmmoCurr)   elAmmoCurr.textContent   = isThrowable ? (typeof WeaponSystem._grenadeCount !== 'undefined' ? WeaponSystem._grenadeCount : 0) : (isMelee ? '\u221e' : (isRld ? '\u2014' : state.currentAmmo));
                 if (elAmmoMax)    elAmmoMax.textContent    = isMelee ? '' : state.reserveAmmo;
             }
         } else {
