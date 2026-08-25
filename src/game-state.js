@@ -1,6 +1,6 @@
 /**
- * GAME-STATE.JS - Qu?n lý tr?ng thái game
- * Theo dõi ti?n, HP, sóng, vv...
+ * GAME-STATE.JS - Qu?n lï¿½ tr?ng thï¿½i game
+ * Theo dï¿½i ti?n, HP, sï¿½ng, vv...
  */
 
 const GameState = {
@@ -33,18 +33,18 @@ const GameState = {
     adminFlyMode: false,
 
     /**
-     * Kích ho?t ch? d? Admin - ch? unlock quy?n truy c?p, không buff ngay
+     * Kï¿½ch ho?t ch? d? Admin - ch? unlock quy?n truy c?p, khï¿½ng buff ngay
      */
     activateAdmin: function() {
         this.isAdmin = true;
         if (typeof AdminPanel !== 'undefined' && AdminPanel.updateButtonVisibility) {
             AdminPanel.updateButtonVisibility();
         }
-        console.log('?? ADMIN ACCESS UNLOCKED! Nh?n nút ADMIN d? m? Control Panel.');
+        console.log('?? ADMIN ACCESS UNLOCKED! Nh?n nï¿½t ADMIN d? m? Control Panel.');
         if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
             Game.showMilitaryToast({
                 title: '?? ADMIN ACCESS',
-                message: 'Nh?n nút ADMIN d? m? Control Panel.',
+                message: 'Nh?n nï¿½t ADMIN d? m? Control Panel.',
                 success: true
             });
         }
@@ -73,13 +73,13 @@ const GameState = {
     // =====================
     // ENTITIES
     // =====================
-    towers: [],      // Danh sách tháp pháo (thu?ng)
-    turelList: [],   // Danh sách tháp pháo Turel (model 3D)
-    walls: [],       // Danh sách tu?ng rào
-    zombies: [],     // Danh sách zombie
-    minters: [],     // Danh sách máy in ti?n
-    minigunList: [], // Danh sách máy súng Minigun (h?p)
-    bullets: [],     // Danh sách d?n
+    towers: [],      // Danh sï¿½ch thï¿½p phï¿½o (thu?ng)
+    turelList: [],   // Danh sï¿½ch thï¿½p phï¿½o Turel (model 3D)
+    walls: [],       // Danh sï¿½ch tu?ng rï¿½o
+    zombies: [],     // Danh sï¿½ch zombie
+    minters: [],     // Danh sï¿½ch mï¿½y in ti?n
+    minigunList: [], // Danh sï¿½ch mï¿½y sï¿½ng Minigun (h?p)
+    bullets: [],     // Danh sï¿½ch d?n
     relocatingTurret: null,
 
     // =====================
@@ -149,12 +149,12 @@ const GameState = {
     lastZombieSpawnTime: 0,
     
     /**
-     * B?t d?u ch? d? xây d?ng 3D
+     * B?t d?u ch? d? xï¿½y d?ng 3D
      * @param {string} type
      */
     startBuildMode: function(type) {
         if (!this.canBuildBuilding(type)) {
-            console.log('? Không th? xây', type);
+            console.log('? Khï¿½ng th? xï¿½y', type);
             return;
         }
         
@@ -167,7 +167,7 @@ const GameState = {
     },
 
     /**
-     * K?t thúc ch? d? build
+     * K?t thï¿½c ch? d? build
      */
     endBuildMode: function() {
         if ((this.buildingType === 'turel' || this.buildingType === 'turel-relocate') && typeof Renderer3D !== 'undefined' && Renderer3D.endTurretPreview) {
@@ -180,20 +180,20 @@ const GameState = {
     },
 
     /**
-     * Ð?t building t?i v? trí 3D
+     * ï¿½?t building t?i v? trï¿½ 3D
      * @param {number} x
      * @param {number} z
      * @param {string} type
      */
     placeBuilding: function(x, z, type) {
         if (!this.canBuildBuilding(type, x, z)) {
-            console.log('? Không th? build:', type);
+            console.log('? Khï¿½ng th? build:', type);
             return false;
         }
 
         const def = this.getBuildingDef(type);
         if (!this.spendMoney(def.cost)) {
-            console.log('? Không d? ti?n');
+            console.log('? Khï¿½ng d? ti?n');
             return false;
         }
 
@@ -222,7 +222,7 @@ const GameState = {
             this.totalScore += (type === 'turel' || type === 'minigun') ? 250 : 50;
             this.unlockChain(type);
             this.saveGame();
-            console.log('? Ð?t', type, 't?i', x.toFixed(0), z.toFixed(0));
+            console.log('? ï¿½?t', type, 't?i', x.toFixed(0), z.toFixed(0));
             return true;
         }
 
@@ -230,7 +230,7 @@ const GameState = {
     },
 
     /**
-     * Kh?i t?o tr?ng thái game
+     * Kh?i t?o tr?ng thï¿½i game
      */
     init: function() {
         console.log('?? Kh?i t?o GameState...');
@@ -349,7 +349,7 @@ const GameState = {
     },
     
     /**
-     * C?p nh?t tr?ng thái game theo th?i gian
+     * C?p nh?t tr?ng thï¿½i game theo th?i gian
      * @param {number} deltaTime - Th?i gian delta (ms)
      */
     update: function(deltaTime) {
@@ -454,7 +454,7 @@ const GameState = {
     },
     
     /**
-     * L?y thông tin công trình theo lo?i
+     * L?y thï¿½ng tin cï¿½ng trï¿½nh theo lo?i
      * @param {string} type
      * @returns {Object|null}
      */
@@ -463,7 +463,7 @@ const GameState = {
     },
 
     /**
-     * L?y vùng placement cho m?t lo?i building (zone ho?c m?ng zone). 
+     * L?y vï¿½ng placement cho m?t lo?i building (zone ho?c m?ng zone). 
      * T?a d? world 2D/3D chung, y tuong ?ng z trong 3D.
      */
     getBuildingPlacementZone: function(type) {
@@ -497,13 +497,13 @@ const GameState = {
     },
 
     /**
-     * Ki?m tra t?a d? x, z có n?m trong placement zone không.
+     * Ki?m tra t?a d? x, z cï¿½ n?m trong placement zone khï¿½ng.
      */
     isInPlacementZone: function(type, x, z) {
         const zc = this.getBuildingPlacementZone(type);
         if (!zc) return true;
         
-        // Ki?m tra zone chính
+        // Ki?m tra zone chï¿½nh
         if (this._isInZone(x, z, zc)) return true;
         
         // Ki?m tra future plot zones cho walls, towers, minters
@@ -517,7 +517,7 @@ const GameState = {
     },
 
     /**
-     * G?i sau khi place building thành công d? m? khóa các building k? ti?p
+     * G?i sau khi place building thï¿½nh cï¿½ng d? m? khï¿½a cï¿½c building k? ti?p
      */
     unlockChain: function(type) {
         const def = this.getBuildingDef(type);
@@ -525,13 +525,13 @@ const GameState = {
         for (const next of def.unlocks) {
             if (!this.unlockedBuildings[next]) {
                 this.unlockedBuildings[next] = true;
-                console.log('?? Ðã m? khóa:', next);
+                console.log('?? ï¿½ï¿½ m? khï¿½a:', next);
             }
         }
     },
 
     /**
-     * Ki?m tra công trình dã m? khóa chua
+     * Ki?m tra cï¿½ng trï¿½nh dï¿½ m? khï¿½a chua
      * @param {string} type
      * @returns {boolean}
      */
@@ -542,9 +542,9 @@ const GameState = {
     },
 
     /**
-     * Ki?m tra có th? mua/build công trình hay không
+     * Ki?m tra cï¿½ th? mua/build cï¿½ng trï¿½nh hay khï¿½ng
      * @param {string} type
-     * @param {number} [x] - Tùy ch?n: n?u có s? ki?m tra c? placement zone
+     * @param {number} [x] - Tï¿½y ch?n: n?u cï¿½ s? ki?m tra c? placement zone
      * @param {number} [z]
      * @returns {boolean}
      */
@@ -564,13 +564,13 @@ const GameState = {
      */
     switchPhase: function() {
         if (this.phase === CONFIG.PHASE_DAY) {
-            console.log('?? Chuy?n sang ÐÊM - Sóng ' + this.currentWave);
+            console.log('?? Chuy?n sang ï¿½ï¿½M - Sï¿½ng ' + this.currentWave);
             this.phase = CONFIG.PHASE_NIGHT;
             this.phaseTime = CONFIG.NIGHT_DURATION;
             this.phaseTimeRemaining = CONFIG.NIGHT_DURATION;
             this.lastZombieSpawnTime = Date.now();
         } else {
-            console.log('?? Chuy?n sang NGÀY - Sóng ' + (this.currentWave + 1));
+            console.log('?? Chuy?n sang NGï¿½Y - Sï¿½ng ' + (this.currentWave + 1));
             this.phase = CONFIG.PHASE_DAY;
             this.phaseTime = CONFIG.DAY_DURATION;
             this.phaseTimeRemaining = CONFIG.DAY_DURATION;
@@ -616,14 +616,14 @@ const GameState = {
     },
     
     /**
-     * C?p nh?t máy in ti?n
+     * C?p nh?t mï¿½y in ti?n
      * @param {number} deltaTime - Th?i gian delta
      */
     updateMinters: function(deltaTime) {
         this.minters.forEach(minter => {
             minter.update(deltaTime);
             
-            // N?u hoàn thành chu k?, c?ng ti?n
+            // N?u hoï¿½n thï¿½nh chu k?, c?ng ti?n
             if (minter.cycleProgress >= 1) {
                 this.addMoney(CONFIG.MINTER_MONEY_PER_CYCLE * this.productionMultiplier * this.moneyMultiplier);
                 minter.cycleProgress = 0;
@@ -632,7 +632,7 @@ const GameState = {
     },
     
     /**
-     * C?p nh?t tháp pháo
+     * C?p nh?t thï¿½p phï¿½o
      * @param {number} deltaTime - Th?i gian delta
      */
     updateTowers: function(deltaTime) {
@@ -728,7 +728,7 @@ const GameState = {
     },
     
     /**
-     * Ki?m tra va ch?m gi?a d?n và zombie
+     * Ki?m tra va ch?m gi?a d?n vï¿½ zombie
      */
     checkCollisions: function() {
         for (let i = this.bullets.length - 1; i >= 0; i--) {
@@ -739,10 +739,10 @@ const GameState = {
                 
                 const hitRadius = CONFIG.BULLET_RADIUS + CONFIG.ZOMBIE_WIDTH / 2;
                 if (Math.hypot(bullet.x - zombie.x, bullet.z - zombie.z) <= hitRadius) {
-                    // Zombie b? trúng d?n
+                    // Zombie b? trï¿½ng d?n
                     zombie.takeDamage(bullet.damage || CONFIG.TOWER_DAMAGE);
                     
-                    // Xóa d?n
+                    // Xï¿½a d?n
                     this.bullets.splice(i, 1);
                     break;
                 }
@@ -764,22 +764,22 @@ const GameState = {
     },
 
     upgradeTurret: function(turret) {
-        if (!turret || turret.level >= (CONFIG.TUREL_MAX_LEVEL || 5)) return { success: false, title: 'TURRET', message: 'Turret dã d?t c?p t?i da.' };
+        if (!turret || turret.level >= (CONFIG.TUREL_MAX_LEVEL || 5)) return { success: false, title: 'TURRET', message: 'Turret dï¿½ d?t c?p t?i da.' };
         const cost = turret.getUpgradeCost();
-        if (!this.spendMoney(cost)) return { success: false, title: 'TURRET', message: `C?n ${cost}?? d? nâng c?p.` };
+        if (!this.spendMoney(cost)) return { success: false, title: 'TURRET', message: `C?n ${cost}?? d? nï¿½ng c?p.` };
         turret.upgrade();
         return { success: true, title: 'TURRET UPGRADED', message: `Lv.${turret.level}: ${turret.damage} damage, t?m ${turret.range}m.` };
     },
 
     sellTurret: function(turret) {
         const index = this.turelList.indexOf(turret);
-        if (index < 0) return { success: false, title: 'TURRET', message: 'Không tìm th?y turret.' };
+        if (index < 0) return { success: false, title: 'TURRET', message: 'Khï¿½ng tï¿½m th?y turret.' };
         const refund = Math.floor(CONFIG.BUILDING_DEFS.turel.cost * (CONFIG.TUREL_SELL_REFUND || 0.65) + turret.upgradeSpent * 0.5);
         turret.dispose();
         this.turelList.splice(index, 1);
         this.builtBuildings.turel = Math.max(0, this.builtBuildings.turel - 1);
         this.addMoney(refund);
-        return { success: true, title: 'TURRET SOLD', message: `Ðã bán turret, nh?n ${refund}??.` };
+        return { success: true, title: 'TURRET SOLD', message: `ï¿½ï¿½ bï¿½n turret, nh?n ${refund}??.` };
     },
 
     startTurretRelocation: function(turret) {
@@ -801,8 +801,8 @@ const GameState = {
     },
     
     /**
-     * Sinh zombie 3D liên t?c t? 4 rìa ngoài b?n d?
-     * Không d?a trên wave, spawn d?u d?n trong m?i phase
+     * Sinh zombie 3D liï¿½n t?c t? 4 rï¿½a ngoï¿½i b?n d?
+     * Khï¿½ng d?a trï¿½n wave, spawn d?u d?n trong m?i phase
      * @param {number} deltaTime - Th?i gian delta
      */
     spawnZombies: function(deltaTime) {
@@ -869,7 +869,7 @@ const GameState = {
     },
 
     /**
-     * Thêm ti?n
+     * Thï¿½m ti?n
      */
     addMoney: function(amount) {
         this.money += amount;
@@ -890,16 +890,16 @@ const GameState = {
     },
 
     /**
-     * T?o tháp pháo
+     * T?o thï¿½p phï¿½o
      */
     buildTower: function(x, y) {
         const def = this.getBuildingDef('tower');
         if (!this.canBuildBuilding('tower')) {
-            console.log('? Không th? xây tháp pháo. Ki?m tra unlock ho?c d? ti?n.');
+            console.log('? Khï¿½ng th? xï¿½y thï¿½p phï¿½o. Ki?m tra unlock ho?c d? ti?n.');
             return false;
         }
         if (!this.spendMoney(def.cost)) {
-            console.log('? Không d? ti?n d? xây tháp');
+            console.log('? Khï¿½ng d? ti?n d? xï¿½y thï¿½p');
             return false;
         }
         const tower = new Tower(x, y);
@@ -909,21 +909,21 @@ const GameState = {
         this.totalScore += 50;
         if (!this.unlockedBuildings.tower) this.unlockedBuildings.tower = true;
         this.unlockedBuildings.minter = this.hasUnlockedBuilding('minter') || this.unlockedBuildings.minter;
-        console.log('?? Xây tháp pháo t?i (' + x + ', ' + y + ')');
+        console.log('?? Xï¿½y thï¿½p phï¿½o t?i (' + x + ', ' + y + ')');
         return true;
     },
 
     /**
-     * T?o tu?ng rào
+     * T?o tu?ng rï¿½o
      */
     buildWall: function(x, y) {
         const def = this.getBuildingDef('wall');
         if (!this.canBuildBuilding('wall')) {
-            console.log('? Không th? xây tu?ng rào.');
+            console.log('? Khï¿½ng th? xï¿½y tu?ng rï¿½o.');
             return false;
         }
         if (!this.spendMoney(def.cost)) {
-            console.log('? Không d? ti?n d? xây tu?ng');
+            console.log('? Khï¿½ng d? ti?n d? xï¿½y tu?ng');
             return false;
         }
         const wall = new Wall(x, y);
@@ -933,21 +933,21 @@ const GameState = {
         this.totalScore += 25;
         this.unlockedBuildings.wall = true;
         this.unlockedBuildings.tower = this.hasUnlockedBuilding('tower') || this.unlockedBuildings.tower;
-        console.log('?? Xây tu?ng rào t?i (' + x + ', ' + y + ')');
+        console.log('?? Xï¿½y tu?ng rï¿½o t?i (' + x + ', ' + y + ')');
         return true;
     },
 
     /**
-     * T?o máy in ti?n
+     * T?o mï¿½y in ti?n
      */
     buildMinter: function(x, y) {
         const def = this.getBuildingDef('minter');
         if (!this.canBuildBuilding('minter')) {
-            console.log('? Không th? xây máy in ti?n.');
+            console.log('? Khï¿½ng th? xï¿½y mï¿½y in ti?n.');
             return false;
         }
         if (!this.spendMoney(def.cost)) {
-            console.log('? Không d? ti?n d? xây máy in');
+            console.log('? Khï¿½ng d? ti?n d? xï¿½y mï¿½y in');
             return false;
         }
         const minter = new Minter(x, y);
@@ -956,12 +956,12 @@ const GameState = {
         this.buildingsBuilt++;
         this.totalScore += 40;
         this.unlockedBuildings.minter = true;
-        console.log('?? Xây máy in ti?n t?i (' + x + ', ' + y + ')');
+        console.log('?? Xï¿½y mï¿½y in ti?n t?i (' + x + ', ' + y + ')');
         return true;
     },
 
     /**
-     * Gây sát thuong cho pháo dài
+     * Gï¿½y sï¿½t thuong cho phï¿½o dï¿½i
      */
     damagesFortress: function(damage) {
         this.fortressHP = Math.max(0, this.fortressHP - damage);
@@ -981,10 +981,10 @@ const GameState = {
     },
 
     /**
-     * Player nh?n sát thuong t? zombie bite.
+     * Player nh?n sï¿½t thuong t? zombie bite.
      * M?t HP hi?n t?i theo damage.
-     * Có 5% co h?i gi?m playerMaxHP di 1 (không bao gi? xu?ng du?i 1).
-     * 95% tru?ng h?p maxHP không b? ?nh hu?ng.
+     * Cï¿½ 5% co h?i gi?m playerMaxHP di 1 (khï¿½ng bao gi? xu?ng du?i 1).
+     * 95% tru?ng h?p maxHP khï¿½ng b? ?nh hu?ng.
      */
     damagePlayerFromZombie: function(damage = 10, attackerX, attackerZ) {
         this._applyDamage(damage, 'zombie_bite', attackerX, attackerZ);
@@ -1000,6 +1000,22 @@ const GameState = {
         if (this.adminInfiniteHealth) return false;
         if (this.playerHP <= 0) return false;
         if (typeof PlayerController !== 'undefined' && (PlayerController.isDead || PlayerController.isRespawning)) return false;
+
+        // Check Observation Haki dodge before applying damage
+        if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
+            const attackContext = {
+                source: source,
+                damage: damage,
+                attackerX: attackerX,
+                attackerZ: attackerZ,
+                timestamp: Date.now()
+            };
+            
+            if (ObservationHaki.tryDodge(attackContext)) {
+                // Attack was dodged - skip damage
+                return false;
+            }
+        }
 
         const amount = Math.max(1, Math.round(damage));
         this.playerHP = Math.max(0, this.playerHP - amount);
@@ -1030,7 +1046,7 @@ const GameState = {
             this.playerMaxHP = Math.max(1, this.playerMaxHP - 1);
             this.playerHP = Math.min(this.playerHP, this.playerMaxHP);
             if (typeof Game !== 'undefined' && Game.showMilitaryToast) {
-                Game.showMilitaryToast({ title: '?? ZOMBIE BITE', message: `Nhi?m khu?n! Max HP gi?m còn ${this.playerMaxHP}`, success: false });
+                Game.showMilitaryToast({ title: '?? ZOMBIE BITE', message: `Nhi?m khu?n! Max HP gi?m cï¿½n ${this.playerMaxHP}`, success: false });
             }
         }
 
@@ -1152,13 +1168,13 @@ const GameState = {
     useBandage: function() {
         if (this.bandages <= 0) return { success: false, message: 'H?t bandage.' };
         if (this.playerMaxHP >= this.playerBaseMaxHP && this.playerHP >= this.playerMaxHP) {
-            return { success: false, message: 'HP dã d?y.' };
+            return { success: false, message: 'HP dï¿½ d?y.' };
         }
         this.bandages -= 1;
         this.playerMaxHP = Math.min(this.playerBaseMaxHP, this.playerMaxHP + 10);
         this.playerHP = Math.min(this.playerMaxHP, this.playerHP + 10);
         this._updateLowHealthState();
-        return { success: true, message: `Bandage: +10 HP capacity. Còn ${this.bandages}.` };
+        return { success: true, message: `Bandage: +10 HP capacity. Cï¿½n ${this.bandages}.` };
     },
 
     useMedkit: function() {
@@ -1171,11 +1187,11 @@ const GameState = {
         this.poisonTimeRemaining = 0;
         this.poisonTickTimer = 0;
         this._updateLowHealthState();
-        return { success: true, message: 'H?p c?p c?u dã khôi ph?c HP v? 100%.', full: true };
+        return { success: true, message: 'H?p c?p c?u dï¿½ khï¿½i ph?c HP v? 100%.', full: true };
     },
     
     /**
-     * Xóa zombie
+     * Xï¿½a zombie
      * @param {number} index - Index
      */
     removeZombie: function(index) {
@@ -1183,23 +1199,23 @@ const GameState = {
     },
     
     /**
-     * K?t thúc game
+     * K?t thï¿½c game
      */
     endGame: function() {
         this.isRunning = false;
         this.isGameOver = true;
         
         PokiManager.gameplayStop();
-        console.log('?? GAME OVER! Sóng: ' + this.currentWave + ', Ti?n: ' + Math.floor(this.money) + ', Ði?m: ' + this.totalScore);
+        console.log('?? GAME OVER! Sï¿½ng: ' + this.currentWave + ', Ti?n: ' + Math.floor(this.money) + ', ï¿½i?m: ' + this.totalScore);
     },
     
     /**
-     * H?i sinh pháo dài (dùng qu?ng cáo)
+     * H?i sinh phï¿½o dï¿½i (dï¿½ng qu?ng cï¿½o)
      */
     reviveFortress: function() {
         if (!this.isGameOver) return;
         
-        console.log('?? H?i sinh pháo dài...');
+        console.log('?? H?i sinh phï¿½o dï¿½i...');
         this.fortressHP = CONFIG.FORTRESS_MAX_HP;
         this.isGameOver = false;
         this.isRunning = true;
@@ -1212,11 +1228,11 @@ const GameState = {
     },
     
     /**
-     * Tang ti?n x2 (dùng qu?ng cáo)
+     * Tang ti?n x2 (dï¿½ng qu?ng cï¿½o)
      */
     doubleMoneyFromAd: function() {
         this.addMoney(this.money);
-        console.log('?? Ti?n du?c nhân dôi! T?ng: ' + Math.floor(this.money));
+        console.log('?? Ti?n du?c nhï¿½n dï¿½i! T?ng: ' + Math.floor(this.money));
     },
     
     _serviceCooldownReady: function(id, cooldownMs) {
@@ -1237,41 +1253,41 @@ const GameState = {
         switch (id) {
             case 'hq': {
                 const cost = Math.floor(500 * Math.pow(1.85, this.baseLevel - 1));
-                if (this.baseLevel >= 8) return fail('COMMAND HQ', 'Can c? dã d?t c?p t?i da.');
-                if (!this.spendMoney(cost)) return fail('COMMAND HQ', `C?n ${cost}?? d? nâng c?p HQ.`);
+                if (this.baseLevel >= 8) return fail('COMMAND HQ', 'Can c? dï¿½ d?t c?p t?i da.');
+                if (!this.spendMoney(cost)) return fail('COMMAND HQ', `C?n ${cost}?? d? nï¿½ng c?p HQ.`);
                 this.baseLevel += 1;
                 this.maxMinterSlots = Math.min(8, 5 + this.baseLevel);
                 this.moneyMultiplier = 1 + (this.baseLevel - 1) * 0.08;
                 this.fortressHP = Math.min(CONFIG.FORTRESS_MAX_HP + (this.baseLevel - 1) * 15, this.fortressHP + 15);
-                return { success: true, title: 'COMMAND HQ', message: `HQ lên c?p ${this.baseLevel}. M? thêm công su?t máy in và +${Math.round((this.moneyMultiplier - 1) * 100)}% thu nh?p.`, reward: 0 };
+                return { success: true, title: 'COMMAND HQ', message: `HQ lï¿½n c?p ${this.baseLevel}. M? thï¿½m cï¿½ng su?t mï¿½y in vï¿½ +${Math.round((this.moneyMultiplier - 1) * 100)}% thu nh?p.`, reward: 0 };
             }
             case 'barracks': {
                 const cost = 350 + this.guards * 180;
-                if (!this.spendMoney(cost)) return fail('BARRACKS', `C?n ${cost}?? d? tuy?n m?t lính gác.`);
+                if (!this.spendMoney(cost)) return fail('BARRACKS', `C?n ${cost}?? d? tuy?n m?t lï¿½nh gï¿½c.`);
                 this.guards += 1;
                 this.totalScore += 100;
-                return { success: true, title: 'BARRACKS', message: `Ðã tuy?n lính gác #${this.guards}. Phòng th? can c? +${this.guards * 2}%.`, reward: 0 };
+                return { success: true, title: 'BARRACKS', message: `ï¿½ï¿½ tuy?n lï¿½nh gï¿½c #${this.guards}. Phï¿½ng th? can c? +${this.guards * 2}%.`, reward: 0 };
             }
             case 'mess': {
                 if (!this._serviceCooldownReady('mess', 12000)) return fail('MESS HALL', 'B?p dang chu?n b? su?t ti?p theo.');
                 this.lastServiceAction.mess = Date.now();
                 this.stamina = this.maxStamina;
-                return { success: true, title: 'MESS HALL', message: 'Ðã dùng su?t an. Stamina d?y. HP không t? h?i.', reward: 0 };
+                return { success: true, title: 'MESS HALL', message: 'ï¿½ï¿½ dï¿½ng su?t an. Stamina d?y. HP khï¿½ng t? h?i.', reward: 0 };
             }
             case 'medical': {
-                if (!this._serviceCooldownReady('medical', 15000)) return fail('MEDICAL', 'Medical bay dang tái t?o thi?t b?.');
+                if (!this._serviceCooldownReady('medical', 15000)) return fail('MEDICAL', 'Medical bay dang tï¿½i t?o thi?t b?.');
                 this.lastServiceAction.medical = Date.now();
                 const med = this.useMedkit();
                 if (!med.success) return fail('MEDICAL', med.message);
                 this.fortressHP = Math.min(CONFIG.FORTRESS_MAX_HP + (this.baseLevel - 1) * 15, this.fortressHP + 25);
-                return { success: true, title: 'MEDICAL', message: 'Ðã h?i d?y HP cá nhân và s?a ch?a +25 Fortress HP.', reward: 0 };
+                return { success: true, title: 'MEDICAL', message: 'ï¿½ï¿½ h?i d?y HP cï¿½ nhï¿½n vï¿½ s?a ch?a +25 Fortress HP.', reward: 0 };
             }
             case 'supply': {
                 const cost = 150 + (this.weaponTier - 1) * 250;
-                if (!this.spendMoney(cost)) return fail('SUPPLY DEPOT', `C?n ${cost}?? d? nâng c?p vu khí.`);
+                if (!this.spendMoney(cost)) return fail('SUPPLY DEPOT', `C?n ${cost}?? d? nï¿½ng c?p vu khï¿½.`);
                 if (this.weaponTier >= 6) {
                     this.ammo = this.maxAmmo;
-                    return { success: true, title: 'SUPPLY DEPOT', message: 'Kho d?t c?p t?i da. Ammo dã du?c n?p d?y.', reward: 0 };
+                    return { success: true, title: 'SUPPLY DEPOT', message: 'Kho d?t c?p t?i da. Ammo dï¿½ du?c n?p d?y.', reward: 0 };
                 }
                 this.weaponTier += 1;
                 this.weaponDamage += 7;
@@ -1282,12 +1298,12 @@ const GameState = {
                 return { success: true, title: 'SUPPLY DEPOT', message: `Weapon Tier ${this.weaponTier}: damage ${this.weaponDamage}, ammo ${this.maxAmmo}.`, reward: 0 };
             }
             case 'fuel': {
-                if (!this._serviceCooldownReady('fuel', 8000)) return fail('FUEL FARM', 'Bom nhiên li?u dang h?i.');
+                if (!this._serviceCooldownReady('fuel', 8000)) return fail('FUEL FARM', 'Bom nhiï¿½n li?u dang h?i.');
                 this.lastServiceAction.fuel = Date.now();
                 const reward = 120 + this.vehicleLevel * 60;
                 this.addMoney(reward);
                 this.productionMultiplier = Math.min(2.5, this.productionMultiplier + 0.03);
-                return { success: true, title: 'FUEL FARM', message: `Bán nhiên li?u nh?n ${reward}?? và +3% hi?u su?t production t?m th?i.`, reward };
+                return { success: true, title: 'FUEL FARM', message: `Bï¿½n nhiï¿½n li?u nh?n ${reward}?? vï¿½ +3% hi?u su?t production t?m th?i.`, reward };
             }
             case 'motorPool': {
                 this.vehicleActive = true;
@@ -1296,23 +1312,23 @@ const GameState = {
                     PlayerController.normalSpeed = 6 + this.vehicleLevel * 0.7;
                     PlayerController.speed = PlayerController.normalSpeed;
                 }
-                return { success: true, title: 'MOTOR POOL', message: `Xe dã s?n sàng. Vehicle Level ${this.vehicleLevel}; t?c d? di chuy?n tang.`, reward: 0 };
+                return { success: true, title: 'MOTOR POOL', message: `Xe dï¿½ s?n sï¿½ng. Vehicle Level ${this.vehicleLevel}; t?c d? di chuy?n tang.`, reward: 0 };
             }
             case 'lab': {
                 const cost = 300 + this.weaponLevel * 220;
-                if (!this.spendMoney(cost)) return fail('RESEARCH LAB', `C?n ${cost}?? d? hoàn thành nghiên c?u.`);
+                if (!this.spendMoney(cost)) return fail('RESEARCH LAB', `C?n ${cost}?? d? hoï¿½n thï¿½nh nghiï¿½n c?u.`);
                 this.weaponLevel += 1;
                 this.weaponDamage += 4;
                 this.productionMultiplier = Math.min(3, this.productionMultiplier + 0.1);
-                return { success: true, title: 'RESEARCH LAB', message: `Nghiên c?u hoàn t?t. Weapon Lv.${this.weaponLevel}, +4 damage, +10% production.`, reward: 0 };
+                return { success: true, title: 'RESEARCH LAB', message: `Nghiï¿½n c?u hoï¿½n t?t. Weapon Lv.${this.weaponLevel}, +4 damage, +10% production.`, reward: 0 };
             }
             case 'workshop': {
                 const cost = 250 + this.vehicleLevel * 180;
-                if (!this.spendMoney(cost)) return fail('VEHICLE WORKSHOP', `C?n ${cost}?? d? nâng c?p phuong ti?n.`);
+                if (!this.spendMoney(cost)) return fail('VEHICLE WORKSHOP', `C?n ${cost}?? d? nï¿½ng c?p phuong ti?n.`);
                 this.vehicleLevel = Math.min(8, this.vehicleLevel + 1);
                 this.maxStamina = Math.min(180, this.maxStamina + 10);
                 this.stamina = this.maxStamina;
-                return { success: true, title: 'VEHICLE WORKSHOP', message: `Workshop c?p ${this.vehicleLevel}. Xe m?nh hon và stamina t?i da +10.`, reward: 0 };
+                return { success: true, title: 'VEHICLE WORKSHOP', message: `Workshop c?p ${this.vehicleLevel}. Xe m?nh hon vï¿½ stamina t?i da +10.`, reward: 0 };
             }
             case 'training': {
                 this.weaponXP += 25;
@@ -1328,28 +1344,28 @@ const GameState = {
                 this.ammo = this.maxAmmo;
                 this.weaponDamage += 2;
                 this.lastServiceAction.range = Date.now();
-                return { success: true, title: 'SHOOTING RANGE', message: 'Ammo d?y và nh?n +2 damage t? luy?n b?n.', reward: 0 };
+                return { success: true, title: 'SHOOTING RANGE', message: 'Ammo d?y vï¿½ nh?n +2 damage t? luy?n b?n.', reward: 0 };
             }
             case 'radar': {
                 const detected = this.zombies.length;
                 this.radarLevel = Math.min(5, this.radarLevel + 1);
-                return { success: true, title: 'RADAR STATION', message: `Radar Level ${this.radarLevel}. Phát hi?n ${detected} zombie trên b?n d?.`, reward: 0 };
+                return { success: true, title: 'RADAR STATION', message: `Radar Level ${this.radarLevel}. Phï¿½t hi?n ${detected} zombie trï¿½n b?n d?.`, reward: 0 };
             }
             case 'comms': {
-                if (!this.commsReady) return fail('COMMS TOWER', 'H?p d?ng ti?p t? chua s?n sàng.');
+                if (!this.commsReady) return fail('COMMS TOWER', 'H?p d?ng ti?p t? chua s?n sï¿½ng.');
                 this.commsReady = false;
                 const reward = 250 + this.currentWave * 40;
                 this.addMoney(reward);
                 setTimeout(() => { this.commsReady = true; }, 20000);
-                return { success: true, title: 'COMMS TOWER', message: `H?p d?ng ti?p t? hoàn t?t. +${reward}??.`, reward };
+                return { success: true, title: 'COMMS TOWER', message: `H?p d?ng ti?p t? hoï¿½n t?t. +${reward}??.`, reward };
             }
             default:
-                return fail('MILITARY BASE', 'Tòa nhà này chua có ch?c nang.');
+                return fail('MILITARY BASE', 'Tï¿½a nhï¿½ nï¿½y chua cï¿½ ch?c nang.');
         }
     },
 
     /**
-     * Luu game vào LocalStorage
+     * Luu game vï¿½o LocalStorage
      */
     saveGame: function() {
         const saveData = {

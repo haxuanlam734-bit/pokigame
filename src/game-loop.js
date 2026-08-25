@@ -1,6 +1,6 @@
 /**
- * GAME-LOOP.JS - Vòng l?p game chính
- * C?p nh?t tr?ng thái, v?, và x? lý khung hình
+ * GAME-LOOP.JS - Vï¿½ng l?p game chï¿½nh
+ * C?p nh?t tr?ng thï¿½i, v?, vï¿½ x? lï¿½ khung hï¿½nh
  */
 
 const GameLoop = {
@@ -20,7 +20,7 @@ const GameLoop = {
     _damageSoundCooldown: 120,
 
     /**
-     * Kh?i d?ng vòng l?p game
+     * Kh?i d?ng vï¿½ng l?p game
      */
     start: function() {
         console.log('?? Kh?i d?ng Game Loop...');
@@ -29,11 +29,11 @@ const GameLoop = {
         this.frameCount = 0;
         this.lastFpsUpdate = 0;
         requestAnimationFrame(this.loop.bind(this));
-        console.log('? Game Loop dã kh?i d?ng');
+        console.log('? Game Loop dï¿½ kh?i d?ng');
     },
     
     /**
-     * D?ng vòng l?p game
+     * D?ng vï¿½ng l?p game
      */
     stop: function() {
         console.log('?? D?ng Game Loop');
@@ -41,7 +41,7 @@ const GameLoop = {
     },
     
     /**
-     * Vòng l?p chính
+     * Vï¿½ng l?p chï¿½nh
      * @param {number} timestamp - Th?i gian t? browser (performance.now())
      */
     loop: function(timestamp) {
@@ -69,6 +69,11 @@ const GameLoop = {
             Renderer3D.updatePlayerAnimationMixer(deltaTime / 1000);
         }
 
+        // Apply Observation Haki additive dodge visual overlay after locomotion pose is applied
+        if (typeof ObservationHaki !== 'undefined' && ObservationHaki.applyDodgeOverlay) {
+            ObservationHaki.applyDodgeOverlay();
+        }
+
         this.updateUI();
 
         if (typeof Renderer3D !== 'undefined' && Renderer3D.render) {
@@ -81,7 +86,7 @@ const GameLoop = {
     },
     
     /**
-     * C?p nh?t tr?ng thái game
+     * C?p nh?t tr?ng thï¿½i game
      * @param {number} deltaTime - Th?i gian delta (ms)
      */
     update: function(deltaTime) {
@@ -119,6 +124,11 @@ const GameLoop = {
 
         if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.update) {
             GrenadeSystem.update(deltaTime);
+        }
+
+        // Update Observation Haki afterimages
+        if (typeof ObservationHaki !== 'undefined' && ObservationHaki.update) {
+            ObservationHaki.update(deltaTime);
         }
     },
     
@@ -357,9 +367,9 @@ const GameLoop = {
             notif.style.display = 'flex';
             notif.style.opacity = Math.min(1, this._phaseNotificationTimer / 30);
             const phaseNames = {
-                [CONFIG.PHASE_DAY]: '?? NGÀY',
+                [CONFIG.PHASE_DAY]: '?? NGï¿½Y',
                 [CONFIG.PHASE_SUNSET]: '?? SUNSET',
-                [CONFIG.PHASE_NIGHT]: '?? ÐÊM',
+                [CONFIG.PHASE_NIGHT]: '?? ï¿½ï¿½M',
                 [CONFIG.PHASE_DAWN]: '?? DAWN'
             };
             notif.textContent = phaseNames[phase] || phase.toUpperCase();
@@ -375,13 +385,13 @@ const GameLoop = {
     },
 
     _getLegacyPhaseDisplayName: function(phase) {
-        if (phase === CONFIG.PHASE_DAY || phase === CONFIG.PHASE_DAY_LEGACY) return '?? NGÀY';
-        if (phase === CONFIG.PHASE_NIGHT || phase === CONFIG.PHASE_NIGHT_LEGACY) return '?? ÐÊM';
+        if (phase === CONFIG.PHASE_DAY || phase === CONFIG.PHASE_DAY_LEGACY) return '?? NGï¿½Y';
+        if (phase === CONFIG.PHASE_NIGHT || phase === CONFIG.PHASE_NIGHT_LEGACY) return '?? ï¿½ï¿½M';
         return phase.toUpperCase();
     },
 
     /**
-     * C?p nh?t tr?ng thái nút (enable/disable + style)
+     * C?p nh?t tr?ng thï¿½i nï¿½t (enable/disable + style)
      */
     updateButtonStates: function() {
         const buttons = {

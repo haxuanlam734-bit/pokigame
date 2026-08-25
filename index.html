@@ -1633,6 +1633,27 @@
                         </div>
                     </div>
                 </div>
+                <div class="resource resource-haki" id="haki-status" style="display:none; margin-top:8px;">
+                    <span class="icon">👁️</span>
+                    <div class="resource-main">
+                        <div class="resource-head">
+                            <span class="amount" style="font-size:11px;color:#88ccff;">HAKI</span>
+                        </div>
+                        <div style="font-size:9px; color:#6ab8ff; font-weight:600; letter-spacing:0.5px;">OBSERVATION ACTIVE</div>
+                    </div>
+                </div>
+                <div id="throw-power-container" style="display:none; margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-size:11px; color:#8fa0b0; font-weight:700; letter-spacing:0.5px;">THROW POWER</span>
+                        <span id="throw-power-text" style="font-size:11px; color:#00ffb4; font-weight:700;">70%</span>
+                    </div>
+                    <div style="width:100%; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+                        <div id="throw-power-bar" style="width:70%; height:100%; background:linear-gradient(90deg,#00d2d3,#00ff88); border-radius:3px; transition:width 0.05s ease;"></div>
+                    </div>
+                    <div id="throw-power-hint" style="display:none; font-size:10px; color:#a0b0c0; margin-top:4px; line-height:1.4;">
+                        Q ↑ Increase Power<br>E ↓ Decrease Power
+                    </div>
+                </div>
             </div>
 
             <!-- WEAPON INFO PANEL -->
@@ -1969,6 +1990,7 @@
     <script src="src/combat/weapon-system.js"></script>
     <script src="src/combat/weapon-renderer.js"></script>
     <script src="src/combat/grenade.js"></script>
+    <script src="src/observation-haki.js"></script>
     <script src="src/entities/wall-3d.js"></script>
     <script src="src/entities/tower-3d.js"></script>
     <script src="src/entities/minter-3d.js"></script>

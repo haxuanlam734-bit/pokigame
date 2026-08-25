@@ -509,6 +509,11 @@ const PlayerController = {
             WeaponSystem._grenadeThrown = false;
         }
 
+        // Turn off Observation Haki on death
+        if (typeof ObservationHaki !== 'undefined') {
+            ObservationHaki.turnOff();
+        }
+
         this.velocity = { x: 0, z: 0 };
         this.targetVelocity = { x: 0, z: 0 };
         this.hasMovementInput = false;
@@ -545,6 +550,11 @@ const PlayerController = {
         this.respawnTimer = 0;
         this.isSprinting = false;
         this.isCrouching = false;
+
+        // Ensure Observation Haki is turned off on respawn
+        if (typeof ObservationHaki !== 'undefined') {
+            ObservationHaki.turnOff();
+        }
 
         if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.cancelAiming) {
             GrenadeSystem.cancelAiming();

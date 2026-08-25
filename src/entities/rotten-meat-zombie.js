@@ -209,6 +209,23 @@ class RottenMeatZombie extends Zombie3D {
     }
 
     _onProjectileHit(projectile) {
+        // Check Observation Haki dodge first for projectile-specific context
+        if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
+            const attackContext = {
+                source: 'rotten_meat_projectile',
+                damage: CONFIG.ROTTEN_MEAT_IMPACT_DAMAGE * projectile.damageMultiplier,
+                projectile: projectile,
+                attackerX: projectile.startX,
+                attackerZ: projectile.startZ,
+                timestamp: Date.now()
+            };
+            
+            if (ObservationHaki.tryDodge(attackContext)) {
+                // Attack was dodged - skip damage and poison
+                return;
+            }
+        }
+
         if (typeof GameState !== 'undefined') {
             GameState.damagePlayer(
                 CONFIG.ROTTEN_MEAT_IMPACT_DAMAGE * projectile.damageMultiplier,
@@ -237,6 +254,7 @@ class RottenMeatZombie extends Zombie3D {
 
 class RottenMeatProjectile {
     constructor(fromX, fromY, fromZ, targetX, targetY, targetZ, damageMultiplier = 1) {
+        this.id = `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         this.startX = fromX;
         this.startY = fromY;
         this.startZ = fromZ;

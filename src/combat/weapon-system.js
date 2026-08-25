@@ -112,7 +112,11 @@ const WEAPON_DEFS = {
         reserveAmmo:     3,
         crosshairType:   'grenade',
         modelPath:       'src/assets/weapon/ThrowableWeapon.js/grenade_low_poly.glb',
-        attach: { px: 0.48, py: 0.55, pz: 0.10, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 0.18 }
+        attach: { px: 0.48, py: 0.55, pz: 0.10, rx: 0, ry: -Math.PI / 4, rz: -Math.PI / 6, targetSize: 0.18 },
+        canBounce: true,
+        bounceRestitution: 0.55,
+        bounceDamping: 0.82,
+        maxBounces: 1
     }
 };
 
@@ -831,6 +835,31 @@ const WeaponSystem = {
         }
         const weaponEl = document.getElementById('weapon-display');
         if (weaponEl) weaponEl.textContent = def.name + ' [' + modeName + ']';
+
+        const powerContainer = document.getElementById('throw-power-container');
+        const powerBar = document.getElementById('throw-power-bar');
+        const powerText = document.getElementById('throw-power-text');
+        const powerHint = document.getElementById('throw-power-hint');
+        if (isThrowable && typeof GrenadeSystem !== 'undefined' && GrenadeSystem._isAiming) {
+            const power = GrenadeSystem.getThrowPower();
+            const pct = Math.round(power * 100);
+            if (powerContainer) powerContainer.style.display = 'block';
+            if (powerBar) {
+                powerBar.style.display = 'block';
+                powerBar.style.width = pct + '%';
+            }
+            if (powerText) {
+                powerText.textContent = pct + '%';
+            }
+            if (powerHint) {
+                powerHint.style.display = 'block';
+            }
+        } else {
+            if (powerContainer) powerContainer.style.display = 'none';
+            if (powerBar) powerBar.style.display = 'none';
+            if (powerText) powerText.textContent = '';
+            if (powerHint) powerHint.style.display = 'none';
+        }
 
         if (typeof GameState !== 'undefined') {
             const staminaBar = document.getElementById('stamina-bar');

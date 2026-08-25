@@ -252,6 +252,22 @@ class Zombie3D {
                     this.lastPlayerAttackTime = now;
                     this.attackTimer = 0.35;
 
+                    // Check Observation Haki dodge first for melee-specific context
+                    if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
+                        const attackContext = {
+                            source: 'zombie_melee',
+                            damage: this.damage,
+                            attackerX: this.x,
+                            attackerZ: this.z,
+                            timestamp: Date.now()
+                        };
+                        
+                        if (ObservationHaki.tryDodge(attackContext)) {
+                            // Attack was dodged - skip damage
+                            return;
+                        }
+                    }
+
                     if (typeof GameState !== 'undefined' && GameState.damagePlayerFromZombie) {
                         GameState.damagePlayerFromZombie(this.damage, this.x, this.z);
                     }

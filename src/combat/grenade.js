@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GRENADE.JS - Grenade weapon system
  * Integrated with existing WeaponSystem, WeaponRenderer, GameState, Renderer3D
  * Handles: trajectory preview, throw physics, landing, fuse, explosion, area damage
@@ -40,10 +40,34 @@ const GrenadeSystem = {
     TPS_THROW_MIN_PITCH: 0.087,
     TPS_THROW_MAX_PITCH: 1.134,
 
+    THROW_POWER_MIN: 0.35,
+    THROW_POWER_DEFAULT: 0.70,
+    THROW_POWER_MAX: 1.00,
+    POWER_KEY_STEP: 0.01,
+    POWER_HOLD_DELAY: 200,
+    POWER_HOLD_RATE: 20,
+    MIN_THROW_DISTANCE: 4.0,
+    MAX_THROW_SPEED: 38.0,
+
+    _throwPower: 0.70,
+    _powerQHeld: false,
+    _powerEHeld: false,
+    _powerPrevQ: false,
+    _powerPrevE: false,
+    _powerRepeatTimer: 0,
+    _cursorRaycaster: null,
+    _cursorNdc: null,
+
     init: function() {
         this._grenades = [];
         this._activeGrenade = null;
         this._isAiming = false;
+        this._throwPower = this.THROW_POWER_DEFAULT;
+        this._powerQHeld = false;
+        this._powerEHeld = false;
+        this._powerPrevQ = false;
+        this._powerPrevE = false;
+        this._powerRepeatTimer = 0;
         this._createTrajectoryObjects();
         this._initialized = true;
         console.log('[GRENADE] initialized');
@@ -197,19 +221,34 @@ const GrenadeSystem = {
         if (this._activeGrenade) return;
 
         this._isAiming = true;
+        this._throwPower = this.THROW_POWER_DEFAULT;
+        this._powerQHeld = false;
+        this._powerEHeld = false;
+        this._powerPrevQ = false;
+        this._powerPrevE = false;
+        this._powerRepeatTimer = 0;
         if (typeof WeaponSystem !== 'undefined') {
             WeaponSystem._grenadeAiming = true;
         }
         if (this._trajectoryDots) this._trajectoryDots.visible = true;
         if (this._landingMarker) this._landingMarker.visible = true;
+        this._updatePowerHUD();
         this.updateTrajectoryPreview();
         this._playThrowableSFX('aimStart');
         console.log('[GRENADE] aim started');
     },
 
     cancelAiming: function() {
-        if (!this._isAiming) return;
+        if (!this._isAiming) {
+            this._hidePowerHUD();
+            return;
+        }
         this._isAiming = false;
+        this._powerQHeld = false;
+        this._powerEHeld = false;
+        this._powerPrevQ = false;
+        this._powerPrevE = false;
+        this._powerRepeatTimer = 0;
         if (typeof WeaponSystem !== 'undefined') {
             WeaponSystem._grenadeAiming = false;
         }
@@ -221,6 +260,7 @@ const GrenadeSystem = {
         if (this._debugInnerRing) this._debugInnerRing.visible = false;
         this._trajectoryPoints = [];
         this._landingMarkerState = 'valid';
+        this._hidePowerHUD();
     },
 
     throwGrenade: function() {
@@ -230,6 +270,7 @@ const GrenadeSystem = {
         if (!infiniteAmmo && typeof WeaponSystem !== 'undefined' && WeaponSystem._grenadeCount <= 0) return;
 
         console.log('[GRENADE] throw requested');
+        const solution = this._computeThrowSolution();
         this.cancelAiming();
         this._playThrowableSFX('throw');
         if (typeof WeaponSystem !== 'undefined') {
@@ -241,16 +282,12 @@ const GrenadeSystem = {
             WeaponSystem._grenadeThrown = false;
         }
 
-        const solution = this._computeThrowSolution();
         const origin = solution.origin;
-        const direction = solution.direction;
         const velocity = solution.velocity;
-        console.log('[GRENADE] projectile spawned at', origin.x.toFixed(1), origin.y.toFixed(1), origin.z.toFixed(1));
 
         const grenade = new GrenadeProjectile(
             origin.x, origin.y, origin.z,
-            direction.x, direction.y, direction.z,
-            this.GRENADE_THROW_SPEED,
+            velocity.x, velocity.y, velocity.z,
             this.GRENADE_GRAVITY,
             this.GRENADE_FUSE_AFTER_LANDING,
             this.GRENADE_MAX_DAMAGE,
@@ -260,7 +297,7 @@ const GrenadeSystem = {
 
         this._grenades.push(grenade);
         this._activeGrenade = grenade;
-        console.log('[GRENADE] projectile visible=true');
+        console.log('[GRENADE] projectile launched');
     },
 
     _getThrowOrigin: function() {
@@ -300,10 +337,6 @@ const GrenadeSystem = {
 
             if (isFPS || isLocked) {
                 Renderer3D.camera.getWorldDirection(dir);
-                if (this.DEBUG_GRENADE) {
-                    const origin = this._getThrowOrigin();
-                    console.log('[THROWABLE AIM] mode=FPS mouseX=' + (typeof InputManager !== 'undefined' ? InputManager.mouseX : '?') + ' mouseY=' + (typeof InputManager !== 'undefined' ? InputManager.mouseY : '?') + ' yaw=' + (typeof InputManager !== 'undefined' ? InputManager.cameraYaw.toFixed(3) : '?') + ' pitch=' + (typeof InputManager !== 'undefined' ? InputManager.cameraPitch.toFixed(3) : '?') + ' origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1));
-                }
                 return dir.normalize();
             }
 
@@ -311,32 +344,19 @@ const GrenadeSystem = {
             const h = Math.max(1, window.innerHeight);
             const mouseX = (typeof InputManager !== 'undefined' && typeof InputManager.mouseX === 'number') ? InputManager.mouseX : w * 0.5;
             const mouseY = (typeof InputManager !== 'undefined' && typeof InputManager.mouseY === 'number') ? InputManager.mouseY : h * 0.5;
-            const normalizedX = mouseX / w;
-            const normalizedY = mouseY / h;
 
-            const baseYaw = (typeof InputManager !== 'undefined') ? InputManager.cameraYaw : 0;
-            const yawOffset = (normalizedX - 0.5) * 2 * this.TPS_THROW_MAX_YAW_OFFSET;
-            const yaw = baseYaw + yawOffset;
+            const ndcX = (mouseX / w) * 2 - 1;
+            const ndcY = -(mouseY / h) * 2 + 1;
 
-            const pitch = THREE.MathUtils.lerp(
-                this.TPS_THROW_MAX_PITCH,
-                this.TPS_THROW_MIN_PITCH,
-                normalizedY
-            );
-
-            dir.set(
-                Math.sin(yaw) * Math.cos(pitch),
-                Math.sin(pitch),
-                Math.cos(yaw) * Math.cos(pitch)
-            );
-
-            if (this.DEBUG_GRENADE) {
-                const origin = this._getThrowOrigin();
-                const velocity = dir.clone().multiplyScalar(this.GRENADE_THROW_SPEED);
-                console.log('[THROWABLE AIM] mode=TPS mouseX=' + mouseX + ' mouseY=' + mouseY + ' yaw=' + yaw.toFixed(3) + ' pitch=' + pitch.toFixed(3) + ' origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1) + ' velocity=' + velocity.x.toFixed(1) + ',' + velocity.y.toFixed(1) + ',' + velocity.z.toFixed(1));
+            if (!this._cursorRaycaster) {
+                this._cursorRaycaster = new THREE.Raycaster();
+                this._cursorNdc = new THREE.Vector2();
             }
+            this._cursorNdc.set(ndcX, ndcY);
+            this._cursorRaycaster.setFromCamera(this._cursorNdc, Renderer3D.camera);
 
-            return dir.normalize();
+            dir.copy(this._cursorRaycaster.ray.direction).normalize();
+            return dir;
         } else if (typeof InputManager !== 'undefined') {
             const yaw = InputManager.cameraYaw;
             const pitch = InputManager.cameraPitch;
@@ -351,11 +371,244 @@ const GrenadeSystem = {
         return dir;
     },
 
+    _findCursorWorldTarget: function() {
+        const origin = this._getThrowOrigin();
+        const isFPS = (typeof PlayerController !== 'undefined' && PlayerController.isFirstPersonMode);
+        const isLocked = (typeof InputManager !== 'undefined' && InputManager.isPointerLocked);
+
+        if (!Renderer3D || !Renderer3D.camera) {
+            return new THREE.Vector3(origin.x, 0, origin.z + 15);
+        }
+
+        if (!this._cursorRaycaster) {
+            this._cursorRaycaster = new THREE.Raycaster();
+            this._cursorNdc = new THREE.Vector2();
+        }
+
+        if (isFPS || isLocked) {
+            this._cursorNdc.set(0, 0);
+        } else {
+            const w = Math.max(1, window.innerWidth);
+            const h = Math.max(1, window.innerHeight);
+            const mouseX = (typeof InputManager !== 'undefined' && typeof InputManager.mouseX === 'number') ? InputManager.mouseX : w * 0.5;
+            const mouseY = (typeof InputManager !== 'undefined' && typeof InputManager.mouseY === 'number') ? InputManager.mouseY : h * 0.5;
+            const ndcX = (mouseX / w) * 2 - 1;
+            const ndcY = -(mouseY / h) * 2 + 1;
+            this._cursorNdc.set(ndcX, ndcY);
+        }
+
+        this._cursorRaycaster.setFromCamera(this._cursorNdc, Renderer3D.camera);
+        const ray = this._cursorRaycaster.ray;
+
+        const candidateMeshes = [];
+        if (Renderer3D.ground && Renderer3D.ground.visible) {
+            candidateMeshes.push(Renderer3D.ground);
+        }
+        if (Renderer3D._collisionMeshes && Array.isArray(Renderer3D._collisionMeshes)) {
+            for (let i = 0; i < Renderer3D._collisionMeshes.length; i++) {
+                const m = Renderer3D._collisionMeshes[i];
+                if (m && m.isMesh && m.visible) {
+                    candidateMeshes.push(m);
+                }
+            }
+        }
+
+        let hitPoint = null;
+        if (candidateMeshes.length > 0) {
+            const intersects = this._cursorRaycaster.intersectObjects(candidateMeshes, false);
+            if (intersects.length > 0) {
+                hitPoint = intersects[0].point.clone();
+            }
+        }
+
+        if (!hitPoint) {
+            if (ray.direction.y < -0.0001) {
+                const t = -ray.origin.y / ray.direction.y;
+                if (t > 0 && t < 300) {
+                    hitPoint = ray.origin.clone().addScaledVector(ray.direction, t);
+                }
+            }
+        }
+
+        if (!hitPoint) {
+            const maxAimDist = 50.0;
+            hitPoint = ray.origin.clone().addScaledVector(ray.direction, maxAimDist);
+        }
+
+        if (Renderer3D.getPlayerFloorHeight) {
+            const floorY = Renderer3D.getPlayerFloorHeight(hitPoint.x, hitPoint.z);
+            if (hitPoint.y < floorY) {
+                hitPoint.y = floorY;
+            }
+        }
+
+        return hitPoint;
+    },
+
+    _computeSelectedTarget: function(origin, fullTarget) {
+        const power = this._throwPower;
+        const minPower = this.THROW_POWER_MIN;
+        const maxPower = this.THROW_POWER_MAX;
+
+        const powerFactor = Math.max(0, Math.min(1, (power - minPower) / (maxPower - minPower)));
+
+        const dx = fullTarget.x - origin.x;
+        const dz = fullTarget.z - origin.z;
+        const fullHorizDist = Math.hypot(dx, dz);
+
+        if (fullHorizDist < 0.01) {
+            return fullTarget.clone();
+        }
+
+        const normDirX = dx / fullHorizDist;
+        const normDirZ = dz / fullHorizDist;
+
+        const minThrowDist = this.MIN_THROW_DISTANCE;
+        const nearDist = Math.min(minThrowDist, fullHorizDist * 0.4);
+
+        const targetDist = nearDist + (fullHorizDist - nearDist) * powerFactor;
+
+        const selX = origin.x + normDirX * targetDist;
+        const selZ = origin.z + normDirZ * targetDist;
+
+        const tDist = targetDist / fullHorizDist;
+        let selY = origin.y + (fullTarget.y - origin.y) * tDist;
+
+        if (Renderer3D && Renderer3D.getPlayerFloorHeight) {
+            const floorY = Renderer3D.getPlayerFloorHeight(selX, selZ);
+            if (selY < floorY) {
+                selY = floorY;
+            }
+        }
+
+        return new THREE.Vector3(selX, selY, selZ);
+    },
+
+    _solveBallisticVelocity: function(origin, target, gravity, maxSpeed) {
+        const g = gravity || this.GRENADE_GRAVITY || 22;
+        const V_max = maxSpeed || this.MAX_THROW_SPEED || 38;
+
+        const dx = target.x - origin.x;
+        const dz = target.z - origin.z;
+        const dy = target.y - origin.y;
+        const R = Math.hypot(dx, dz);
+
+        if (R < 0.1) {
+            const T = 0.4;
+            const vY = (dy + 0.5 * g * T * T) / T;
+            return {
+                velocity: new THREE.Vector3(0, vY, 0),
+                speed: Math.abs(vY),
+                flightTime: T,
+                reachable: true
+            };
+        }
+
+        const dist3D = Math.hypot(R, dy);
+        const vMinSq = g * (dy + dist3D);
+        const vMin = Math.sqrt(Math.max(0.1, vMinSq));
+
+        let reachable = true;
+        let V;
+
+        if (vMin > V_max) {
+            reachable = false;
+            V = V_max;
+            const angle = Math.PI / 4 + Math.atan2(dy, R) * 0.5;
+            const vHoriz = V * Math.cos(angle);
+            const vY = V * Math.sin(angle);
+            const vx = (dx / R) * vHoriz;
+            const vz = (dz / R) * vHoriz;
+            return {
+                velocity: new THREE.Vector3(vx, vY, vz),
+                speed: V,
+                flightTime: R / Math.max(0.001, vHoriz),
+                reachable: false
+            };
+        }
+
+        const vDesired = Math.sqrt(g * R) * 1.18 + Math.max(0, dy * 0.45);
+        V = Math.max(vMin * 1.05, Math.min(V_max, vDesired));
+
+        const term = V * V * V * V - g * (g * R * R + 2 * dy * V * V);
+        const D = Math.max(0, term);
+        const tanTheta = (V * V - Math.sqrt(D)) / (g * R);
+
+        const cosTheta = 1 / Math.sqrt(1 + tanTheta * tanTheta);
+        const sinTheta = tanTheta * cosTheta;
+
+        const vHoriz = V * cosTheta;
+        const vY = V * sinTheta;
+
+        const vx = (dx / R) * vHoriz;
+        const vz = (dz / R) * vHoriz;
+        const flightTime = R / Math.max(0.001, vHoriz);
+
+        return {
+            velocity: new THREE.Vector3(vx, vY, vz),
+            speed: V,
+            flightTime: flightTime,
+            reachable: true
+        };
+    },
+
+    _queryWorldCollision: function(pos, radius) {
+        if (!Renderer3D || !Renderer3D._collisionMeshes) return null;
+        const meshes = Renderer3D._collisionMeshes;
+        const r = radius || 0.3;
+
+        for (let i = 0; i < meshes.length; i++) {
+            const mesh = meshes[i];
+            if (!mesh || !mesh.isMesh || !mesh.visible) continue;
+            const box = new THREE.Box3().setFromObject(mesh);
+            if (box.isEmpty()) continue;
+            if (box.max.y - box.min.y < 0.65) continue;
+
+            const closestX = Math.max(box.min.x, Math.min(pos.x, box.max.x));
+            const closestY = Math.max(box.min.y, Math.min(pos.y, box.max.y));
+            const closestZ = Math.max(box.min.z, Math.min(pos.z, box.max.z));
+
+            const dx = pos.x - closestX;
+            const dy = pos.y - closestY;
+            const dz = pos.z - closestZ;
+            const distSq = dx * dx + dy * dy + dz * dz;
+
+            if (distSq <= r * r) {
+                let nx = 0, ny = 0, nz = 0;
+                if (distSq > 0.0001) {
+                    const len = Math.sqrt(distSq);
+                    nx = dx / len;
+                    ny = dy / len;
+                    nz = dz / len;
+                } else {
+                    const penX = Math.max(box.min.x - pos.x, 0, pos.x - box.max.x);
+                    const penY = Math.max(box.min.y - pos.y, 0, pos.y - box.max.y);
+                    const penZ = Math.max(box.min.z - pos.z, 0, pos.z - box.max.z);
+                    const minPen = Math.min(penX, penY, penZ);
+                    if (minPen === penY) ny = pos.y < (box.min.y + box.max.y) * 0.5 ? -1 : 1;
+                    else if (minPen === penX) nx = pos.x < (box.min.x + box.max.x) * 0.5 ? -1 : 1;
+                    else nz = pos.z < (box.min.z + box.max.z) * 0.5 ? -1 : 1;
+                }
+
+                const type = (Math.abs(ny) > 0.5) ? 'floor' : 'wall';
+
+                return {
+                    hit: true,
+                    point: new THREE.Vector3(closestX, closestY, closestZ),
+                    normal: new THREE.Vector3(nx, ny, nz).normalize(),
+                    mesh: mesh,
+                    type: type
+                };
+            }
+        }
+        return null;
+    },
+
     _simulateTrajectory: function(origin, velocity, options) {
         options = options || {};
         const gravity = this.GRENADE_GRAVITY;
-        const dt = 0.06;
-        const maxTime = options.maxTime || 2.5;
+        const dt = 0.016;
+        const maxTime = options.maxTime || 3.0;
         const canBounce = options.canBounce || false;
         const restitution = options.bounceRestitution || this.BOUNCE_RESTITUTION;
         const damping = options.bounceDamping || this.BOUNCE_DAMPING;
@@ -369,69 +622,16 @@ const GrenadeSystem = {
         let collisionPoint = null;
         const bouncePoints = [];
 
-        const collisionMeshes = (Renderer3D && Renderer3D._collisionMeshes) ? Renderer3D._collisionMeshes : [];
-        const cachedBoxes = [];
-        for (let i = 0; i < collisionMeshes.length; i++) {
-            const mesh = collisionMeshes[i];
-            if (!mesh || !mesh.isMesh || !mesh.visible) continue;
-            const box = new THREE.Box3().setFromObject(mesh);
-            if (box.isEmpty() || (box.max.y - box.min.y) < 0.65) continue;
-            cachedBoxes.push(box);
-        }
-
         let bounces = 0;
         for (let t = 0; t < maxTime; t += dt) {
             points.push(new THREE.Vector3(x, y, z));
 
-            if (canBounce && bounces < maxBounces) {
-                let nx = x + vx * dt;
-                let ny = y + vy * dt;
-                let nz = z + vz * dt;
-                let bounced = false;
-
-                for (let b = 0; b < cachedBoxes.length; b++) {
-                    const box = cachedBoxes[b];
-                    if (nx >= box.min.x - 0.1 && nx <= box.max.x + 0.1 &&
-                        nz >= box.min.z - 0.1 && nz <= box.max.z + 0.1 &&
-                        ny >= box.min.y - 0.1 && ny <= box.max.y + 0.1) {
-                        bounced = true;
-                        collisionPoint = new THREE.Vector3(x, y, z);
-                        bouncePoints.push(collisionPoint.clone());
-
-                        const penX = Math.max(box.min.x - x, 0, x - box.max.x);
-                        const penY = Math.max(box.min.y - y, 0, y - box.max.y);
-                        const penZ = Math.max(box.min.z - z, 0, z - box.max.z);
-
-                        if (penY <= penX && penY <= penZ) {
-                            vy = -vy * restitution;
-                        } else if (penX <= penZ) {
-                            vx = -vx * restitution;
-                        } else {
-                            vz = -vz * restitution;
-                        }
-
-                        vx *= damping;
-                        vy *= damping;
-                        vz *= damping;
-                        bounces++;
-                        break;
-                    }
-                }
-
-                if (!bounced) {
-                    x = nx;
-                    y = ny;
-                    z = nz;
-                }
-            } else {
-                x += vx * dt;
-                y += vy * dt;
-                z += vz * dt;
-            }
-
             vy -= gravity * dt;
+            x += vx * dt;
+            y += vy * dt;
+            z += vz * dt;
 
-            const floorY = Renderer3D.getPlayerFloorHeight ? Renderer3D.getPlayerFloorHeight(x, z) : 0;
+            const floorY = (Renderer3D && Renderer3D.getPlayerFloorHeight) ? Renderer3D.getPlayerFloorHeight(x, z) : 0;
             if (y <= floorY) {
                 y = floorY;
                 landed = true;
@@ -440,18 +640,34 @@ const GrenadeSystem = {
                 break;
             }
 
-            for (let b = 0; b < cachedBoxes.length; b++) {
-                const box = cachedBoxes[b];
-                if (x >= box.min.x - 0.1 && x <= box.max.x + 0.1 &&
-                    z >= box.min.z - 0.1 && z <= box.max.z + 0.1 &&
-                    y >= box.min.y - 0.1 && y <= box.max.y + 0.1) {
+            const col = this._queryWorldCollision(new THREE.Vector3(x, y, z), 0.3);
+            if (col && col.hit) {
+                if (canBounce && bounces < maxBounces && col.type === 'wall') {
+                    collisionPoint = col.point.clone();
+                    bouncePoints.push(collisionPoint.clone());
+
+                    const v = new THREE.Vector3(vx, vy, vz);
+                    const dot = v.dot(col.normal);
+                    const reflected = v.sub(col.normal.clone().multiplyScalar(2 * dot));
+                    reflected.multiplyScalar(restitution);
+                    reflected.multiplyScalar(damping);
+
+                    vx = reflected.x;
+                    vy = reflected.y;
+                    vz = reflected.z;
+
+                    x = col.point.x + col.normal.x * 0.35;
+                    y = col.point.y + col.normal.y * 0.35;
+                    z = col.point.z + col.normal.z * 0.35;
+
+                    bounces++;
+                } else {
                     landed = true;
                     landingY = y;
-                    collisionPoint = new THREE.Vector3(x, y, z);
+                    collisionPoint = col.point.clone();
                     break;
                 }
             }
-            if (landed) break;
 
             if (x < 0 || x > 1600 || z < 0 || z > 1600) {
                 landed = true;
@@ -474,34 +690,53 @@ const GrenadeSystem = {
 
     _computeThrowSolution: function() {
         const origin = this._getThrowOrigin();
-        const direction = this._getThrowDirection();
-        const velocity = direction.clone().multiplyScalar(this.GRENADE_THROW_SPEED);
+        const fullTarget = this._findCursorWorldTarget();
+        const selectedTarget = this._computeSelectedTarget(origin, fullTarget);
 
         const def = (typeof WeaponSystem !== 'undefined' && WeaponSystem.getCurrentDef)
             ? WeaponSystem.getCurrentDef()
             : null;
+
+        const gravity = (def && def.gravity) ? def.gravity : this.GRENADE_GRAVITY;
+        const maxSpeed = this.MAX_THROW_SPEED || 38;
+
+        const solve = this._solveBallisticVelocity(origin, selectedTarget, gravity, maxSpeed);
+        const velocity = solve.velocity;
+        const direction = velocity.clone().normalize();
+
         const options = def ? {
             canBounce: def.canBounce || false,
             bounceRestitution: def.bounceRestitution || this.BOUNCE_RESTITUTION,
             bounceDamping: def.bounceDamping || this.BOUNCE_DAMPING,
-            maxBounces: def.maxBounces || this.MAX_BOUNCES
-        } : {};
+            maxBounces: def.maxBounces || this.MAX_BOUNCES,
+            maxTime: Math.max(2.5, solve.flightTime + 1.0)
+        } : {
+            maxTime: Math.max(2.5, solve.flightTime + 1.0)
+        };
 
         const trajectory = this._simulateTrajectory(origin, velocity, options);
 
         if (this.DEBUG_GRENADE) {
-            console.log('[THROWABLE PROJECTILE] type=grenade origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1) + ' velocity=' + velocity.x.toFixed(1) + ',' + velocity.y.toFixed(1) + ',' + velocity.z.toFixed(1) + ' landing=' + trajectory.landingPoint.x.toFixed(1) + ',' + trajectory.landingPoint.y.toFixed(1) + ',' + trajectory.landingPoint.z.toFixed(1) + ' landed=' + trajectory.landed);
+            console.log('[THROWABLE SOLUTION] power=' + this._throwPower.toFixed(2) + ' origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1) + ' selected=' + selectedTarget.x.toFixed(1) + ',' + selectedTarget.y.toFixed(1) + ',' + selectedTarget.z.toFixed(1) + ' full=' + fullTarget.x.toFixed(1) + ',' + fullTarget.y.toFixed(1) + ',' + fullTarget.z.toFixed(1) + ' vel=' + velocity.x.toFixed(1) + ',' + velocity.y.toFixed(1) + ',' + velocity.z.toFixed(1) + ' landing=' + trajectory.landingPoint.x.toFixed(1) + ',' + trajectory.landingPoint.y.toFixed(1) + ',' + trajectory.landingPoint.z.toFixed(1));
         }
 
         return {
             origin: origin,
+            fullTarget: fullTarget,
+            selectedTarget: selectedTarget,
             direction: direction,
             velocity: velocity,
+            speed: solve.speed,
+            power: this._throwPower,
+            reachable: solve.reachable,
             trajectory: trajectory
         };
     },
 
-    _getLandingMarkerState: function(landingPoint, landed, collisionPoint) {
+    _getLandingMarkerState: function(landingPoint, landed, collisionPoint, reachable) {
+        if (reachable === false) {
+            return 'blocked';
+        }
         if (collisionPoint && !landed) {
             return 'blocked';
         }
@@ -534,9 +769,9 @@ const GrenadeSystem = {
                 this._landingMarker.scale.setScalar(1.3);
                 break;
             case 'dangerous':
-                this._landingMarker.material.color.setHex(0xff0000);
-                this._landingMarker.material.opacity = 0.65 + 0.35 * Math.abs(Math.sin(now * 0.008));
-                this._landingMarker.scale.setScalar(1.6);
+                this._landingMarker.material.color.setHex(0xffaa00);
+                this._landingMarker.material.opacity = 0.7 + 0.3 * Math.abs(Math.sin(now * 0.015));
+                this._landingMarker.scale.setScalar(1.8);
                 break;
         }
     },
@@ -661,8 +896,120 @@ const GrenadeSystem = {
         source.start(now);
     },
 
+    _processPowerKeys: function(deltaTime) {
+        if (!this._isAiming) return;
+        if (typeof InputManager === 'undefined' || !InputManager.keys) return;
+
+        const qNow = !!(InputManager.keys['q'] || InputManager.keys['Q']);
+        const eNow = !!(InputManager.keys['e'] || InputManager.keys['E']);
+
+        const qJust = qNow && !this._powerPrevQ;
+        const eJust = eNow && !this._powerPrevE;
+
+        const step = this.POWER_KEY_STEP;
+
+        if (qJust && !eNow) {
+            this._adjustPower(step);
+            this._powerQHeld = true;
+            this._powerEHeld = false;
+            this._powerRepeatTimer = 0;
+        } else if (eJust && !qNow) {
+            this._adjustPower(-step);
+            this._powerEHeld = true;
+            this._powerQHeld = false;
+            this._powerRepeatTimer = 0;
+        } else if (qJust && eNow) {
+            this._powerQHeld = true;
+            this._powerEHeld = false;
+            this._powerRepeatTimer = 0;
+        } else if (eJust && qNow) {
+            this._powerEHeld = true;
+            this._powerQHeld = false;
+            this._powerRepeatTimer = 0;
+        }
+
+        if (this._powerQHeld && qNow && !eNow) {
+            this._powerRepeatTimer += deltaTime;
+            if (this._powerRepeatTimer >= this.POWER_HOLD_DELAY) {
+                const elapsed = this._powerRepeatTimer - this.POWER_HOLD_DELAY;
+                const interval = 1000 / this.POWER_HOLD_RATE;
+                const steps = Math.floor(elapsed / interval);
+                if (steps > 0) {
+                    this._adjustPower(step * steps);
+                    this._powerRepeatTimer = this.POWER_HOLD_DELAY + (elapsed % interval);
+                }
+            }
+        } else if (this._powerEHeld && eNow && !qNow) {
+            this._powerRepeatTimer += deltaTime;
+            if (this._powerRepeatTimer >= this.POWER_HOLD_DELAY) {
+                const elapsed = this._powerRepeatTimer - this.POWER_HOLD_DELAY;
+                const interval = 1000 / this.POWER_HOLD_RATE;
+                const steps = Math.floor(elapsed / interval);
+                if (steps > 0) {
+                    this._adjustPower(-step * steps);
+                    this._powerRepeatTimer = this.POWER_HOLD_DELAY + (elapsed % interval);
+                }
+            }
+        } else {
+            this._powerQHeld = false;
+            this._powerEHeld = false;
+            this._powerRepeatTimer = 0;
+        }
+
+        this._powerPrevQ = qNow;
+        this._powerPrevE = eNow;
+    },
+
+    _adjustPower: function(delta) {
+        this._throwPower = Math.max(
+            this.THROW_POWER_MIN,
+            Math.min(this.THROW_POWER_MAX, Math.round((this._throwPower + delta) * 100) / 100)
+        );
+    },
+
+    _updatePowerHUD: function() {
+        const container = document.getElementById('throw-power-container');
+        const powerBar = document.getElementById('throw-power-bar');
+        const powerText = document.getElementById('throw-power-text');
+        const powerHint = document.getElementById('throw-power-hint');
+
+        if (!this._isAiming) {
+            if (container) container.style.display = 'none';
+            if (powerBar) powerBar.style.display = 'none';
+            if (powerText) powerText.textContent = '';
+            if (powerHint) powerHint.style.display = 'none';
+            return;
+        }
+
+        const pct = Math.round(this._throwPower * 100);
+        if (container) container.style.display = 'block';
+        if (powerBar) {
+            powerBar.style.display = 'block';
+            powerBar.style.width = pct + '%';
+        }
+        if (powerText) powerText.textContent = pct + '%';
+        if (powerHint) powerHint.style.display = 'block';
+    },
+
+    _hidePowerHUD: function() {
+        const container = document.getElementById('throw-power-container');
+        const powerBar = document.getElementById('throw-power-bar');
+        const powerText = document.getElementById('throw-power-text');
+        const powerHint = document.getElementById('throw-power-hint');
+        if (container) container.style.display = 'none';
+        if (powerBar) powerBar.style.display = 'none';
+        if (powerText) powerText.textContent = '';
+        if (powerHint) powerHint.style.display = 'none';
+    },
+
+    getThrowPower: function() {
+        return this._throwPower;
+    },
+
     updateTrajectoryPreview: function() {
         if (!this._isAiming || !Renderer3D || !Renderer3D.scene) return;
+
+        const now = performance.now();
 
         const solution = this._computeThrowSolution();
         const points = solution.trajectory.points;
@@ -670,10 +1017,11 @@ const GrenadeSystem = {
         const landed = solution.trajectory.landed;
         const collisionPoint = solution.trajectory.collisionPoint;
         const bouncePoints = solution.trajectory.bouncePoints;
+        const reachable = solution.reachable;
 
         this._updateTrajectoryDots(points);
 
-        const markerState = this._getLandingMarkerState(landingPoint, landed, collisionPoint);
+        const markerState = this._getLandingMarkerState(landingPoint, landed, collisionPoint, reachable);
         this._landingMarkerState = markerState;
 
         if (markerState === 'dangerous') {
@@ -693,6 +1041,19 @@ const GrenadeSystem = {
 
         this._updateCollisionIndicator(collisionPoint);
         this._updateBouncePreview(bouncePoints);
+
+        if (this._debugInnerRing) {
+            if (markerState === 'dangerous') {
+                this._debugInnerRing.position.copy(landingPoint);
+                this._debugInnerRing.position.y += landed ? 0.03 : 0.015;
+                this._debugInnerRing.visible = true;
+                this._debugInnerRing.material.color.setHex(0xffaa00);
+                this._debugInnerRing.material.opacity = 0.5 + 0.3 * Math.abs(Math.sin(now * 0.02));
+                this._debugInnerRing.scale.setScalar(1.4);
+            } else {
+                this._debugInnerRing.visible = false;
+            }
+        }
 
         if (this.DEBUG_GRENADE) {
             if (this._debugRadiusRing) {
@@ -739,6 +1100,8 @@ const GrenadeSystem = {
         }
 
         if (this._isAiming && !this._activeGrenade) {
+            this._processPowerKeys(deltaTime);
+            this._updatePowerHUD();
             this.updateTrajectoryPreview();
         }
     },
@@ -799,6 +1162,24 @@ const GrenadeSystem = {
                     damage = maxDamage * falloff * falloff;
                 }
                 damage = Math.max(1, Math.round(damage));
+                
+                // Check Observation Haki dodge for explosion damage
+                if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
+                    const attackContext = {
+                        source: 'grenade_explosion',
+                        damage: damage,
+                        attackerX: cx,
+                        attackerZ: cz,
+                        timestamp: Date.now()
+                    };
+                    
+                    if (ObservationHaki.tryDodge(attackContext)) {
+                        // Attack was dodged - skip damage
+                        console.log('[GRENADE] player dodged explosion damage');
+                        return;
+                    }
+                }
+                
                 GameState.damagePlayer(damage, 'grenade', cx, cz);
                 console.log('[GRENADE] player self-damage', damage);
             }
@@ -974,17 +1355,18 @@ const GrenadeSystem = {
         if (this._debugRadiusRing) this._debugRadiusRing.visible = false;
         if (this._debugInnerRing) this._debugInnerRing.visible = false;
         this._landingMarkerState = 'valid';
+        this._hidePowerHUD();
     }
 };
 
 class GrenadeProjectile {
-    constructor(x, y, z, dirX, dirY, dirZ, speed, gravity, fuseAfterLand, maxDamage, explosionRadius, innerRadius) {
+    constructor(x, y, z, velX, velY, velZ, gravity, fuseAfterLand, maxDamage, explosionRadius, innerRadius) {
         this.x = x;
         this.y = y;
         this.z = z;
-        this.vx = dirX * speed;
-        this.vy = dirY * speed;
-        this.vz = dirZ * speed;
+        this.vx = velX;
+        this.vy = velY;
+        this.vz = velZ;
         this.gravity = gravity;
         this.fuseAfterLand = fuseAfterLand;
         this.maxDamage = maxDamage;
@@ -998,6 +1380,7 @@ class GrenadeProjectile {
         this.angularVelX = (Math.random() - 0.5) * 12;
         this.angularVelY = (Math.random() - 0.5) * 12;
         this.angularVelZ = (Math.random() - 0.5) * 12;
+        this._bounced = false;
 
         this.mesh = this._createMesh();
     }
@@ -1061,33 +1444,6 @@ class GrenadeProjectile {
         return group;
     }
 
-    _checkWorldCollision() {
-        if (!Renderer3D || !Renderer3D._collisionMeshes) return false;
-        const meshes = Renderer3D._collisionMeshes;
-        const r = this.collisionRadius || 0.3;
-        for (let i = 0; i < meshes.length; i++) {
-            const mesh = meshes[i];
-            if (!mesh || !mesh.isMesh || !mesh.visible) continue;
-            const box = new THREE.Box3().setFromObject(mesh);
-            if (box.isEmpty()) continue;
-            if (box.max.y - box.min.y < 0.65) continue;
-
-            const closestX = Math.max(box.min.x, Math.min(this.x, box.max.x));
-            const closestY = Math.max(box.min.y, Math.min(this.y, box.max.y));
-            const closestZ = Math.max(box.min.z, Math.min(this.z, box.max.z));
-
-            const dx = this.x - closestX;
-            const dy = this.y - closestY;
-            const dz = this.z - closestZ;
-            const distSq = dx * dx + dy * dy + dz * dz;
-
-            if (distSq <= r * r) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     update(deltaTime) {
         if (this.exploded || this.expired) return;
 
@@ -1099,7 +1455,7 @@ class GrenadeProjectile {
             this.y += this.vy * deltaSec;
             this.z += this.vz * deltaSec;
 
-            const floorY = Renderer3D.getPlayerFloorHeight ? Renderer3D.getPlayerFloorHeight(this.x, this.z) : 0;
+            const floorY = (Renderer3D && Renderer3D.getPlayerFloorHeight) ? Renderer3D.getPlayerFloorHeight(this.x, this.z) : 0;
             if (this.y <= floorY) {
                 this.y = floorY;
                 this.landed = true;
@@ -1113,15 +1469,44 @@ class GrenadeProjectile {
                 }
             }
 
-            if (this._checkWorldCollision()) {
-                this.landed = true;
-                this.vx = 0;
-                this.vy = 0;
-                this.vz = 0;
-                this.fuseTimer = this.fuseAfterLand;
-                console.log('[GRENADE] hit obstacle at', this.x.toFixed(1), this.y.toFixed(1), this.z.toFixed(1), 'fuse=' + this.fuseAfterLand + 's');
-                if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem._playThrowableSFX) {
-                    GrenadeSystem._playThrowableSFX('bounce');
+            const col = GrenadeSystem._queryWorldCollision(new THREE.Vector3(this.x, this.y, this.z), this.collisionRadius || 0.3);
+            if (col && col.hit && !this.landed) {
+                const def = (typeof WeaponSystem !== 'undefined' && WeaponSystem.getCurrentDef) ? WeaponSystem.getCurrentDef() : null;
+                const canBounce = def ? (def.canBounce || false) : false;
+                const maxBounces = def ? (def.maxBounces || 1) : 1;
+                const restitution = def ? (def.bounceRestitution || 0.55) : 0.55;
+                const damping = def ? (def.bounceDamping || 0.82) : 0.82;
+
+                if (canBounce && !this._bounced && col.type === 'wall') {
+                    const v = new THREE.Vector3(this.vx, this.vy, this.vz);
+                    const dot = v.dot(col.normal);
+                    const reflected = v.sub(col.normal.clone().multiplyScalar(2 * dot));
+                    reflected.multiplyScalar(restitution);
+                    reflected.multiplyScalar(damping);
+
+                    this.vx = reflected.x;
+                    this.vy = reflected.y;
+                    this.vz = reflected.z;
+
+                    this.x = col.point.x + col.normal.x * 0.35;
+                    this.y = col.point.y + col.normal.y * 0.35;
+                    this.z = col.point.z + col.normal.z * 0.35;
+
+                    this._bounced = true;
+                    console.log('[GRENADE] bounced at', this.x.toFixed(1), this.y.toFixed(1), this.z.toFixed(1));
+                    if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem._playThrowableSFX) {
+                        GrenadeSystem._playThrowableSFX('bounce');
+                    }
+                } else {
+                    this.landed = true;
+                    this.vx = 0;
+                    this.vy = 0;
+                    this.vz = 0;
+                    this.fuseTimer = this.fuseAfterLand;
+                    console.log('[GRENADE] hit obstacle at', this.x.toFixed(1), this.y.toFixed(1), this.z.toFixed(1), 'fuse=' + this.fuseAfterLand + 's');
+                    if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem._playThrowableSFX) {
+                        GrenadeSystem._playThrowableSFX('bounce');
+                    }
                 }
             }
 

@@ -71,6 +71,11 @@ const Game = {
                 WeaponSystem.init();
             }
             
+            // 8.5. Khởi tạo Observation Haki System
+            if (typeof ObservationHaki !== 'undefined') {
+                ObservationHaki.init();
+            }
+            
             // 9. Khởi tạo GameState
             GameState.init();
             
