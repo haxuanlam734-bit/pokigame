@@ -13,6 +13,13 @@ const GrenadeSystem = {
     _throwOrigin: new THREE.Vector3(),
     _throwDirection: new THREE.Vector3(),
     _isAiming: false,
+    _initialized: false,
+    _collisionIndicator: null,
+    _bounceMarker: null,
+    _trajectoryDots: null,
+    _landingMarkerState: 'valid',
+    _noiseBuffer: null,
+    _lastDangerWarningTime: 0,
 
     GRENADE_THROW_SPEED: 22,
     GRENADE_GRAVITY: 22,
@@ -23,12 +30,23 @@ const GrenadeSystem = {
     GRENADE_FUTURE_NOISE_RADIUS: 20,
     DEBUG_GRENADE: false,
 
+    TRAJECTORY_DOT_COUNT: 20,
+    SELF_DAMAGE_WARNING_RADIUS: 4.0,
+    BOUNCE_RESTITUTION: 0.4,
+    BOUNCE_DAMPING: 0.8,
+    MAX_BOUNCES: 1,
+
+    TPS_THROW_MAX_YAW_OFFSET: Math.PI * 0.35,
+    TPS_THROW_MIN_PITCH: 0.087,
+    TPS_THROW_MAX_PITCH: 1.134,
+
     init: function() {
         this._grenades = [];
         this._activeGrenade = null;
         this._isAiming = false;
         this._createTrajectoryObjects();
-        console.log('GrenadeSystem initialized');
+        this._initialized = true;
+        console.log('[GRENADE] initialized');
     },
 
     _createTrajectoryObjects: function() {
@@ -50,27 +68,86 @@ const GrenadeSystem = {
             Renderer3D.scene.remove(this._debugInnerRing);
             this._debugInnerRing = null;
         }
+        if (this._trajectoryDots) {
+            Renderer3D.scene.remove(this._trajectoryDots);
+            this._trajectoryDots = null;
+        }
+        if (this._collisionIndicator) {
+            Renderer3D.scene.remove(this._collisionIndicator);
+            this._collisionIndicator = null;
+        }
+        if (this._bounceMarker) {
+            Renderer3D.scene.remove(this._bounceMarker);
+            this._bounceMarker = null;
+        }
 
-        const lineGeo = new THREE.BufferGeometry();
-        const lineMat = new THREE.LineBasicMaterial({
+        const dotCount = this.TRAJECTORY_DOT_COUNT;
+        const dotGeo = new THREE.BufferGeometry();
+        const dotPositions = new Float32Array(dotCount * 3);
+        dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPositions, 3));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        ctx.arc(16, 16, 14, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff2222';
+        ctx.fill();
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const dotMat = new THREE.PointsMaterial({
             color: 0xff2222,
+            size: 0.35,
+            map: texture,
             transparent: true,
-            opacity: 0.8,
-            depthTest: true,
+            opacity: 0.95,
+            depthTest: false,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+        this._trajectoryDots = new THREE.Points(dotGeo, dotMat);
+        this._trajectoryDots.visible = false;
+        this._trajectoryDots.frustumCulled = false;
+        this._trajectoryDots.renderOrder = 999;
+        Renderer3D.scene.add(this._trajectoryDots);
+
+        const collisionGeo = new THREE.SphereGeometry(0.25, 8, 8);
+        const collisionMat = new THREE.MeshBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.9,
+            depthTest: false,
             depthWrite: false
         });
-        this._trajectoryLine = new THREE.Line(lineGeo, lineMat);
-        this._trajectoryLine.visible = false;
-        this._trajectoryLine.frustumCulled = false;
-        this._trajectoryLine.renderOrder = 999;
-        Renderer3D.scene.add(this._trajectoryLine);
+        this._collisionIndicator = new THREE.Mesh(collisionGeo, collisionMat);
+        this._collisionIndicator.visible = false;
+        this._collisionIndicator.frustumCulled = false;
+        this._collisionIndicator.renderOrder = 998;
+        Renderer3D.scene.add(this._collisionIndicator);
+
+        const bounceGeo = new THREE.RingGeometry(0.25, 0.4, 16);
+        const bounceMat = new THREE.MeshBasicMaterial({
+            color: 0xffee00,
+            transparent: true,
+            opacity: 0.9,
+            depthTest: false,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        this._bounceMarker = new THREE.Mesh(bounceGeo, bounceMat);
+        this._bounceMarker.rotation.x = -Math.PI / 2;
+        this._bounceMarker.visible = false;
+        this._bounceMarker.frustumCulled = false;
+        this._bounceMarker.renderOrder = 997;
+        Renderer3D.scene.add(this._bounceMarker);
 
         const ringGeo = new THREE.RingGeometry(0.4, 0.55, 24);
         const ringMat = new THREE.MeshBasicMaterial({
             color: 0xff2222,
             transparent: true,
             opacity: 0.9,
-            depthTest: true,
+            depthTest: false,
             depthWrite: false,
             side: THREE.DoubleSide
         });
@@ -78,7 +155,7 @@ const GrenadeSystem = {
         this._landingMarker.rotation.x = -Math.PI / 2;
         this._landingMarker.visible = false;
         this._landingMarker.frustumCulled = false;
-        this._landingMarker.renderOrder = 998;
+        this._landingMarker.renderOrder = 996;
         Renderer3D.scene.add(this._landingMarker);
 
         const debugRadiusGeo = new THREE.RingGeometry(this.GRENADE_EXPLOSION_RADIUS - 0.15, this.GRENADE_EXPLOSION_RADIUS + 0.15, 32);
@@ -123,8 +200,11 @@ const GrenadeSystem = {
         if (typeof WeaponSystem !== 'undefined') {
             WeaponSystem._grenadeAiming = true;
         }
-        if (this._trajectoryLine) this._trajectoryLine.visible = true;
+        if (this._trajectoryDots) this._trajectoryDots.visible = true;
         if (this._landingMarker) this._landingMarker.visible = true;
+        this.updateTrajectoryPreview();
+        this._playThrowableSFX('aimStart');
+        console.log('[GRENADE] aim started');
     },
 
     cancelAiming: function() {
@@ -133,11 +213,14 @@ const GrenadeSystem = {
         if (typeof WeaponSystem !== 'undefined') {
             WeaponSystem._grenadeAiming = false;
         }
-        if (this._trajectoryLine) this._trajectoryLine.visible = false;
+        if (this._trajectoryDots) this._trajectoryDots.visible = false;
         if (this._landingMarker) this._landingMarker.visible = false;
+        if (this._collisionIndicator) this._collisionIndicator.visible = false;
+        if (this._bounceMarker) this._bounceMarker.visible = false;
         if (this._debugRadiusRing) this._debugRadiusRing.visible = false;
         if (this._debugInnerRing) this._debugInnerRing.visible = false;
         this._trajectoryPoints = [];
+        this._landingMarkerState = 'valid';
     },
 
     throwGrenade: function() {
@@ -148,6 +231,7 @@ const GrenadeSystem = {
 
         console.log('[GRENADE] throw requested');
         this.cancelAiming();
+        this._playThrowableSFX('throw');
         if (typeof WeaponSystem !== 'undefined') {
             WeaponSystem._grenadeAiming = false;
             if (!infiniteAmmo && WeaponSystem._grenadeCount > 0) {
@@ -157,9 +241,12 @@ const GrenadeSystem = {
             WeaponSystem._grenadeThrown = false;
         }
 
-        const origin = this._getThrowOrigin();
-        const direction = this._getThrowDirection();
+        const solution = this._computeThrowSolution();
+        const origin = solution.origin;
+        const direction = solution.direction;
+        const velocity = solution.velocity;
         console.log('[GRENADE] projectile spawned at', origin.x.toFixed(1), origin.y.toFixed(1), origin.z.toFixed(1));
+
         const grenade = new GrenadeProjectile(
             origin.x, origin.y, origin.z,
             direction.x, direction.y, direction.z,
@@ -173,12 +260,28 @@ const GrenadeSystem = {
 
         this._grenades.push(grenade);
         this._activeGrenade = grenade;
+        console.log('[GRENADE] projectile visible=true');
     },
 
     _getThrowOrigin: function() {
         const pos = new THREE.Vector3();
         if (typeof WeaponRenderer !== 'undefined' && WeaponRenderer._weaponHolder) {
             WeaponRenderer._weaponHolder.getWorldPosition(pos);
+
+            const offset = new THREE.Vector3();
+            if (typeof Renderer3D !== 'undefined' && Renderer3D.camera) {
+                const camDir = new THREE.Vector3();
+                Renderer3D.camera.getWorldDirection(camDir);
+                const right = new THREE.Vector3();
+                right.crossVectors(camDir, new THREE.Vector3(0, 1, 0)).normalize();
+                const up = new THREE.Vector3();
+                up.crossVectors(right, camDir).normalize();
+
+                offset.addScaledVector(camDir, 0.3);
+                offset.addScaledVector(right, 0.15);
+                offset.addScaledVector(up, 0.1);
+            }
+            pos.add(offset);
         } else if (typeof PlayerController !== 'undefined') {
             pos.set(
                 PlayerController.position.x + 0.3,
@@ -192,7 +295,48 @@ const GrenadeSystem = {
     _getThrowDirection: function() {
         const dir = new THREE.Vector3();
         if (typeof Renderer3D !== 'undefined' && Renderer3D.camera) {
-            Renderer3D.camera.getWorldDirection(dir);
+            const isFPS = (typeof PlayerController !== 'undefined' && PlayerController.isFirstPersonMode);
+            const isLocked = (typeof InputManager !== 'undefined' && InputManager.isPointerLocked);
+
+            if (isFPS || isLocked) {
+                Renderer3D.camera.getWorldDirection(dir);
+                if (this.DEBUG_GRENADE) {
+                    const origin = this._getThrowOrigin();
+                    console.log('[THROWABLE AIM] mode=FPS mouseX=' + (typeof InputManager !== 'undefined' ? InputManager.mouseX : '?') + ' mouseY=' + (typeof InputManager !== 'undefined' ? InputManager.mouseY : '?') + ' yaw=' + (typeof InputManager !== 'undefined' ? InputManager.cameraYaw.toFixed(3) : '?') + ' pitch=' + (typeof InputManager !== 'undefined' ? InputManager.cameraPitch.toFixed(3) : '?') + ' origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1));
+                }
+                return dir.normalize();
+            }
+
+            const w = Math.max(1, window.innerWidth);
+            const h = Math.max(1, window.innerHeight);
+            const mouseX = (typeof InputManager !== 'undefined' && typeof InputManager.mouseX === 'number') ? InputManager.mouseX : w * 0.5;
+            const mouseY = (typeof InputManager !== 'undefined' && typeof InputManager.mouseY === 'number') ? InputManager.mouseY : h * 0.5;
+            const normalizedX = mouseX / w;
+            const normalizedY = mouseY / h;
+
+            const baseYaw = (typeof InputManager !== 'undefined') ? InputManager.cameraYaw : 0;
+            const yawOffset = (normalizedX - 0.5) * 2 * this.TPS_THROW_MAX_YAW_OFFSET;
+            const yaw = baseYaw + yawOffset;
+
+            const pitch = THREE.MathUtils.lerp(
+                this.TPS_THROW_MAX_PITCH,
+                this.TPS_THROW_MIN_PITCH,
+                normalizedY
+            );
+
+            dir.set(
+                Math.sin(yaw) * Math.cos(pitch),
+                Math.sin(pitch),
+                Math.cos(yaw) * Math.cos(pitch)
+            );
+
+            if (this.DEBUG_GRENADE) {
+                const origin = this._getThrowOrigin();
+                const velocity = dir.clone().multiplyScalar(this.GRENADE_THROW_SPEED);
+                console.log('[THROWABLE AIM] mode=TPS mouseX=' + mouseX + ' mouseY=' + mouseY + ' yaw=' + yaw.toFixed(3) + ' pitch=' + pitch.toFixed(3) + ' origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1) + ' velocity=' + velocity.x.toFixed(1) + ',' + velocity.y.toFixed(1) + ',' + velocity.z.toFixed(1));
+            }
+
+            return dir.normalize();
         } else if (typeof InputManager !== 'undefined') {
             const yaw = InputManager.cameraYaw;
             const pitch = InputManager.cameraPitch;
@@ -201,28 +345,29 @@ const GrenadeSystem = {
                 -Math.sin(pitch),
                 Math.cos(yaw) * Math.cos(pitch)
             );
+            return dir.normalize();
         }
-        dir.normalize();
+
         return dir;
     },
 
-    updateTrajectoryPreview: function() {
-        if (!this._isAiming || !Renderer3D || !Renderer3D.scene) return;
-
-        const origin = this._getThrowOrigin();
-        const direction = this._getThrowDirection();
-        const speed = this.GRENADE_THROW_SPEED;
+    _simulateTrajectory: function(origin, velocity, options) {
+        options = options || {};
         const gravity = this.GRENADE_GRAVITY;
         const dt = 0.06;
-        const maxTime = 2.5;
+        const maxTime = options.maxTime || 2.5;
+        const canBounce = options.canBounce || false;
+        const restitution = options.bounceRestitution || this.BOUNCE_RESTITUTION;
+        const damping = options.bounceDamping || this.BOUNCE_DAMPING;
+        const maxBounces = options.maxBounces || this.MAX_BOUNCES;
 
-        const points = [];
         let x = origin.x, y = origin.y, z = origin.z;
-        let vx = direction.x * speed;
-        let vy = direction.y * speed;
-        let vz = direction.z * speed;
+        let vx = velocity.x, vy = velocity.y, vz = velocity.z;
         let landed = false;
         let landingY = 0;
+        const points = [];
+        let collisionPoint = null;
+        const bouncePoints = [];
 
         const collisionMeshes = (Renderer3D && Renderer3D._collisionMeshes) ? Renderer3D._collisionMeshes : [];
         const cachedBoxes = [];
@@ -234,12 +379,56 @@ const GrenadeSystem = {
             cachedBoxes.push(box);
         }
 
+        let bounces = 0;
         for (let t = 0; t < maxTime; t += dt) {
             points.push(new THREE.Vector3(x, y, z));
 
-            x += vx * dt;
-            y += vy * dt;
-            z += vz * dt;
+            if (canBounce && bounces < maxBounces) {
+                let nx = x + vx * dt;
+                let ny = y + vy * dt;
+                let nz = z + vz * dt;
+                let bounced = false;
+
+                for (let b = 0; b < cachedBoxes.length; b++) {
+                    const box = cachedBoxes[b];
+                    if (nx >= box.min.x - 0.1 && nx <= box.max.x + 0.1 &&
+                        nz >= box.min.z - 0.1 && nz <= box.max.z + 0.1 &&
+                        ny >= box.min.y - 0.1 && ny <= box.max.y + 0.1) {
+                        bounced = true;
+                        collisionPoint = new THREE.Vector3(x, y, z);
+                        bouncePoints.push(collisionPoint.clone());
+
+                        const penX = Math.max(box.min.x - x, 0, x - box.max.x);
+                        const penY = Math.max(box.min.y - y, 0, y - box.max.y);
+                        const penZ = Math.max(box.min.z - z, 0, z - box.max.z);
+
+                        if (penY <= penX && penY <= penZ) {
+                            vy = -vy * restitution;
+                        } else if (penX <= penZ) {
+                            vx = -vx * restitution;
+                        } else {
+                            vz = -vz * restitution;
+                        }
+
+                        vx *= damping;
+                        vy *= damping;
+                        vz *= damping;
+                        bounces++;
+                        break;
+                    }
+                }
+
+                if (!bounced) {
+                    x = nx;
+                    y = ny;
+                    z = nz;
+                }
+            } else {
+                x += vx * dt;
+                y += vy * dt;
+                z += vz * dt;
+            }
+
             vy -= gravity * dt;
 
             const floorY = Renderer3D.getPlayerFloorHeight ? Renderer3D.getPlayerFloorHeight(x, z) : 0;
@@ -247,6 +436,7 @@ const GrenadeSystem = {
                 y = floorY;
                 landed = true;
                 landingY = floorY;
+                if (!collisionPoint) collisionPoint = new THREE.Vector3(x, y, z);
                 break;
             }
 
@@ -257,6 +447,7 @@ const GrenadeSystem = {
                     y >= box.min.y - 0.1 && y <= box.max.y + 0.1) {
                     landed = true;
                     landingY = y;
+                    collisionPoint = new THREE.Vector3(x, y, z);
                     break;
                 }
             }
@@ -271,27 +462,250 @@ const GrenadeSystem = {
 
         points.push(new THREE.Vector3(x, y, z));
 
-        if (points.length > 1 && this._trajectoryLine) {
-            const geo = new THREE.BufferGeometry().setFromPoints(points);
-            this._trajectoryLine.geometry.dispose();
-            this._trajectoryLine.geometry = geo;
-            this._trajectoryLine.visible = true;
+        return {
+            points: points,
+            landingPoint: new THREE.Vector3(x, landed ? landingY : y, z),
+            landed: landed,
+            landingY: landingY,
+            collisionPoint: collisionPoint,
+            bouncePoints: bouncePoints
+        };
+    },
+
+    _computeThrowSolution: function() {
+        const origin = this._getThrowOrigin();
+        const direction = this._getThrowDirection();
+        const velocity = direction.clone().multiplyScalar(this.GRENADE_THROW_SPEED);
+
+        const def = (typeof WeaponSystem !== 'undefined' && WeaponSystem.getCurrentDef)
+            ? WeaponSystem.getCurrentDef()
+            : null;
+        const options = def ? {
+            canBounce: def.canBounce || false,
+            bounceRestitution: def.bounceRestitution || this.BOUNCE_RESTITUTION,
+            bounceDamping: def.bounceDamping || this.BOUNCE_DAMPING,
+            maxBounces: def.maxBounces || this.MAX_BOUNCES
+        } : {};
+
+        const trajectory = this._simulateTrajectory(origin, velocity, options);
+
+        if (this.DEBUG_GRENADE) {
+            console.log('[THROWABLE PROJECTILE] type=grenade origin=' + origin.x.toFixed(1) + ',' + origin.y.toFixed(1) + ',' + origin.z.toFixed(1) + ' velocity=' + velocity.x.toFixed(1) + ',' + velocity.y.toFixed(1) + ',' + velocity.z.toFixed(1) + ' landing=' + trajectory.landingPoint.x.toFixed(1) + ',' + trajectory.landingPoint.y.toFixed(1) + ',' + trajectory.landingPoint.z.toFixed(1) + ' landed=' + trajectory.landed);
+        }
+
+        return {
+            origin: origin,
+            direction: direction,
+            velocity: velocity,
+            trajectory: trajectory
+        };
+    },
+
+    _getLandingMarkerState: function(landingPoint, landed, collisionPoint) {
+        if (collisionPoint && !landed) {
+            return 'blocked';
+        }
+
+        if (PlayerController && landingPoint) {
+            const dx = landingPoint.x - PlayerController.position.x;
+            const dz = landingPoint.z - PlayerController.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < this.SELF_DAMAGE_WARNING_RADIUS) {
+                return 'dangerous';
+            }
+        }
+
+        return 'valid';
+    },
+
+    _updateLandingMarkerVisuals: function(state) {
+        if (!this._landingMarker) return;
+
+        const now = performance.now();
+        switch (state) {
+            case 'valid':
+                this._landingMarker.material.color.setHex(0xff2222);
+                this._landingMarker.material.opacity = 0.9;
+                this._landingMarker.scale.setScalar(1);
+                break;
+            case 'blocked':
+                this._landingMarker.material.color.setHex(0xff6600);
+                this._landingMarker.material.opacity = 0.9;
+                this._landingMarker.scale.setScalar(1.3);
+                break;
+            case 'dangerous':
+                this._landingMarker.material.color.setHex(0xff0000);
+                this._landingMarker.material.opacity = 0.65 + 0.35 * Math.abs(Math.sin(now * 0.008));
+                this._landingMarker.scale.setScalar(1.6);
+                break;
+        }
+    },
+
+    _updateCollisionIndicator: function(collisionPoint) {
+        if (!this._collisionIndicator) return;
+
+        if (collisionPoint) {
+            this._collisionIndicator.position.copy(collisionPoint);
+            this._collisionIndicator.visible = true;
+            const pulse = 1 + 0.3 * Math.sin(performance.now() * 0.012);
+            this._collisionIndicator.scale.setScalar(pulse);
+        } else {
+            this._collisionIndicator.visible = false;
+        }
+    },
+
+    _updateBouncePreview: function(bouncePoints) {
+        if (!this._bounceMarker) return;
+
+        if (bouncePoints && bouncePoints.length > 0) {
+            const lastBounce = bouncePoints[bouncePoints.length - 1];
+            this._bounceMarker.position.copy(lastBounce);
+            this._bounceMarker.position.y += 0.05;
+            this._bounceMarker.visible = true;
+        } else {
+            this._bounceMarker.visible = false;
+        }
+    },
+
+    _updateTrajectoryDots: function(points) {
+        if (!this._trajectoryDots || points.length < 2) return;
+
+        const positions = this._trajectoryDots.geometry.attributes.position.array;
+        const count = this.TRAJECTORY_DOT_COUNT;
+        const len = points.length;
+
+        for (let i = 0; i < count; i++) {
+            const t = len > 1 ? i / (count - 1) : 0;
+            const idx = Math.min(Math.floor(t * (len - 1)), len - 1);
+            const p = points[idx];
+            positions[i * 3] = p.x;
+            positions[i * 3 + 1] = p.y;
+            positions[i * 3 + 2] = p.z;
+        }
+
+        this._trajectoryDots.geometry.attributes.position.needsUpdate = true;
+        this._trajectoryDots.visible = true;
+    },
+
+    _playThrowableSFX: function(type) {
+        if (typeof AudioController === 'undefined' || !AudioController._audioContext) return;
+        if (AudioController._audioContext.state === 'suspended') return;
+
+        try {
+            const ctx = AudioController._audioContext;
+            const now = ctx.currentTime;
+
+            switch (type) {
+                case 'aimStart':
+                    this._playTone(ctx, now, 600, 0.06, 'sine', 0.02);
+                    break;
+                case 'danger':
+                    this._playTone(ctx, now, 200, 0.12, 'sawtooth', 0.03);
+                    break;
+                case 'throw':
+                    this._playNoiseBurst(ctx, now, 0.12, 0.06);
+                    break;
+                case 'bounce':
+                    this._playTone(ctx, now, 120, 0.08, 'triangle', 0.04);
+                    break;
+                case 'land':
+                    this._playTone(ctx, now, 80, 0.1, 'sine', 0.03);
+                    break;
+                case 'fuse':
+                    this._playTone(ctx, now, 400, 0.03, 'square', 0.01);
+                    break;
+                case 'explosion':
+                    this._playNoiseBurst(ctx, now, 0.35, 0.18);
+                    this._playTone(ctx, now, 50, 0.25, 'sine', 0.12);
+                    break;
+            }
+        } catch (e) {
+            // ignore audio errors
+        }
+    },
+
+    _playTone: function(ctx, now, freq, duration, type, volume) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(freq, now);
+        osc.type = type;
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.start(now);
+        osc.stop(now + duration);
+    },
+
+    _playNoiseBurst: function(ctx, now, duration, volume) {
+        if (!this._noiseBuffer) {
+            const bufferSize = ctx.sampleRate * 0.5;
+            this._noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = this._noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+        }
+        const source = ctx.createBufferSource();
+        source.buffer = this._noiseBuffer;
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1200, now);
+        filter.frequency.exponentialRampToValueAtTime(80, now + duration);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        source.start(now);
+    },
+
+    updateTrajectoryPreview: function() {
+        if (!this._isAiming || !Renderer3D || !Renderer3D.scene) return;
+
+        const solution = this._computeThrowSolution();
+        const points = solution.trajectory.points;
+        const landingPoint = solution.trajectory.landingPoint;
+        const landed = solution.trajectory.landed;
+        const collisionPoint = solution.trajectory.collisionPoint;
+        const bouncePoints = solution.trajectory.bouncePoints;
+
+        this._updateTrajectoryDots(points);
+
+        const markerState = this._getLandingMarkerState(landingPoint, landed, collisionPoint);
+        this._landingMarkerState = markerState;
+
+        if (markerState === 'dangerous') {
+            const now = performance.now();
+            if (now - this._lastDangerWarningTime > 1200) {
+                this._lastDangerWarningTime = now;
+                this._playThrowableSFX('danger');
+            }
         }
 
         if (this._landingMarker) {
-            this._landingMarker.position.set(x, landed ? landingY + 0.05 : y, z);
+            this._landingMarker.position.copy(landingPoint);
+            this._landingMarker.position.y += landed ? 0.05 : 0.02;
             this._landingMarker.visible = true;
+            this._updateLandingMarkerVisuals(markerState);
         }
+
+        this._updateCollisionIndicator(collisionPoint);
+        this._updateBouncePreview(bouncePoints);
 
         if (this.DEBUG_GRENADE) {
             if (this._debugRadiusRing) {
-                this._debugRadiusRing.position.set(x, landed ? landingY + 0.02 : y, z);
+                this._debugRadiusRing.position.copy(landingPoint);
+                this._debugRadiusRing.position.y += landed ? 0.02 : 0.01;
                 this._debugRadiusRing.visible = true;
             }
             if (this._debugInnerRing) {
-                this._debugInnerRing.position.set(x, landed ? landingY + 0.03 : y, z);
+                this._debugInnerRing.position.copy(landingPoint);
+                this._debugInnerRing.position.y += landed ? 0.03 : 0.015;
                 this._debugInnerRing.visible = true;
             }
+            console.log('[GRENADE] trajectory updated');
         }
     },
 
@@ -337,6 +751,7 @@ const GrenadeSystem = {
         const maxDamage = grenade.maxDamage;
         const innerRadius = grenade.innerRadius;
         console.log('[GRENADE] explode at', cx.toFixed(1), cy.toFixed(1), cz.toFixed(1));
+        this._playThrowableSFX('explosion');
 
         if (typeof Renderer3D !== 'undefined' && Renderer3D.scene) {
             this._createExplosionVFX(cx, cy, cz, radius);
@@ -552,10 +967,13 @@ const GrenadeSystem = {
             WeaponSystem._grenadeAiming = false;
             WeaponSystem._grenadeThrown = false;
         }
-        if (this._trajectoryLine) this._trajectoryLine.visible = false;
+        if (this._trajectoryDots) this._trajectoryDots.visible = false;
         if (this._landingMarker) this._landingMarker.visible = false;
+        if (this._collisionIndicator) this._collisionIndicator.visible = false;
+        if (this._bounceMarker) this._bounceMarker.visible = false;
         if (this._debugRadiusRing) this._debugRadiusRing.visible = false;
         if (this._debugInnerRing) this._debugInnerRing.visible = false;
+        this._landingMarkerState = 'valid';
     }
 };
 
@@ -594,8 +1012,18 @@ class GrenadeProjectile {
         if (loadedModel && loadedModel.clone) {
             const clone = loadedModel.clone(true);
             clone.visible = true;
+
+            const box = new THREE.Box3().setFromObject(clone);
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0.0001) {
+                const targetSize = 0.25;
+                const scale = targetSize / maxDim;
+                clone.scale.setScalar(scale);
+            }
+
             group.add(clone);
-            console.log('[GRENADE] Using loaded GLB model for projectile');
+            console.log('[GRENADE] Using loaded GLB model for projectile, normalized scale');
         } else {
             const bodyGeo = new THREE.CylinderGeometry(0.08, 0.09, 0.18, 8);
             const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3d4a2e, roughness: 0.7, metalness: 0.3 });
@@ -658,7 +1086,7 @@ class GrenadeProjectile {
             }
         }
         return false;
-    },
+    }
 
     update(deltaTime) {
         if (this.exploded || this.expired) return;
@@ -680,6 +1108,9 @@ class GrenadeProjectile {
                 this.vz = 0;
                 this.fuseTimer = this.fuseAfterLand;
                 console.log('[GRENADE] landed at', this.x.toFixed(1), this.y.toFixed(1), this.z.toFixed(1), 'fuse=' + this.fuseAfterLand + 's');
+                if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem._playThrowableSFX) {
+                    GrenadeSystem._playThrowableSFX('land');
+                }
             }
 
             if (this._checkWorldCollision()) {
@@ -689,12 +1120,18 @@ class GrenadeProjectile {
                 this.vz = 0;
                 this.fuseTimer = this.fuseAfterLand;
                 console.log('[GRENADE] hit obstacle at', this.x.toFixed(1), this.y.toFixed(1), this.z.toFixed(1), 'fuse=' + this.fuseAfterLand + 's');
+                if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem._playThrowableSFX) {
+                    GrenadeSystem._playThrowableSFX('bounce');
+                }
             }
 
             if (this.x < 0 || this.x > 1600 || this.z < 0 || this.z > 1600) {
                 this.expired = true;
             }
         } else {
+            if (this.fuseTimer === this.fuseAfterLand && typeof GrenadeSystem !== 'undefined' && GrenadeSystem._playThrowableSFX) {
+                GrenadeSystem._playThrowableSFX('fuse');
+            }
             this.fuseTimer -= deltaSec;
             if (this.fuseTimer <= 0) {
                 console.log('[GRENADE] fuse done, explode');

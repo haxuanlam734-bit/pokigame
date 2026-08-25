@@ -108,10 +108,13 @@ const GameLoop = {
         }
 
         // Lazy init grenade system n?u ch?a load
-        if (typeof GrenadeSystem !== 'undefined' && typeof WeaponSystem !== 'undefined') {
-            if (!GrenadeSystem._grenades && WeaponSystem._tryInitGrenade) {
-                WeaponSystem._tryInitGrenade();
-            }
+        if (
+            typeof GrenadeSystem !== 'undefined' &&
+            typeof WeaponSystem !== 'undefined' &&
+            !GrenadeSystem._initialized &&
+            WeaponSystem._tryInitGrenade
+        ) {
+            WeaponSystem._tryInitGrenade();
         }
 
         if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.update) {

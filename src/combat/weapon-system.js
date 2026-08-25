@@ -217,7 +217,7 @@ const WeaponSystem = {
         // Lazy grenade init - chỉ init khi GrenodeSystem đã load
         this._tryInitGrenade = function() {
             if (typeof GrenadeSystem !== 'undefined') {
-                if (!GrenadeSystem._grenades) {
+                if (!GrenadeSystem._initialized) {
                     GrenadeSystem.init();
                 }
                 return true;
@@ -255,6 +255,9 @@ const WeaponSystem = {
         this._reloadTimer       = 0;
         this._fireCooldown      = 0;
         if (weaponId === 'grenade') {
+            if (typeof GrenadeSystem !== 'undefined' && !GrenadeSystem._initialized) {
+                GrenadeSystem.init();
+            }
             console.log('[GRENADE] equipped, count=' + this._grenadeCount);
         }
         this._updateAmmoHUD();
