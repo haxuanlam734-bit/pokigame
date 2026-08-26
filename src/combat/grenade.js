@@ -1163,6 +1163,12 @@ const GrenadeSystem = {
                 }
                 damage = Math.max(1, Math.round(damage));
                 
+                // Check Q-roll i-frame for explosion damage
+                if (typeof PlayerController !== 'undefined' && PlayerController.isDodging) {
+                    console.log('[GRENADE] player dodged explosion damage via Q-roll');
+                    return;
+                }
+
                 // Check Observation Haki dodge for explosion damage
                 if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
                     const attackContext = {
@@ -1175,7 +1181,7 @@ const GrenadeSystem = {
                     
                     if (ObservationHaki.tryDodge(attackContext)) {
                         // Attack was dodged - skip damage
-                        console.log('[GRENADE] player dodged explosion damage');
+                        console.log('[GRENADE] player dodged explosion damage via Haki');
                         return;
                     }
                 }

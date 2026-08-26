@@ -336,6 +336,13 @@ const PlayerController = {
             WeaponRenderer.update(deltaSec);
         }
 
+        // IMPORTANT: Read Q just-pressed BEFORE calling InputManager.update()
+        // because update() resets the just-pressed flag
+        const qJustPressed = InputManager.isQJustPressed();
+        if (qJustPressed) {
+            console.log('[DODGE DEBUG] TIER 4 - PlayerController received Q');
+        }
+
         // Sau khi WeaponSystem doc xong mouse state, reset just-pressed flags
         InputManager.update();
 
@@ -355,6 +362,52 @@ const PlayerController = {
         if (inputA) this._moveVec.sub(this._rightVec);
 
         this.hasMovementInput = this._moveVec.lengthSq() > 0.0001;
+
+        // --- Dodge Roll Trigger Check ---
+        // Check Q key press AFTER computing movement vector and BEFORE normalizing
+        // But we need to normalize _moveVec first to get a valid direction
+        if (this.hasMovementInput) {
+            this._moveVec.normalize();
+        }
+
+        if (qJustPressed) {
+            console.log('[DODGE DEBUG] TIER 3 - Q JUST PRESSED');
+            console.log('[DODGE INPUT] Q key pressed');
+            
+            if (this.isDodging) {
+                console.log('[DODGE BLOCKED] already dodging');
+            } else if (flyActive) {
+                console.log('[DODGE BLOCKED] fly mode active');
+            } else if (!this.isGrounded) {
+                console.log('[DODGE BLOCKED] airborne');
+            } else if (this.isDead || this.isRespawning) {
+                console.log('[DODGE BLOCKED] dead/respawning');
+            } else if (!this.hasMovementInput) {
+                console.log('[DODGE BLOCKED] no movement input');
+            } else if (this.dodgeCooldownTimer > 0) {
+                console.log('[DODGE BLOCKED] cooldown (' + this.dodgeCooldownTimer.toFixed(2) + 's remaining)');
+            } else if (typeof GameState !== 'undefined' && !GameState.adminInfiniteStamina && GameState.stamina < this.DODGE_ROLL_COST) {
+                console.log('[DODGE BLOCKED] insufficient stamina (' + GameState.stamina + ' < ' + this.DODGE_ROLL_COST + ')');
+            } else {
+                // All conditions passed - start dodge roll
+                this.dodgeDirection.copy(this._moveVec).normalize();
+                
+                // Consume stamina
+                if (typeof GameState !== 'undefined' && !GameState.adminInfiniteStamina) {
+                    GameState.stamina -= this.DODGE_ROLL_COST;
+                }
+                
+                // Start dodge roll
+                this.isDodging = true;
+                this.dodgeTimer = this.DODGE_ROLL_DURATION;
+                this.dodgeCooldownTimer = this.DODGE_ROLL_COOLDOWN;
+                
+                // Lock rotation to dodge direction during roll
+                this.currentMoveAngle = Math.atan2(this.dodgeDirection.x, this.dodgeDirection.z);
+                
+                console.log('[DODGE START] direction=(' + this.dodgeDirection.x.toFixed(2) + ',' + this.dodgeDirection.z.toFixed(2) + ') stamina=' + (typeof GameState !== 'undefined' ? GameState.stamina : 'N/A'));
+            }
+        }
 
         if (flyActive) {
             this.isCrouching = false;
@@ -378,8 +431,7 @@ const PlayerController = {
         }
 
         if (this.hasMovementInput) {
-            this._moveVec.normalize();
-
+            // _moveVec already normalized in dodge check section
             this.targetVelocity.x = this._moveVec.x * this.speed;
             this.targetVelocity.z = this._moveVec.z * this.speed;
 
@@ -389,9 +441,32 @@ const PlayerController = {
             this.targetVelocity.z = 0;
         }
 
-        const smoothFactor = 1 - Math.exp(-this.movementSmoothness * deltaSec);
-        this.velocity.x += (this.targetVelocity.x - this.velocity.x) * smoothFactor;
-        this.velocity.z += (this.targetVelocity.z - this.velocity.z) * smoothFactor;
+        // --- Dodge Roll Movement ---
+        if (this.isDodging) {
+            this.dodgeTimer -= deltaSec;
+            
+            if (this.dodgeTimer <= 0) {
+                // End dodge roll
+                this.isDodging = false;
+                this.dodgeTimer = 0;
+                console.log('[DODGE] END');
+            } else {
+                // Override velocity with dodge roll velocity (direction already captured and normalized)
+                this.velocity.x = this.dodgeDirection.x * this.DODGE_ROLL_SPEED;
+                this.velocity.z = this.dodgeDirection.z * this.DODGE_ROLL_SPEED;
+            }
+        } else {
+            // Normal movement smoothing (skip when dodging)
+            const smoothFactor = 1 - Math.exp(-this.movementSmoothness * deltaSec);
+            this.velocity.x += (this.targetVelocity.x - this.velocity.x) * smoothFactor;
+            this.velocity.z += (this.targetVelocity.z - this.velocity.z) * smoothFactor;
+        }
+
+        // Update cooldown
+        if (this.dodgeCooldownTimer > 0) {
+            this.dodgeCooldownTimer -= deltaSec;
+            if (this.dodgeCooldownTimer < 0) this.dodgeCooldownTimer = 0;
+        }
 
         // Di chuyển có collision. Tách X/Z thành hai bước để nhân vật có thể
         // trượt dọc theo tường thay vì bị kẹt khi chạy chéo vào góc.
@@ -439,7 +514,8 @@ const PlayerController = {
             }
         }
 
-        if (this.hasMovementInput) {
+        // Update rotation (skip during dodge to lock roll direction)
+        if (this.hasMovementInput && !this.isDodging) {
             let angleDiff = this.targetMoveAngle - this.currentMoveAngle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -470,9 +546,11 @@ const PlayerController = {
         let playerAnim = 'idle';
 
         // Animation priority system for FBX model
-        // DEATH > ATTACK/SHOOT/THROW/MELEE > JUMP > CROUCH > RUN > WALK > IDLE
+        // DEATH > DODGE > ATTACK/SHOOT/THROW/MELEE > JUMP > CROUCH > RUN > WALK > IDLE
         if (this.isDead) {
             playerAnim = 'death';
+        } else if (this.isDodging) {
+            playerAnim = 'dodge';
         } else if (isAttacking) {
             // Determine attack type based on weapon
             const currentWeapon = typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'pistol';
@@ -507,6 +585,7 @@ const PlayerController = {
                 isGrounded: this.isGrounded,
                 isCrouching: this.isCrouching,
                 isAttacking: isAttacking,
+                isDodging: this.isDodging,
                 currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'unarmed',
                 aimPitch: InputManager ? InputManager.cameraPitch : 0,
                 isFiring: typeof WeaponSystem !== 'undefined' ? WeaponSystem.isFiring : false
@@ -543,6 +622,12 @@ const PlayerController = {
         this.isCrouching = false;
         this.velocityY = 0;
 
+        // Reset dodge roll state on death
+        this.isDodging = false;
+        this.dodgeTimer = 0;
+        this.dodgeCooldownTimer = 0;
+        if (this.dodgeDirection) this.dodgeDirection.set(0, 0, 0);
+
         const deathOverlay = document.getElementById('death-overlay');
         if (deathOverlay) deathOverlay.style.display = 'flex';
 
@@ -572,6 +657,12 @@ const PlayerController = {
         this.respawnTimer = 0;
         this.isSprinting = false;
         this.isCrouching = false;
+
+        // Reset dodge roll state on respawn
+        this.isDodging = false;
+        this.dodgeTimer = 0;
+        this.dodgeCooldownTimer = 0;
+        if (this.dodgeDirection) this.dodgeDirection.set(0, 0, 0);
 
         // Ensure Observation Haki is turned off on respawn
         if (typeof ObservationHaki !== 'undefined') {

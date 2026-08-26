@@ -19,12 +19,6 @@ const ObservationHaki = {
     // HAKI STATE (unchanged gameplay logic)
     // ============================================================
     isActive: false,
-    overlayElement: null,
-    crackImage: null,          // PNG crack overlay image element (Layer A - Main)
-    glowImage: null,           // Soft glow duplicate (Layer B)
-    shimmerImage: null,       // Energy shimmer layer (Layer C)
-    edgeAura: null,            // Edge aura layer
-    particles: [],            // Micro particles (Layer D)
     debug: true,
     dodgedAttacks: new Set(),
 
@@ -78,31 +72,8 @@ const ObservationHaki = {
     _WHOOSH_THROTTLE: 80,       // ms — minimum interval between whoosh sounds
 
     // ============================================================
-    // OVERLAY PULSE
+    // CENTRALIZED TIMER MANAGEMENT
     // ============================================================
-    _overlayPulseTimer: 0,
-    _overlayBaseOpacity: 0,       // Base opacity for PNG crack overlay (0 when OFF, 0.62 when ON)
-
-    // ============================================================
-    // CINEMATIC ENERGY SYSTEM
-    // ============================================================
-    _breathingTimer: 0,          // Breathing animation timer
-    _breathingPhase: 0,          // Current breathing phase (0-1)
-    _breathingDuration: 3500,    // Base breathing duration (ms)
-    _glowPhaseOffset: 0,         // Fixed glow phase offset (set once, reused)
-    _shimmerTimer: 0,            // Next shimmer trigger timer
-    _shimmerCooldown: 2800,      // Base shimmer cooldown (ms)
-    _nodePulseTimer: 0,          // Next node pulse timer
-    _nodePulseCooldown: 1050,    // Base node pulse cooldown (ms)
-    _nodePulseIntensity: 0,      // Current node pulse intensity (0-1)
-    _nodePulseDecay: 0,          // Node pulse decay rate per ms
-    _dodgePulseIntensity: 0,     // Current dodge pulse intensity (0-1)
-    _dodgePulseDecay: 0,         // Dodge pulse decay rate per ms
-    _shimmerGeneration: 0,       // Shimmer generation counter for latest-event-wins
-    _shimmerRaf: null,           // requestAnimationFrame handle for shimmer movement
-    _isActivating: false,        // Flag for activation sequence
-    _activationTimer: 0,         // Activation sequence timer
-    _awakenSequence: false,      // Flag for awaken animation
     _uiTimers: new Set(),        // Centralized timer management
 
     // ============================================================
@@ -137,184 +108,13 @@ const ObservationHaki = {
     // ============================================================
     init: function() {
         console.log('[OBSERVATION] Khởi tạo Observation Haki System...');
-        this._createOverlay();
         this._setupInput();
         console.log('[OBSERVATION] Khởi tạo xong');
     },
 
-    // ============================================================
-    // OVERLAY (visual only) — PNG crack overlay with cinematic layers
-    // ============================================================
-    _createOverlay: function() {
-        this.overlayElement = document.createElement('div');
-        this.overlayElement.id = 'haki-overlay';
-        this.overlayElement.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1000;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        `;
-        document.body.appendChild(this.overlayElement);
 
-        // Layer A - Main PNG crack artwork
-        this.crackImage = document.createElement('img');
-        this.crackImage.className = 'haki-crack-overlay';
-        this.crackImage.src = 'src/assets/haki-crack-overlay.png';
-        this.crackImage.style.cssText = `
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            display: block;
-            pointer-events: none;
-            user-select: none;
-            object-fit: contain;
-            opacity: 0;
-            z-index: 10;
-            transform: none;
-        `;
-        this.overlayElement.appendChild(this.crackImage);
 
-        // Layer B - Soft glow duplicate
-        this.glowImage = document.createElement('img');
-        this.glowImage.className = 'haki-crack-glow';
-        this.glowImage.src = 'src/assets/haki-crack-overlay.png';
-        this.glowImage.style.cssText = `
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            display: block;
-            pointer-events: none;
-            user-select: none;
-            object-fit: contain;
-            opacity: 0;
-            filter: blur(6px);
-            mix-blend-mode: screen;
-            z-index: 5;
-            transform: none;
-        `;
-        this.overlayElement.appendChild(this.glowImage);
 
-        // Layer C - Energy shimmer (initially hidden)
-        this.shimmerImage = document.createElement('img');
-        this.shimmerImage.className = 'haki-crack-shimmer';
-        this.shimmerImage.src = 'src/assets/haki-crack-overlay.png';
-        this.shimmerImage.style.cssText = `
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            display: block;
-            pointer-events: none;
-            user-select: none;
-            object-fit: contain;
-            opacity: 0;
-            filter: blur(2px);
-            mix-blend-mode: screen;
-            z-index: 8;
-            transform: none;
-            --shimmer-x: 50%;
-            --shimmer-y: 50%;
-            --shimmer-size: 15%;
-            mask-image: radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%);
-            -webkit-mask-image: radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%);
-            mask-size: 100% 100%;
-            -webkit-mask-size: 100% 100%;
-        `;
-        this.overlayElement.appendChild(this.shimmerImage);
-
-        // Layer D - Edge aura
-        this.edgeAura = document.createElement('div');
-        this.edgeAura.className = 'haki-edge-aura';
-        this.edgeAura.style.cssText = `
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            user-select: none;
-            background: radial-gradient(circle at center, transparent 60%, rgba(100, 200, 255, 0.05) 90%, rgba(80, 180, 255, 0.08) 100%);
-            opacity: 0;
-            z-index: 3;
-        `;
-        this.overlayElement.appendChild(this.edgeAura);
-
-        // Create micro particles (8-15 particles)
-        this._createParticles();
-
-        if (OBSERVATION_VISUAL_DEBUG) {
-            console.log('[HAKI UI] crack overlay initialized');
-        }
-    },
-
-    // ============================================================
-    // CREATE MICRO PARTICLES
-    // ============================================================
-    _createParticles: function() {
-        const particleCount = 12; // 8-15 particles
-        
-        for (let i = 0; i < particleCount; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'haki-particle';
-            
-            // Random position along edges
-            const edge = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
-            let x, y;
-            
-            switch (edge) {
-                case 0: // top
-                    x = Math.random() * 100;
-                    y = Math.random() * 15;
-                    break;
-                case 1: // right
-                    x = 85 + Math.random() * 15;
-                    y = Math.random() * 100;
-                    break;
-                case 2: // bottom
-                    x = Math.random() * 100;
-                    y = 85 + Math.random() * 15;
-                    break;
-                case 3: // left
-                    x = Math.random() * 15;
-                    y = Math.random() * 100;
-                    break;
-            }
-            
-            const size = 1 + Math.random() * 1.5; // 1-2.5px
-            const baseOpacity = 0.08 + Math.random() * 0.22; // 0.08-0.30
-            
-            particle.style.cssText = `
-                position: absolute;
-                left: ${x}%;
-                top: ${y}%;
-                width: ${size}px;
-                height: ${size}px;
-                background: rgba(100, 200, 255, ${baseOpacity});
-                border-radius: 50%;
-                pointer-events: none;
-                opacity: 0;
-                z-index: 15;
-            `;
-            
-            this.overlayElement.appendChild(particle);
-            
-            this.particles.push({
-                element: particle,
-                baseOpacity: baseOpacity,
-                phase: Math.random() * Math.PI * 2,
-                speed: 0.3 + Math.random() * 0.4,
-                active: false,
-                timer: Math.random() * 3000,
-                duration: 2000 + Math.random() * 2000
-            });
-        }
-    },
 
     // ============================================================
     // INPUT (unchanged)
@@ -344,94 +144,11 @@ const ObservationHaki = {
 
         if (this.isActive) {
             this._log('[OBSERVATION] ON');
-            
-            // Start activation "awaken" sequence
-            this._isActivating = true;
-            this._activationTimer = 0;
-            this._breathingTimer = 0;
-            this._breathingPhase = 0;
-            this._glowPhaseOffset = 0.08 + Math.random() * 0.12; // Set once, reuse for entire session
-            this._shimmerTimer = 1500 + Math.random() * 1500; // Initial shimmer delay
-            this._nodePulseTimer = 500 + Math.random() * 500; // Initial node pulse delay
-            this._nodePulseIntensity = 0;
-            this._dodgePulseIntensity = 0;
-            this._shimmerGeneration = 0;
-            
-            // Clear any stale timers from previous session
-            this._clearUiTimers();
-            
-            // Set overlay visible immediately
-            this.overlayElement.style.transition = 'opacity 0.05s ease-out';
-            this.overlayElement.style.opacity = '1';
-            
-            // Reset layers to hidden state
-            if (this.crackImage) {
-                this.crackImage.style.opacity = '0';
-            }
-            if (this.glowImage) {
-                this.glowImage.style.opacity = '0';
-                this.glowImage.style.transform = 'scale(1)';
-            }
-            if (this.shimmerImage) {
-                this._cancelShimmerAnimation();
-                this.shimmerImage.style.opacity = '0';
-                this.shimmerImage.style.setProperty('--shimmer-x', '50%');
-                this.shimmerImage.style.setProperty('--shimmer-y', '50%');
-                this.shimmerImage.style.setProperty('--shimmer-size', '15%');
-                this.shimmerImage.style.maskImage = 'radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%)';
-                this.shimmerImage.style.webkitMaskImage = 'radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%)';
-            }
-            if (this.edgeAura) this.edgeAura.style.opacity = '0';
-            
-            if (OBSERVATION_VISUAL_DEBUG) {
-                console.log('[HAKI UI] AWAKEN');
-            }
-
             const hakiStatus = document.getElementById('haki-status');
             if (hakiStatus) hakiStatus.style.display = 'flex';
         } else {
             this._log('[OBSERVATION] OFF');
-            // Use faster fade-out for OFF state
-            this.overlayElement.style.transition = 'opacity 0.19s ease-in';
-            this.overlayElement.style.opacity = '0';
-            this._overlayBaseOpacity = 0;
-            
-            // Fade all layers
-            if (this.crackImage) {
-                this.crackImage.style.opacity = '0';
-            }
-            if (this.glowImage) {
-                this.glowImage.style.opacity = '0';
-                this.glowImage.style.transform = 'scale(1)';
-            }
-            if (this.shimmerImage) {
-                this._cancelShimmerAnimation();
-                this.shimmerImage.style.opacity = '0';
-                this.shimmerImage.style.setProperty('--shimmer-x', '50%');
-                this.shimmerImage.style.setProperty('--shimmer-y', '50%');
-                this.shimmerImage.style.setProperty('--shimmer-size', '15%');
-                this.shimmerImage.style.maskImage = 'radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%)';
-                this.shimmerImage.style.webkitMaskImage = 'radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%)';
-            }
-            if (this.edgeAura) this.edgeAura.style.opacity = '0';
-            
-            // Deactivate particles
-            this.particles.forEach(p => {
-                p.active = false;
-                p.element.style.opacity = '0';
-            });
-            
-            this._isActivating = false;
-            this._nodePulseIntensity = 0;
-            this._dodgePulseIntensity = 0;
-            this._shimmerGeneration = 0;
-            
-            if (OBSERVATION_VISUAL_DEBUG) {
-                console.log('[HAKI UI] FADE OUT');
-            }
-            
             this.cleanup();
-
             const hakiStatus = document.getElementById('haki-status');
             if (hakiStatus) hakiStatus.style.display = 'none';
         }
@@ -444,46 +161,6 @@ const ObservationHaki = {
         if (this.isActive) {
             this.isActive = false;
             this._log('[OBSERVATION] OFF (forced)');
-            
-            // Use faster fade-out for forced OFF
-            this.overlayElement.style.transition = 'opacity 0.19s ease-in';
-            this.overlayElement.style.opacity = '0';
-            this._overlayBaseOpacity = 0;
-            
-            // Fade all layers with transform reset
-            if (this.crackImage) {
-                this.crackImage.style.opacity = '0';
-            }
-            if (this.glowImage) {
-                this.glowImage.style.opacity = '0';
-                this.glowImage.style.transform = 'scale(1)';
-            }
-            if (this.shimmerImage) {
-                this._cancelShimmerAnimation();
-                this.shimmerImage.style.opacity = '0';
-                this.shimmerImage.style.setProperty('--shimmer-x', '50%');
-                this.shimmerImage.style.setProperty('--shimmer-y', '50%');
-                this.shimmerImage.style.setProperty('--shimmer-size', '15%');
-                this.shimmerImage.style.maskImage = 'radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%)';
-                this.shimmerImage.style.webkitMaskImage = 'radial-gradient(circle var(--shimmer-size) at var(--shimmer-x) var(--shimmer-y), rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 25%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 75%)';
-            }
-            if (this.edgeAura) this.edgeAura.style.opacity = '0';
-            
-            // Deactivate particles
-            this.particles.forEach(p => {
-                p.active = false;
-                p.element.style.opacity = '0';
-            });
-            
-            this._isActivating = false;
-            this._nodePulseIntensity = 0;
-            this._dodgePulseIntensity = 0;
-            this._shimmerGeneration = 0;
-            
-            if (OBSERVATION_VISUAL_DEBUG) {
-                console.log('[HAKI UI] FADE OUT');
-            }
-            
             this.cleanup();
 
             const hakiStatus = document.getElementById('haki-status');
@@ -509,23 +186,9 @@ const ObservationHaki = {
         this._dodgeCount = 0;
         this._loggedOverlayApplied = false;
         this._lastLoggedPhase = null;
-        this._nodePulseIntensity = 0;
-        this._nodePulseDecay = 0;
-        this._dodgePulseIntensity = 0;
-        this._dodgePulseDecay = 0;
-        this._shimmerGeneration = 0;
-        this._cancelShimmerAnimation();
-        
-        // Clear all UI timers
+
+        // Clear any pending debug/visual timers
         this._clearUiTimers();
-        
-        // Reset cinematic timers
-        this._isActivating = false;
-        this._activationTimer = 0;
-        this._breathingTimer = 0;
-        this._breathingPhase = 0;
-        this._shimmerTimer = 0;
-        this._nodePulseTimer = 0;
     },
 
     // ============================================================
@@ -562,276 +225,6 @@ const ObservationHaki = {
     },
 
     // ============================================================
-    // UPDATE CINEMATIC ENERGY SYSTEM
-    // ============================================================
-    _updateCinematicEnergy: function(deltaTime) {
-        // Skip during activation sequence
-        if (this._isActivating) {
-            this._updateActivationSequence(deltaTime);
-            return;
-        }
-
-        // ---- Energy Breathing ----
-        this._breathingTimer += deltaTime;
-        this._breathingPhase = (this._breathingTimer % this._breathingDuration) / this._breathingDuration;
-        
-        // Smooth sine wave breathing for main crack
-        const breathingSine = Math.sin(this._breathingPhase * Math.PI * 2);
-        
-        // Phase offset for glow (150-350ms offset) - use fixed offset set during activation
-        const glowPhase = (this._breathingPhase + this._glowPhaseOffset) % 1;
-        const glowSine = Math.sin(glowPhase * Math.PI * 2);
-        
-        // ---- Node Pulse Decay ----
-        if (this._nodePulseIntensity > 0) {
-            this._nodePulseIntensity = Math.max(0, this._nodePulseIntensity - this._nodePulseDecay * deltaTime);
-        }
-        
-        // ---- Dodge Pulse Decay ----
-        if (this._dodgePulseIntensity > 0) {
-            this._dodgePulseIntensity = Math.max(0, this._dodgePulseIntensity - this._dodgePulseDecay * deltaTime);
-        }
-        
-        // ---- Compute final multipliers ----
-        const nodeMultiplier = 1 + this._nodePulseIntensity * 0.15; // +0-15%
-        const dodgeMultiplier = 1 + this._dodgePulseIntensity * 0.25; // +0-25%
-        
-        // ---- Apply composite opacity ----
-        // Main: breathing base * dodge pulse
-        const mainBase = 0.62 + breathingSine * 0.03; // 0.59 → 0.65
-        const mainOpacity = Math.min(0.86, mainBase * dodgeMultiplier);
-        
-        // Glow: breathing base * node pulse * dodge pulse
-        const glowBase = 0.12 + glowSine * 0.04; // 0.08 → 0.16
-        const glowOpacity = Math.min(0.30, glowBase * nodeMultiplier * dodgeMultiplier);
-        
-        // Multi-scale breathing for glow
-        const glowScale = 1.0 + glowSine * 0.006; // 1.00 → 1.012
-        
-        // Apply breathing directly (no per-frame transition)
-        if (this.crackImage) {
-            this.crackImage.style.opacity = String(mainOpacity);
-        }
-        if (this.glowImage) {
-            this.glowImage.style.opacity = String(glowOpacity);
-            this.glowImage.style.transform = `scale(${glowScale})`;
-        }
-
-        if (this.edgeAura) {
-            this.edgeAura.style.opacity = String(0.05 + breathingSine * 0.02);
-        }
-
-        // Log breathing occasionally
-        if (OBSERVATION_VISUAL_DEBUG && Math.random() < 0.001) {
-            console.log('[HAKI UI] BREATH');
-        }
-
-        // ---- Energy Shimmer ----
-        this._shimmerTimer -= deltaTime;
-        if (this._shimmerTimer <= 0) {
-            this._triggerShimmer();
-            this._shimmerTimer = this._shimmerCooldown * (0.7 + Math.random() * 0.6); // 1.8-4.5s
-        }
-
-        // ---- Fracture Node Pulse ----
-        this._nodePulseTimer -= deltaTime;
-        if (this._nodePulseTimer <= 0) {
-            this._triggerNodePulse();
-            this._nodePulseTimer = this._nodePulseCooldown * (0.7 + Math.random() * 0.8); // 0.7-1.4s
-        }
-
-        // ---- Update Particles ----
-        this._updateParticles(deltaTime);
-    },
-
-    // ============================================================
-    // SHIMMER HELPERS
-    // ============================================================
-    _cancelShimmerAnimation: function() {
-        if (this._shimmerRaf !== null) {
-            cancelAnimationFrame(this._shimmerRaf);
-            this._shimmerRaf = null;
-        }
-    },
-
-    _animateShimmer: function(startX, startY, endX, endY, duration, generation) {
-        if (!this.shimmerImage) return;
-
-        this._cancelShimmerAnimation();
-
-        const startTime = performance.now();
-        const img = this.shimmerImage;
-
-        img.style.opacity = '0';
-        img.style.setProperty('--shimmer-x', startX + '%');
-        img.style.setProperty('--shimmer-y', startY + '%');
-        img.style.setProperty('--shimmer-size', '15%');
-
-        const tick = function(now) {
-            if (generation !== img.__owner?._shimmerGeneration) return;
-            if (!img.isConnected) return;
-
-            let t = (now - startTime) / duration;
-            if (t > 1) t = 1;
-
-            const eased = 1 - Math.pow(1 - t, 3);
-            const cx = startX + (endX - startX) * eased;
-            const cy = startY + (endY - startY) * eased;
-
-            img.style.setProperty('--shimmer-x', cx + '%');
-            img.style.setProperty('--shimmer-y', cy + '%');
-
-            if (t < 1) {
-                img.__owner._shimmerRaf = requestAnimationFrame(tick);
-            } else {
-                img.__owner._shimmerRaf = null;
-            }
-        };
-
-        img.__owner = this;
-        this._shimmerRaf = requestAnimationFrame(tick);
-    },
-
-    // ============================================================
-    // TRIGGER ENERGY SHIMMER — MOVING HOTSPOT
-    // ============================================================
-    _triggerShimmer: function() {
-        if (!this.shimmerImage) return;
-
-        this._shimmerGeneration++;
-        const generation = this._shimmerGeneration;
-
-        const directions = ['top-left', 'top-right', 'left', 'right', 'bottom-left', 'bottom-right'];
-        const direction = directions[Math.floor(Math.random() * directions.length)];
-
-        let startPos = { x: 50, y: 50 };
-        let endPos = { x: 50, y: 50 };
-
-        switch (direction) {
-            case 'top-left':
-                startPos = { x: 5, y: 5 };
-                endPos = { x: 22, y: 22 };
-                break;
-            case 'top-right':
-                startPos = { x: 95, y: 5 };
-                endPos = { x: 78, y: 22 };
-                break;
-            case 'left':
-                startPos = { x: 3, y: 50 };
-                endPos = { x: 18, y: 50 };
-                break;
-            case 'right':
-                startPos = { x: 97, y: 50 };
-                endPos = { x: 82, y: 50 };
-                break;
-            case 'bottom-left':
-                startPos = { x: 5, y: 95 };
-                endPos = { x: 22, y: 78 };
-                break;
-            case 'bottom-right':
-                startPos = { x: 95, y: 95 };
-                endPos = { x: 78, y: 78 };
-                break;
-        }
-
-        const duration = 300 + Math.random() * 250;
-
-        this.shimmerImage.style.transition = 'opacity 0.08s ease-out';
-        this.shimmerImage.style.opacity = '0.30';
-
-        this._animateShimmer(startPos.x, startPos.y, endPos.x, endPos.y, duration, generation);
-
-        this._scheduleUiTimer(function() {
-            if (generation === this._shimmerGeneration && this.shimmerImage) {
-                this.shimmerImage.style.transition = 'opacity 0.18s ease-in';
-                this.shimmerImage.style.opacity = '0';
-            }
-        }.bind(this), duration + 40);
-    },
-
-    // ============================================================
-    // TRIGGER FRACTURE NODE PULSE
-    // ============================================================
-    _triggerNodePulse: function() {
-        if (!this.glowImage) return;
-
-        // Set pulse intensity and decay rate
-        this._nodePulseIntensity = 1;
-        this._nodePulseDecay = 8 + Math.random() * 6; // 8-14 per second (decays to 0 in ~80-140ms)
-        
-        if (OBSERVATION_VISUAL_DEBUG) {
-            console.log('[HAKI UI] NODE PULSE');
-        }
-    },
-
-    // ============================================================
-    // UPDATE PARTICLES
-    // ============================================================
-    _updateParticles: function(deltaTime) {
-        for (let i = 0; i < this.particles.length; i++) {
-            const particle = this.particles[i];
-            
-            particle.timer -= deltaTime;
-            
-            if (particle.timer <= 0) {
-                // Toggle particle state
-                particle.active = !particle.active;
-                particle.timer = particle.active ? particle.duration : 2000 + Math.random() * 3000;
-                
-                if (particle.active) {
-                    particle.element.style.transition = 'opacity 0.5s ease-out';
-                    particle.element.style.opacity = String(particle.baseOpacity);
-                } else {
-                    particle.element.style.transition = 'opacity 0.3s ease-in';
-                    particle.element.style.opacity = '0';
-                }
-            }
-            
-            // Slight drift for active particles
-            if (particle.active) {
-                particle.phase += particle.speed * deltaTime * 0.001;
-                const drift = Math.sin(particle.phase) * 3;
-                particle.element.style.transform = `translateY(${drift}px)`;
-            }
-        }
-    },
-
-    // ============================================================
-    // UPDATE ACTIVATION SEQUENCE
-    // ============================================================
-    _updateActivationSequence: function(deltaTime) {
-        this._activationTimer += deltaTime;
-        const progress = this._activationTimer / 280; // 280ms total sequence
-        
-        if (progress >= 1) {
-            this._isActivating = false;
-            this._activationTimer = 0;
-            // Reset pulse states when activation completes
-            this._nodePulseIntensity = 0;
-            this._dodgePulseIntensity = 0;
-            return;
-        }
-
-        // Sequence: 0 → faint → visible → peak → normal
-        if (progress < 0.35) {
-            // 0-100ms: faint crack appears
-            const opacity = progress * 0.35; // 0 → 0.12
-            if (this.crackImage) this.crackImage.style.opacity = String(opacity);
-            if (this.glowImage) this.glowImage.style.opacity = String(opacity * 0.2);
-        } else if (progress < 0.64) {
-            // 100-180ms: crack + glow become visible
-            const opacity = 0.12 + (progress - 0.35) * 1.53; // 0.12 → 0.62
-            if (this.crackImage) this.crackImage.style.opacity = String(opacity);
-            if (this.glowImage) this.glowImage.style.opacity = String(opacity * 0.19);
-        } else {
-            // 180-280ms: peak reveal → normal breathing
-            const opacity = 0.62 + (progress - 0.64) * 0.05; // 0.62 → 0.64
-            if (this.crackImage) this.crackImage.style.opacity = String(opacity);
-            if (this.glowImage) this.glowImage.style.opacity = String(opacity * 0.19);
-        }
-    },
-
-    // ============================================================
     // MAIN UPDATE — called from game loop (BEFORE renderer)
     // Computes dodge offsets and updates afterimage fade.
     // Does NOT write to pivots directly. Stores offsets in _pendingDodgeOffsets.
@@ -839,16 +232,8 @@ const ObservationHaki = {
     update: function(deltaTime) {
         const now = Date.now();
 
-        // ---- Update cinematic energy system ----
-        if (this.isActive) {
-            this._updateCinematicEnergy(deltaTime);
-        }
-
         // ---- Update afterimage fade ----
         this._updateAfterimages(now);
-
-        // ---- Update overlay pulse ----
-        this._updateOverlayPulse(deltaTime);
 
         // ---- Compute dodge animation offsets ----
         if (this.currentDodge) {
@@ -1199,78 +584,7 @@ const ObservationHaki = {
         }
     },
 
-    // ============================================================
-    // UPDATE OVERLAY PULSE
-    // ============================================================
-    _updateOverlayPulse: function(deltaTime) {
-        if (this._overlayPulseTimer > 0) {
-            this._overlayPulseTimer -= deltaTime;
-            if (this._overlayPulseTimer <= 0) {
-                this._overlayPulseTimer = 0;
-                // Do NOT hard-set opacity - let breathing system regain control
-                // The dodge multiplier will naturally decay back to 1
-            }
-        }
-    },
 
-    // ============================================================
-    // TRIGGER OVERLAY PULSE — directional crack pulse when dodging
-    // ============================================================
-    _triggerOverlayPulse: function(direction) {
-        if (!this.overlayElement || !this.isActive) return;
-
-        // Set dodge pulse intensity and decay rate
-        this._dodgePulseIntensity = 1;
-        this._dodgePulseDecay = 10 + Math.random() * 5; // 10-15 per second (decays to 0 in ~80-120ms)
-        
-        // Keep pulse timer for compatibility with existing logic
-        this._overlayPulseTimer = 100;  // 100ms pulse duration
-        
-        // Trigger dodge shimmer
-        this._triggerDodgeShimmer(direction);
-
-        if (OBSERVATION_VISUAL_DEBUG) {
-            console.log(`[HAKI UI] DODGE PULSE ${direction}`);
-        }
-    },
-
-    // ============================================================
-    // TRIGGER DODGE SHIMMER — MOVING HOTSPOT
-    // ============================================================
-    _triggerDodgeShimmer: function(direction) {
-        if (!this.shimmerImage) return;
-
-        this._shimmerGeneration++;
-        const generation = this._shimmerGeneration;
-
-        let startPos = { x: 50, y: 50 };
-        let endPos = { x: 50, y: 50 };
-
-        if (direction === 'LEFT') {
-            startPos = { x: 3, y: 50 };
-            endPos = { x: 18, y: 50 };
-        } else if (direction === 'RIGHT') {
-            startPos = { x: 97, y: 50 };
-            endPos = { x: 82, y: 50 };
-        } else if (direction === 'CROUCH') {
-            startPos = { x: 50, y: 95 };
-            endPos = { x: 50, y: 80 };
-        }
-
-        const duration = 80 + Math.random() * 40;
-
-        this.shimmerImage.style.transition = 'opacity 0.06s ease-out';
-        this.shimmerImage.style.opacity = '0.40';
-
-        this._animateShimmer(startPos.x, startPos.y, endPos.x, endPos.y, duration, generation);
-
-        this._scheduleUiTimer(function() {
-            if (generation === this._shimmerGeneration && this.shimmerImage) {
-                this.shimmerImage.style.transition = 'opacity 0.12s ease-in';
-                this.shimmerImage.style.opacity = '0';
-            }
-        }.bind(this), duration + 20);
-    },
 
     // ============================================================
     // CAPTURE AFTERIMAGE — snapshot player R6 body parts at current pose
@@ -1723,9 +1037,6 @@ const ObservationHaki = {
         // Initial offsets (zero at start)
         this._pendingDodgeOffsets = this._computeDodgeOffsets(direction, 0);
         this._hasPendingOverlay = true;
-
-        // Overlay pulse with direction
-        this._triggerOverlayPulse(direction);
 
         // Sound
         this._playDodgeWhoosh();

@@ -1001,6 +1001,12 @@ const GameState = {
         if (this.playerHP <= 0) return false;
         if (typeof PlayerController !== 'undefined' && (PlayerController.isDead || PlayerController.isRespawning)) return false;
 
+        // Check Q-roll dodge i-frame before applying damage
+        if (typeof PlayerController !== 'undefined' && PlayerController.isDodging) {
+            // Player is dodging - damage is ignored (i-frame)
+            return false;
+        }
+
         // Check Observation Haki dodge before applying damage
         if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
             const attackContext = {
@@ -1066,6 +1072,12 @@ const GameState = {
         if (this.adminInfiniteHealth) return;
         if (this.playerHP <= 0) return;
         if (typeof PlayerController !== 'undefined' && (PlayerController.isDead || PlayerController.isRespawning)) return;
+
+        // Check Q-roll dodge i-frame before applying poison damage
+        if (typeof PlayerController !== 'undefined' && PlayerController.isDodging) {
+            // Player is dodging - poison damage is ignored
+            return;
+        }
 
         const tickDamage = Math.max(1, Math.round(this.poisonDamageRemaining / Math.max(1, this.poisonTimeRemaining / CONFIG.ROTTEN_MEAT_POISON_TICK_INTERVAL)));
         this.playerHP = Math.max(0, this.playerHP - tickDamage);
