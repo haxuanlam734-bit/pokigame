@@ -76,6 +76,16 @@ const PlayerController = {
     flyDescendSpeed: 35,
     flyBoostMultiplier: 2.0,
 
+    // --- Dodge Roll System ---
+    DODGE_ROLL_COST: 5,
+    DODGE_ROLL_COOLDOWN: 1.0,
+    DODGE_ROLL_DURATION: 0.5,
+    DODGE_ROLL_SPEED: 12,
+    isDodging: false,
+    dodgeTimer: 0,
+    dodgeCooldownTimer: 0,
+    dodgeDirection: null,
+
     // ==========================================
     // --- VU KHI (su dung WeaponSystem moi) ---
     // ==========================================
@@ -106,6 +116,12 @@ const PlayerController = {
         this.isSprinting = false;
         this.isCrouching = false;
         this.speed = this.normalSpeed;
+
+        // Reset dodge roll state
+        this.isDodging = false;
+        this.dodgeTimer = 0;
+        this.dodgeCooldownTimer = 0;
+        if (this.dodgeDirection) this.dodgeDirection.set(0, 0, 0);
 
         if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.reset) {
             GrenadeSystem.reset();
@@ -148,6 +164,12 @@ const PlayerController = {
         this._rightVec = new THREE.Vector3();
         this._moveVec = new THREE.Vector3();
         this._camDir = new THREE.Vector3();
+
+        // Initialize dodge roll state
+        this.isDodging = false;
+        this.dodgeTimer = 0;
+        this.dodgeCooldownTimer = 0;
+        this.dodgeDirection = new THREE.Vector3();
 
         // Khởi tạo zoom camera + lắng nghe sự kiện lăn chuột
         this.currentZoomDistance = (Renderer3D && Renderer3D.cameraDistance) || 15;

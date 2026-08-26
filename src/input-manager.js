@@ -64,6 +64,10 @@ const InputManager = {
     isMouseJustPressed: false,
     isMouseJustReleased: false,
 
+    // --- Q Key Just Pressed State ---
+    // isQJustPressed: true CHỈ trong frame đầu tiên nhấn Q (dùng cho dodge roll)
+    isQJustPressed: false,
+
     // --- Camera xoay kiểu Roblox: Pointer Lock + Spherical Orbit ---
     // targetYaw/targetPitch = giá trị "thô" cộng dồn trực tiếp từ movementX/movementY.
     // cameraYaw/cameraPitch = giá trị đã làm mượt (lerp) mỗi frame, đây mới là giá trị
@@ -133,6 +137,11 @@ const InputManager = {
 
         if (event.key && event.key.length === 1) {
             this._appendCheatChar(event.key);
+        }
+
+        // Track Q key just-pressed for dodge roll
+        if (key === 'q') {
+            this.isQJustPressed = true;
         }
 
         if (event.code === 'Space') {
@@ -247,6 +256,7 @@ const InputManager = {
         // nên thứ tự: PlayerController.update() -> InputManager.update() là đúng.
         this.isMouseJustPressed = false;
         this.isMouseJustReleased = false;
+        this.isQJustPressed = false;
     },
 
     onMouseUp: function(event) {
@@ -389,6 +399,14 @@ const InputManager = {
         }
         
         return keys.some(key => this.keys[key.toLowerCase()]);
+    },
+
+    /**
+     * Kiểm tra nếu phím Q vừa được nhấn (chỉ trong frame đầu tiên)
+     * @returns {boolean} Vừa nhấn Q?
+     */
+    isQJustPressed: function() {
+        return this.isQJustPressed || false;
     }
 };
 
