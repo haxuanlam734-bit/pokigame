@@ -130,6 +130,11 @@ const GameLoop = {
         if (typeof ObservationHaki !== 'undefined' && ObservationHaki.update) {
             ObservationHaki.update(deltaTime);
         }
+
+        // Update VIP Dash VFX (black streak + silhouette lifetime/fade)
+        if (typeof VipDashVFX !== 'undefined' && VipDashVFX.update) {
+            VipDashVFX.update(deltaTime);
+        }
     },
     
     /**

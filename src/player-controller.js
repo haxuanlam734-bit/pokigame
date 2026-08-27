@@ -86,6 +86,16 @@ const PlayerController = {
     dodgeCooldownTimer: 0,
     dodgeDirection: null,
 
+    // --- VIP Dash System ---
+    VIP_DASH_DISTANCE: 8.0,
+    VIP_DASH_COST: 5,
+    VIP_DASH_COOLDOWN: 0.5,
+    VIP_DASH_IFRAME: 0.18,
+    isVipDashing: false,
+    vipDashIframeTimer: 0,
+    vipDashCooldownTimer: 0,
+    vipDashDirection: null,
+
     // ==========================================
     // --- VU KHI (su dung WeaponSystem moi) ---
     // ==========================================
@@ -122,6 +132,12 @@ const PlayerController = {
         this.dodgeTimer = 0;
         this.dodgeCooldownTimer = 0;
         if (this.dodgeDirection) this.dodgeDirection.set(0, 0, 0);
+
+        // Reset VIP Dash state
+        this.isVipDashing = false;
+        this.vipDashIframeTimer = 0;
+        this.vipDashCooldownTimer = 0;
+        if (this.vipDashDirection) this.vipDashDirection.set(0, 0, 0);
 
         if (typeof GrenadeSystem !== 'undefined' && GrenadeSystem.reset) {
             GrenadeSystem.reset();
@@ -170,6 +186,11 @@ const PlayerController = {
         this.dodgeTimer = 0;
         this.dodgeCooldownTimer = 0;
         this.dodgeDirection = new THREE.Vector3();
+
+        // Initialize VIP Dash state
+        this.isVipDashing = false;
+        this.vipDashCooldownTimer = 0;
+        this.vipDashDirection = new THREE.Vector3();
 
         // Khởi tạo zoom camera + lắng nghe sự kiện lăn chuột
         this.currentZoomDistance = (Renderer3D && Renderer3D.cameraDistance) || 15;
@@ -409,6 +430,70 @@ const PlayerController = {
             }
         }
 
+        // --- VIP Dash Trigger Check ---
+        if (qJustPressed && typeof GameState !== 'undefined' && GameState.adminVipDash) {
+            console.log('[VIP DASH] INPUT');
+            
+            if (this.isVipDashing) {
+                console.log('[VIP DASH BLOCKED] already dashing');
+            } else if (flyActive) {
+                console.log('[VIP DASH BLOCKED] fly mode active');
+            } else if (!this.isGrounded) {
+                console.log('[VIP DASH BLOCKED] airborne');
+            } else if (this.isDead || this.isRespawning) {
+                console.log('[VIP DASH BLOCKED] dead/respawning');
+            } else if (!this.hasMovementInput) {
+                console.log('[VIP DASH BLOCKED] no movement input');
+            } else if (this.vipDashCooldownTimer > 0) {
+                console.log('[VIP DASH BLOCKED] cooldown (' + this.vipDashCooldownTimer.toFixed(2) + 's remaining)');
+            } else if (typeof GameState !== 'undefined' && !GameState.adminInfiniteStamina && GameState.stamina < this.VIP_DASH_COST) {
+                console.log('[VIP DASH BLOCKED] insufficient stamina (' + GameState.stamina + ' < ' + this.VIP_DASH_COST + ')');
+            } else {
+                // Check if movement is forward (W) - block forward dashes
+                const forwardDot = this._moveVec.dot(this._forwardVec);
+                if (forwardDot > 0.7) {
+                    console.log('[VIP DASH BLOCKED] forward movement not allowed');
+                } else {
+                    // All conditions passed - start VIP Dash
+                    this.vipDashDirection.copy(this._moveVec).normalize();
+                    
+                    // Consume stamina
+                    if (typeof GameState !== 'undefined' && !GameState.adminInfiniteStamina) {
+                        GameState.stamina -= this.VIP_DASH_COST;
+                    }
+                    
+                    // Start VIP Dash
+                    this.isVipDashing = true;
+                    this.vipDashIframeTimer = this.VIP_DASH_IFRAME;
+                    this.vipDashCooldownTimer = this.VIP_DASH_COOLDOWN;
+                    
+                    // Calculate destination
+                    const fromX = this.position.x;
+                    const fromZ = this.position.z;
+                    const toX = fromX + this.vipDashDirection.x * this.VIP_DASH_DISTANCE;
+                    const toZ = fromZ + this.vipDashDirection.z * this.VIP_DASH_DISTANCE;
+                    
+                    // Resolve collision for destination
+                    const validDest = this._resolveDashDestination(fromX, fromZ, toX, toZ);
+                    
+                    console.log('[VIP DASH] START FROM=(' + fromX.toFixed(1) + ',' + fromZ.toFixed(1) + ') TO=(' + validDest.x.toFixed(1) + ',' + validDest.z.toFixed(1) + ') DISTANCE=' + this.VIP_DASH_DISTANCE);
+                    
+                    // ── VFX STEP 1: Capture R6 snapshot BEFORE position change (Requirement A) ──
+                    this._triggerVipDashVFX_prepare(fromX, fromZ);
+                    
+                    // Instant reposition
+                    this.position.x = validDest.x;
+                    this.position.z = validDest.z;
+                    
+                    // Lock rotation to dash direction
+                    this.currentMoveAngle = Math.atan2(this.vipDashDirection.x, this.vipDashDirection.z);
+                    
+                    // ── VFX STEP 2: Spawn A + B effects AFTER player is at B ──
+                    this._triggerVipDashVFX_activate(validDest.x, validDest.z);
+                }
+            }
+        }
+
         if (flyActive) {
             this.isCrouching = false;
             this.isSprinting = false;
@@ -466,6 +551,21 @@ const PlayerController = {
         if (this.dodgeCooldownTimer > 0) {
             this.dodgeCooldownTimer -= deltaSec;
             if (this.dodgeCooldownTimer < 0) this.dodgeCooldownTimer = 0;
+        }
+
+        // Update VIP Dash cooldown
+        if (this.vipDashCooldownTimer > 0) {
+            this.vipDashCooldownTimer -= deltaSec;
+            if (this.vipDashCooldownTimer < 0) this.vipDashCooldownTimer = 0;
+        }
+
+        // Update VIP Dash i-frame
+        if (this.isVipDashing) {
+            this.vipDashIframeTimer = (this.vipDashIframeTimer || 0) - deltaSec;
+            if (this.vipDashIframeTimer <= 0) {
+                this.isVipDashing = false;
+                this.vipDashIframeTimer = 0;
+            }
         }
 
         // Di chuyển có collision. Tách X/Z thành hai bước để nhân vật có thể
@@ -546,9 +646,11 @@ const PlayerController = {
         let playerAnim = 'idle';
 
         // Animation priority system for FBX model
-        // DEATH > DODGE > ATTACK/SHOOT/THROW/MELEE > JUMP > CROUCH > RUN > WALK > IDLE
+        // DEATH > VIP DASH > DODGE > ATTACK/SHOOT/THROW/MELEE > JUMP > CROUCH > RUN > WALK > IDLE
         if (this.isDead) {
             playerAnim = 'death';
+        } else if (this.isVipDashing) {
+            playerAnim = 'vipDash';
         } else if (this.isDodging) {
             playerAnim = 'dodge';
         } else if (isAttacking) {
@@ -586,6 +688,7 @@ const PlayerController = {
                 isCrouching: this.isCrouching,
                 isAttacking: isAttacking,
                 isDodging: this.isDodging,
+                isVipDashing: this.isVipDashing,
                 currentWeapon: typeof WeaponSystem !== 'undefined' ? WeaponSystem.currentId : 'unarmed',
                 aimPitch: InputManager ? InputManager.cameraPitch : 0,
                 isFiring: typeof WeaponSystem !== 'undefined' ? WeaponSystem.isFiring : false
@@ -628,6 +731,12 @@ const PlayerController = {
         this.dodgeCooldownTimer = 0;
         if (this.dodgeDirection) this.dodgeDirection.set(0, 0, 0);
 
+        // Reset VIP Dash state on death
+        this.isVipDashing = false;
+        this.vipDashIframeTimer = 0;
+        this.vipDashCooldownTimer = 0;
+        if (this.vipDashDirection) this.vipDashDirection.set(0, 0, 0);
+
         const deathOverlay = document.getElementById('death-overlay');
         if (deathOverlay) deathOverlay.style.display = 'flex';
 
@@ -663,6 +772,12 @@ const PlayerController = {
         this.dodgeTimer = 0;
         this.dodgeCooldownTimer = 0;
         if (this.dodgeDirection) this.dodgeDirection.set(0, 0, 0);
+
+        // Reset VIP Dash state on respawn
+        this.isVipDashing = false;
+        this.vipDashIframeTimer = 0;
+        this.vipDashCooldownTimer = 0;
+        if (this.vipDashDirection) this.vipDashDirection.set(0, 0, 0);
 
         // Ensure Observation Haki is turned off on respawn
         if (typeof ObservationHaki !== 'undefined') {
@@ -800,6 +915,61 @@ const PlayerController = {
         }
 
         return false;
+    },
+
+    // ============================================================
+    // VIP Dash Helper Methods
+    // ============================================================
+    _resolveDashDestination: function(fromX, fromZ, toX, toZ) {
+        const renderer = (typeof Renderer3D !== 'undefined') ? Renderer3D : null;
+        const meshes = renderer && Array.isArray(renderer._collisionMeshes)
+            ? renderer._collisionMeshes
+            : [];
+
+        // Use incremental sampling to find furthest valid position
+        const steps = 10;
+        let lastValidX = fromX;
+        let lastValidZ = fromZ;
+
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const testX = fromX + (toX - fromX) * t;
+            const testZ = fromZ + (toZ - fromZ) * t;
+
+            if (!this._playerCollidesAt(testX, testZ, meshes)) {
+                lastValidX = testX;
+                lastValidZ = testZ;
+            } else {
+                // Hit wall, stop here
+                break;
+            }
+        }
+
+        return { x: lastValidX, z: lastValidZ };
+    },
+
+    // ── VFX Phase 1: capture R6 snapshot BEFORE player moves to B ──
+    _triggerVipDashVFX_prepare: function(fromX, fromZ) {
+        if (typeof VipDashVFX === 'undefined') {
+            console.error('[VIP DASH VFX] MODULE NOT LOADED');
+            return;
+        }
+        VipDashVFX.prepareSnapshot(fromX, fromZ, this.vipDashDirection);
+    },
+
+    // ── VFX Phase 2: spawn Point A + Point B effects, player already at B ──
+    _triggerVipDashVFX_activate: function(toX, toZ) {
+        if (typeof VipDashVFX === 'undefined') {
+            console.error('[VIP DASH VFX] MODULE NOT LOADED');
+            return;
+        }
+        VipDashVFX.trigger(toX, toZ);
+    },
+
+    // Legacy stub kept to avoid any old external callers breaking silently
+    _triggerVipDashVFX: function(fromX, fromZ, toX, toZ) {
+        // This path should no longer be reached — actual calls use the two-phase methods above.
+        console.log('[VIP DASH VFX] from=(' + fromX.toFixed(1) + ',' + fromZ.toFixed(1) + ') to=(' + toX.toFixed(1) + ',' + toZ.toFixed(1) + ')');
     },
 
     _computeForwardRight: function() {

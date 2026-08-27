@@ -34,6 +34,7 @@ const AdminPanel = {
         this.els.toggleAmmo = document.getElementById('admin-toggle-ammo');
         this.els.toggleGod = document.getElementById('admin-toggle-god');
         this.els.toggleFly = document.getElementById('admin-toggle-fly');
+        this.els.toggleVipDash = document.getElementById('admin-toggle-vip-dash');
 
         this.els.forceEclipse = document.getElementById('admin-force-eclipse');
         this.els.forceBloodMoon = document.getElementById('admin-force-blood-moon');
@@ -127,6 +128,7 @@ const AdminPanel = {
         if (this.els.toggleAmmo) this.els.toggleAmmo.addEventListener('click', () => this.toggleBuff('ammo'));
         if (this.els.toggleGod) this.els.toggleGod.addEventListener('click', () => this.toggleGodMode());
         if (this.els.toggleFly) this.els.toggleFly.addEventListener('click', () => this.toggleBuff('fly'));
+        if (this.els.toggleVipDash) this.els.toggleVipDash.addEventListener('click', () => this.toggleBuff('vipDash'));
 
         if (this.els.forceEclipse) this.els.forceEclipse.addEventListener('click', () => this.forceEclipse());
         if (this.els.forceBloodMoon) this.els.forceBloodMoon.addEventListener('click', () => this.forceBloodMoon());
@@ -251,6 +253,9 @@ const AdminPanel = {
             case 'fly':
                 GameState.adminFlyMode = !GameState.adminFlyMode;
                 break;
+            case 'vipDash':
+                GameState.adminVipDash = !GameState.adminVipDash;
+                break;
         }
         this.updateAllToggles();
         this.updateFlyIndicator();
@@ -351,6 +356,7 @@ const AdminPanel = {
         this.setToggleActive(this.els.toggleStamina, GameState.adminInfiniteStamina);
         this.setToggleActive(this.els.toggleAmmo, GameState.adminInfiniteAmmo);
         this.setToggleActive(this.els.toggleFly, GameState.adminFlyMode);
+        this.setToggleActive(this.els.toggleVipDash, GameState.adminVipDash);
 
         const godOn = GameState.adminInfiniteMoney && GameState.adminInfiniteHealth &&
                       GameState.adminInfiniteStamina && GameState.adminInfiniteAmmo;

@@ -31,6 +31,7 @@ const GameState = {
     adminInfiniteHealth: false,
     adminInfiniteStamina: false,
     adminFlyMode: false,
+    adminVipDash: false,
 
     /**
      * K�ch ho?t ch? d? Admin - ch? unlock quy?n truy c?p, kh�ng buff ngay
@@ -1007,6 +1008,12 @@ const GameState = {
             return false;
         }
 
+        // Check VIP Dash i-frame before applying damage
+        if (typeof PlayerController !== 'undefined' && PlayerController.isVipDashing) {
+            // Player is VIP dashing - damage is ignored (i-frame)
+            return false;
+        }
+
         // Check Observation Haki dodge before applying damage
         if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
             const attackContext = {
@@ -1076,6 +1083,12 @@ const GameState = {
         // Check Q-roll dodge i-frame before applying poison damage
         if (typeof PlayerController !== 'undefined' && PlayerController.isDodging) {
             // Player is dodging - poison damage is ignored
+            return;
+        }
+
+        // Check VIP Dash i-frame before applying poison damage
+        if (typeof PlayerController !== 'undefined' && PlayerController.isVipDashing) {
+            // Player is VIP dashing - poison damage is ignored
             return;
         }
 

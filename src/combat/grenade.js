@@ -1169,6 +1169,12 @@ const GrenadeSystem = {
                     return;
                 }
 
+                // Check VIP Dash i-frame for explosion damage
+                if (typeof PlayerController !== 'undefined' && PlayerController.isVipDashing) {
+                    console.log('[GRENADE] player dodged explosion damage via VIP Dash');
+                    return;
+                }
+
                 // Check Observation Haki dodge for explosion damage
                 if (typeof ObservationHaki !== 'undefined' && ObservationHaki.isActive) {
                     const attackContext = {
