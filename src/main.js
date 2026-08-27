@@ -104,11 +104,15 @@ const Game = {
             // 15. Ẩn màn hình loading
             this.hideLoadingScreen();
             
-            // 16. Báo cho Poki rằng gameplay bắt đầu
-            PokiManager.gameplayStart();
-            
-            // 17. Khởi động game loop
-            GameLoop.start();
+            // 16. Initialize Lobby Manager
+            if (typeof LobbyManager !== 'undefined') {
+                LobbyManager.init();
+                LobbyManager.enterLobby();
+            } else {
+                // If lobby not available, start gameplay directly
+                PokiManager.gameplayStart();
+                GameLoop.start();
+            }
             // The original turret FBX is a visual enhancement, not a startup
             // dependency. Start its download only after gameplay is live.
             setTimeout(() => Renderer3D.loadTurretModelDeferred && Renderer3D.loadTurretModelDeferred(), 600);

@@ -6764,7 +6764,13 @@ let Renderer3D = {
         if (this._radar) {
             this._radar.rotation.y += 0.005;
         }
-        this.renderer.render(this.scene, this.camera);
+
+        // Use lobby camera if lobby is active
+        const cameraToUse = (typeof LobbyManager !== 'undefined' && LobbyManager.isLobbyActive && LobbyManager.lobbyCamera)
+            ? LobbyManager.lobbyCamera
+            : this.camera;
+
+        this.renderer.render(this.scene, cameraToUse);
     },
 
     onWindowResize: function() {
@@ -6774,6 +6780,12 @@ let Renderer3D = {
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
+
+        // Also update lobby camera if it exists
+        if (typeof LobbyManager !== 'undefined' && LobbyManager.lobbyCamera) {
+            LobbyManager.lobbyCamera.aspect = width / height;
+            LobbyManager.lobbyCamera.updateProjectionMatrix();
+        }
     },
 
     getRaycaster: function(mouseX, mouseY) {
