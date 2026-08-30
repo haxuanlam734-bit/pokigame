@@ -939,7 +939,7 @@ const GameState = {
     },
 
     /**
-     * T?o m�y in ti?n
+     * Tao may in tien
      */
     buildMinter: function(x, y) {
         const def = this.getBuildingDef('minter');
@@ -962,7 +962,7 @@ const GameState = {
     },
 
     /**
-     * G�y s�t thuong cho ph�o d�i
+     * Gay sat thuong cho phao dai
      */
     damagesFortress: function(damage) {
         this.fortressHP = Math.max(0, this.fortressHP - damage);
